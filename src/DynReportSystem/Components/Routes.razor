@@ -1,0 +1,15 @@
+<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(Program).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="null">
+                <NotAuthorized>
+                    <div class="notice error">Windows-Anmeldung erforderlich oder keine Berechtigung.</div>
+                </NotAuthorized>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <div class="notice error">Seite nicht gefunden.</div>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>
