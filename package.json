@@ -1,0 +1,10 @@
+{
+  "name": "dynreport-system-assets",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "dependencies": {
+    "@svg-maps/world": "2.0.0",
+    "echarts": "6.1.0"
+  }
+}
