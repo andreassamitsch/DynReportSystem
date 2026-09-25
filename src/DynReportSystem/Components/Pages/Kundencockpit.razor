@@ -3,6 +3,7 @@
 @inject FolderAccess Access
 @inject AuthenticationStateProvider Authentication
 @inject ReportService Reports
+@inject DashboardCatalog Dashboards
 
 <PageTitle>Kundencockpit · DynReport System</PageTitle>
 
@@ -19,18 +20,30 @@ else
 <div class="shell">
     <header class="topbar">
         <div class="brand-mark">D</div>
-        <div class="brand-text"><strong>Kundencockpit</strong><span>DynReport System · Fuchshofer</span></div>
-        <div class="topbar-tag">APP-01 · RDL Live</div>
+        <div class="brand-text">
+            <strong>@dashboard.Title</strong>
+            <span>DynReport System · Fuchshofer</span>
+        </div>
+        <div class="topbar-tag">APP-01 · Interaktiv</div>
     </header>
 
     <div class="app-layout">
         <aside class="sidebar">
             <a class="nav-btn" href="/">← Berichtsordner</a>
-            <div class="section-label">Übersicht</div>
+            <div class="section-label">ANSICHT</div>
             <button class="nav-btn @(selected == OverviewKey ? "active" : "")" @onclick="ShowOverviewAsync">Dashboard</button>
 
-            <div class="section-label nav-title">RDL-Datasets</div>
-            @foreach (var dataset in datasetNames)
+            <div class="section-label nav-title">DETAILS</div>
+            @foreach (var widget in dashboard.Widgets.Where(w => w.Type == "detail-link").OrderBy(w => w.Order))
+            {
+                <button class="nav-btn @(selected == widget.Dataset ? "active" : "")"
+                        @onclick="() => ShowDatasetAsync(widget.Dataset)">
+                    @widget.Title
+                </button>
+            }
+
+            <div class="section-label nav-title">WEITERE DATEN</div>
+            @foreach (var dataset in OtherDatasets)
             {
                 <button class="nav-btn @(selected == dataset ? "active" : "")"
                         @onclick="() => ShowDatasetAsync(dataset)">
@@ -39,17 +52,17 @@ else
             }
 
             <div class="sidebar-foot">
-                Quelle: @rdlFile<br />
-                Datasets werden zur Laufzeit aus der RDL gelesen.
+                Datenlogik: @rdlFile<br />
+                Layout: DynReport Dashboard-Definition
             </div>
         </aside>
 
         <main class="main-area">
             <div class="heading-line">
                 <div>
-                    <p class="eyebrow">VERTRIEB · ANALYTICS</p>
-                    <h1>@(selected == OverviewKey ? "Kunden im Überblick" : LabelFor(selected))</h1>
-                    <p class="subtitle">Filter gelten für alle unterstützten RDL-Datasets.</p>
+                    <p class="eyebrow">VERTRIEB · LIVE ANALYTICS</p>
+                    <h1>@(selected == OverviewKey ? dashboard.Title : LabelFor(selected))</h1>
+                    <p class="subtitle">@dashboard.Subtitle</p>
                 </div>
                 <span class="data-badge">● SQL Live</span>
             </div>
@@ -86,80 +99,109 @@ else
             @if (selected == OverviewKey)
             {
                 <div class="kpi-grid">
-                    <div class="kpi-card">
-                        <div class="kpi-label">Umsatz · Zeitraum</div>
-                        <div class="kpi-value">@Currency(monthly?.Sum("Umsatz"))</div>
-                        <div class="kpi-foot">RDL: KundenUmsatzAuftragMonat</div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-label">Offener Auftragswert</div>
-                        <div class="kpi-value">@Currency(monthly?.Sum("OffenerAuftragswert"))</div>
-                        <div class="kpi-foot">Zeitraum gemäß RDL-Logik</div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-label">Rahmenwert</div>
-                        <div class="kpi-value">@Currency(monthly?.Sum("Rahmenwert"))</div>
-                        <div class="kpi-foot">RDL-Dataset dynamisch ausgeführt</div>
-                    </div>
+                    @foreach (var widget in KpiWidgets)
+                    {
+                        <button class="kpi-card kpi-button" @onclick="() => ShowDatasetAsync(widget.Dataset)">
+                            <div class="kpi-label">@widget.Title</div>
+                            <div class="kpi-value">@WidgetValue(widget)</div>
+                            <div class="kpi-foot">Details öffnen →</div>
+                        </button>
+                    }
                 </div>
 
-                <div class="content-grid">
-                    <section class="panel">
-                        <div class="panel-head">
-                            <div><h2>Umsatzentwicklung</h2><p>Umsatz und offener Auftragswert nach Monat</p></div>
-                            <span class="muted">EUR</span>
-                        </div>
+                <div class="dynamic-dashboard-grid">
+                    @foreach (var widget in MainWidgets)
+                    {
+                        if (widget.Type == "combo-chart")
+                        {
+                            var result = ResultFor(widget.Dataset);
+                            <section class="panel dashboard-widget" style="grid-column: span @Math.Max(1, widget.ColSpan)">
+                                <div class="panel-head">
+                                    <div>
+                                        <h2>@widget.Title</h2>
+                                        <p>Monat anklicken, um den Zeitraum direkt zu filtern.</p>
+                                    </div>
+                                    <span class="muted">interaktiv</span>
+                                </div>
 
-                        @if (monthly is null || monthly.Rows.Count == 0)
-                        {
-                            <div class="empty">Keine Monatsdaten vorhanden.</div>
-                        }
-                        else
-                        {
-                            <div class="bar-chart">
-                                @foreach (var month in monthly.Rows)
+                                @if (result is null || result.Rows.Count == 0)
                                 {
-                                    <div class="bar-group" title="@MonthTooltip(month)">
-                                        <div class="bar-container">
-                                            <div class="bar sales-bar" style="height:@BarHeight(month, "Umsatz")%"></div>
-                                            <div class="bar orders-bar" style="height:@BarHeight(month, "OffenerAuftragswert")%"></div>
-                                        </div>
-                                        <span>@MonthLabel(month)</span>
+                                    <div class="empty">Keine Daten vorhanden.</div>
+                                }
+                                else
+                                {
+                                    <div class="bar-chart">
+                                        @foreach (var row in result.Rows)
+                                        {
+                                            <button class="bar-group chart-click"
+                                                    title="@ChartTooltip(widget, row)"
+                                                    @onclick="() => FilterByCategoryAsync(widget, row)">
+                                                <div class="bar-container">
+                                                    <div class="bar sales-bar" style="height:@BarHeight(widget, row, widget.ValueField)%"></div>
+                                                    @if (!string.IsNullOrWhiteSpace(widget.SecondaryValueField))
+                                                    {
+                                                        <div class="bar orders-bar" style="height:@BarHeight(widget, row, widget.SecondaryValueField)%"></div>
+                                                    }
+                                                </div>
+                                                <span>@CategoryLabel(widget, row)</span>
+                                            </button>
+                                        }
                                     </div>
                                 }
-                            </div>
+                            </section>
                         }
-                    </section>
-
-                    <section class="panel">
-                        <div class="panel-head"><div><h2>Top-Kunden</h2><p>Direkt aus UmsatzTopKunden</p></div></div>
-                        @if (topCustomers is null || topCustomers.Rows.Count == 0)
+                        else if (widget.Type == "ranking")
                         {
-                            <div class="empty">Keine Kundendaten vorhanden.</div>
-                        }
-                        else
-                        {
-                            @foreach (var row in topCustomers.Rows.Take(12))
-                            {
-                                <div class="customer-row">
-                                    <div class="customer-title">@Cell(row, "KundeGruppe")</div>
-                                    <strong>@Currency(Number(row, "Umsatz"))</strong>
+                            var result = ResultFor(widget.Dataset);
+                            <section class="panel dashboard-widget" style="grid-column: span @Math.Max(1, widget.ColSpan)">
+                                <div class="panel-head">
+                                    <div>
+                                        <h2>@widget.Title</h2>
+                                        <p>Kunde anklicken, um das gesamte Dashboard zu filtern.</p>
+                                    </div>
                                 </div>
-                            }
+
+                                @if (result is null || result.Rows.Count == 0)
+                                {
+                                    <div class="empty">Keine Daten vorhanden.</div>
+                                }
+                                else
+                                {
+                                    @foreach (var row in result.Rows.Take(12))
+                                    {
+                                        <button class="customer-row customer-button"
+                                                @onclick="() => FilterByRankingAsync(widget, row)">
+                                            <div class="customer-title">@CategoryLabel(widget, row)</div>
+                                            <strong>@FormatValue(Number(row, widget.ValueField), widget.Format)</strong>
+                                        </button>
+                                    }
+                                }
+                            </section>
                         }
-                    </section>
+                        else if (widget.Type == "detail-link")
+                        {
+                            <button class="insight-tile" @onclick="() => ShowDatasetAsync(widget.Dataset)">
+                                <span class="insight-icon">↗</span>
+                                <strong>@widget.Title</strong>
+                                <span>Detailansicht öffnen</span>
+                            </button>
+                        }
+                    }
                 </div>
 
                 <div class="notice info">
-                    Pilot 0.1.0: SQL, Parameter und Dataset-Felder kommen dynamisch aus der installierten RDL.
-                    Das ursprüngliche SSRS-Seitenlayout wird noch nicht 1:1 gerendert.
+                    Die RDL liefert ausschließlich Datenlogik und Parameter. Darstellung, Interaktion und Layout stammen
+                    aus der DynReport-Dashboarddefinition und können später im visuellen Designer bearbeitet werden.
                 </div>
             }
             else
             {
                 <section class="panel detail-panel">
                     <div class="panel-head">
-                        <div><h2>@LabelFor(selected)</h2><p>Dataset aus der aktuell installierten RDL</p></div>
+                        <div>
+                            <h2>@LabelFor(selected)</h2>
+                            <p>Interaktive Detailansicht · Daten aus der aktuellen RDL-Logik</p>
+                        </div>
                         <span class="muted">@(detail?.Rows.Count ?? 0) Zeilen</span>
                     </div>
 
@@ -209,7 +251,7 @@ else
                 </section>
             }
 
-            <footer>DynReport System 0.1.0 · Windows SSO · @rdlFile</footer>
+            <footer>DynReport System 0.1.0 · Windows SSO · modernes Dashboard auf bestehender Datenlogik</footer>
         </main>
     </div>
 </div>
@@ -231,11 +273,22 @@ else
     private DateTime ende;
     private int page;
 
-    private List<string> datasetNames = [];
+    private DashboardDefinition dashboard = new();
     private List<KeyValuePair<string, string>> people = [new("", "Alle")];
-    private QueryResult? monthly;
-    private QueryResult? topCustomers;
+    private readonly Dictionary<string, QueryResult> overviewResults = new(StringComparer.OrdinalIgnoreCase);
     private QueryResult? detail;
+
+    private IEnumerable<DashboardWidget> KpiWidgets =>
+        dashboard.Widgets.Where(w => w.Type == "kpi").OrderBy(w => w.Order);
+
+    private IEnumerable<DashboardWidget> MainWidgets =>
+        dashboard.Widgets.Where(w => w.Type != "kpi").OrderBy(w => w.Order);
+
+    private IEnumerable<string> OtherDatasets =>
+        Reports.Datasets.Keys
+            .Where(x => !x.Equals("VertriebsmitarbeiterListe", StringComparison.OrdinalIgnoreCase))
+            .Where(x => !dashboard.Widgets.Any(w => w.Dataset.Equals(x, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(LabelFor);
 
     private int PageCount => detail is null
         ? 1
@@ -254,11 +307,7 @@ else
         {
             try
             {
-                datasetNames = Reports.Datasets.Keys
-                    .Where(x => !x.Equals("VertriebsmitarbeiterListe", StringComparison.OrdinalIgnoreCase))
-                    .OrderBy(LabelFor)
-                    .ToList();
-
+                dashboard = Dashboards.Get("Kundencockpit");
                 await LoadPeopleAsync();
                 await LoadOverviewAsync();
             }
@@ -323,13 +372,12 @@ else
 
         try
         {
-            monthly = Reports.Datasets.ContainsKey("KundenUmsatzAuftragMonat")
-                ? await Reports.RunAsync("KundenUmsatzAuftragMonat", Filters)
-                : null;
-
-            topCustomers = Reports.Datasets.ContainsKey("UmsatzTopKunden")
-                ? await Reports.RunAsync("UmsatzTopKunden", Filters)
-                : null;
+            overviewResults.Clear();
+            foreach (var dataset in dashboard.Widgets.Select(w => w.Dataset).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (Reports.Datasets.ContainsKey(dataset))
+                    overviewResults[dataset] = await Reports.RunAsync(dataset, Filters);
+            }
         }
         catch (Exception ex)
         {
@@ -360,6 +408,78 @@ else
         {
             busy = false;
         }
+    }
+
+    private async Task FilterByRankingAsync(DashboardWidget widget, IReadOnlyDictionary<string, object?> row)
+    {
+        var value = CategoryLabel(widget, row);
+        if (string.IsNullOrWhiteSpace(value) || value.Equals("Übrige Kunden", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        kunde = value;
+        selected = OverviewKey;
+        await LoadOverviewAsync();
+    }
+
+    private async Task FilterByCategoryAsync(DashboardWidget widget, IReadOnlyDictionary<string, object?> row)
+    {
+        var value = QueryResult.Get(row, widget.CategoryField ?? "");
+        if (value is not DateTime date)
+            return;
+
+        start = new DateTime(date.Year, date.Month, 1);
+        ende = start.AddMonths(1).AddDays(-1);
+        selected = OverviewKey;
+        await LoadOverviewAsync();
+    }
+
+    private QueryResult? ResultFor(string dataset) =>
+        overviewResults.TryGetValue(dataset, out var result) ? result : null;
+
+    private string WidgetValue(DashboardWidget widget)
+    {
+        var result = ResultFor(widget.Dataset);
+        return FormatValue(result?.Sum(widget.ValueField ?? ""), widget.Format);
+    }
+
+    private static string FormatValue(decimal? value, string? format) =>
+        format?.Equals("currency", StringComparison.OrdinalIgnoreCase) == true
+            ? Currency(value)
+            : value?.ToString("N2", CultureInfo.GetCultureInfo("de-AT")) ?? "–";
+
+    private decimal ChartMax(DashboardWidget widget)
+    {
+        var result = ResultFor(widget.Dataset);
+        if (result is null) return 1m;
+
+        var values = result.Rows.SelectMany(r => new[]
+        {
+            Math.Abs(Number(r, widget.ValueField) ?? 0),
+            Math.Abs(Number(r, widget.SecondaryValueField) ?? 0)
+        });
+
+        return Math.Max(1m, values.DefaultIfEmpty(1m).Max());
+    }
+
+    private decimal BarHeight(DashboardWidget widget, IReadOnlyDictionary<string, object?> row, string? field)
+    {
+        if (string.IsNullOrWhiteSpace(field)) return 0;
+        return Math.Clamp(Math.Abs(Number(row, field) ?? 0) / ChartMax(widget) * 100m, 0m, 100m);
+    }
+
+    private string CategoryLabel(DashboardWidget widget, IReadOnlyDictionary<string, object?> row)
+    {
+        var key = widget.CategoryField ?? "";
+        var value = QueryResult.Get(row, key);
+        if (value is DateTime date) return date.ToString("MM/yy", CultureInfo.GetCultureInfo("de-AT"));
+        return Convert.ToString(value, CultureInfo.GetCultureInfo("de-AT")) ?? "";
+    }
+
+    private string ChartTooltip(DashboardWidget widget, IReadOnlyDictionary<string, object?> row)
+    {
+        var first = FormatValue(Number(row, widget.ValueField), "currency");
+        var second = FormatValue(Number(row, widget.SecondaryValueField), "currency");
+        return $"{CategoryLabel(widget, row)} · {first} · {second}";
     }
 
     private void PreviousPage()
@@ -410,8 +530,9 @@ else
         return Convert.ToString(value, CultureInfo.GetCultureInfo("de-AT")) ?? "";
     }
 
-    private static decimal? Number(IReadOnlyDictionary<string, object?> row, string key)
+    private static decimal? Number(IReadOnlyDictionary<string, object?> row, string? key)
     {
+        if (string.IsNullOrWhiteSpace(key)) return null;
         var value = QueryResult.Get(row, key);
         if (value is null) return null;
         try { return Convert.ToDecimal(value, CultureInfo.InvariantCulture); }
@@ -420,30 +541,4 @@ else
 
     private static string Currency(decimal? value) =>
         value.HasValue ? value.Value.ToString("C0", CultureInfo.GetCultureInfo("de-AT")) : "–";
-
-    private decimal ChartMax
-    {
-        get
-        {
-            if (monthly is null) return 1m;
-            var values = monthly.Rows.SelectMany(r => new[]
-            {
-                Math.Abs(Number(r, "Umsatz") ?? 0),
-                Math.Abs(Number(r, "OffenerAuftragswert") ?? 0)
-            });
-            return Math.Max(1m, values.DefaultIfEmpty(1m).Max());
-        }
-    }
-
-    private decimal BarHeight(IReadOnlyDictionary<string, object?> row, string key) =>
-        Math.Clamp(Math.Abs(Number(row, key) ?? 0) / ChartMax * 100m, 0m, 100m);
-
-    private static string MonthLabel(IReadOnlyDictionary<string, object?> row)
-    {
-        var value = QueryResult.Get(row, "Monat");
-        return value is DateTime date ? date.ToString("MM/yy") : Convert.ToString(value) ?? "";
-    }
-
-    private string MonthTooltip(IReadOnlyDictionary<string, object?> row) =>
-        $"{MonthLabel(row)} · Umsatz {Currency(Number(row, "Umsatz"))} · offen {Currency(Number(row, "OffenerAuftragswert"))}";
 }
