@@ -1,0 +1,86 @@
+{
+  "Id": "Kundencockpit",
+  "Title": "Kundencockpit",
+  "Subtitle": "Vertrieb, Umsatz, Auftragslage und Kundenentwicklung",
+  "DataSourceRdl": "Reports/Kundencockpit.rdl",
+  "Widgets": [
+    {
+      "Id": "umsatz",
+      "Type": "kpi",
+      "Title": "Umsatz",
+      "Dataset": "KundenUmsatzAuftragMonat",
+      "ValueField": "Umsatz",
+      "Format": "currency",
+      "Order": 10
+    },
+    {
+      "Id": "offene-auftraege",
+      "Type": "kpi",
+      "Title": "Offener Auftragswert",
+      "Dataset": "KundenUmsatzAuftragMonat",
+      "ValueField": "OffenerAuftragswert",
+      "Format": "currency",
+      "Order": 20
+    },
+    {
+      "Id": "rahmenwert",
+      "Type": "kpi",
+      "Title": "Rahmenwert",
+      "Dataset": "KundenUmsatzAuftragMonat",
+      "ValueField": "Rahmenwert",
+      "Format": "currency",
+      "Order": 30
+    },
+    {
+      "Id": "umsatzverlauf",
+      "Type": "combo-chart",
+      "Title": "Umsatz & Auftragslage",
+      "Dataset": "KundenUmsatzAuftragMonat",
+      "CategoryField": "Monat",
+      "ValueField": "Umsatz",
+      "SecondaryValueField": "OffenerAuftragswert",
+      "Order": 40,
+      "ColSpan": 2,
+      "Interactive": true
+    },
+    {
+      "Id": "top-kunden",
+      "Type": "ranking",
+      "Title": "Top-Kunden",
+      "Dataset": "UmsatzTopKunden",
+      "CategoryField": "KundeGruppe",
+      "ValueField": "Umsatz",
+      "Format": "currency",
+      "Order": 50,
+      "Interactive": true
+    },
+    {
+      "Id": "bestelleingang",
+      "Type": "detail-link",
+      "Title": "Bestelleingang",
+      "Dataset": "Bestelleingang",
+      "Order": 60
+    },
+    {
+      "Id": "angebote",
+      "Type": "detail-link",
+      "Title": "Angebote",
+      "Dataset": "Angebote",
+      "Order": 70
+    },
+    {
+      "Id": "offene-ab",
+      "Type": "detail-link",
+      "Title": "Offene Auftragsbestätigungen",
+      "Dataset": "offeneABs",
+      "Order": 80
+    },
+    {
+      "Id": "offene-posten",
+      "Type": "detail-link",
+      "Title": "Offene Posten",
+      "Dataset": "offenPosten",
+      "Order": 90
+    }
+  ]
+}
