@@ -1,19 +1,53 @@
 # DynReport System
 
-Internal reporting platform for APP-01. The goal is a modern successor path for selected SSRS reports while retaining Windows SSO, folder/report permissions and existing RDL SQL logic.
+Internal reporting and analytics platform for APP-01. The goal is a modern successor path for selected SSRS reports while retaining Windows SSO, folder/report permissions and existing RDL data/business logic.
 
-## Pilot 0.1.0
+## Version 0.2.0
 
-- ASP.NET Core / Blazor Interactive Server on .NET 10 LTS
+- ASP.NET Core / Blazor Interactive Server on .NET 10
 - IIS Windows Authentication (SSO)
 - explicit folder/report ACLs using Windows users / AD groups
 - runtime parsing of RDL dataset SQL and supported report parameters
 - automatic reload when the installed RDL changes
-- Kundencockpit as the first modernized report
+- independent DynReport dashboard definitions instead of reproducing SSRS layouts
+- Apache ECharts 6.1.0 bundled locally; no chart CDN is required at runtime
+- responsive KPI cards with trend and sparklines
+- interactive combo, line, area, bar, donut and treemap visualizations
+- world map for revenue by country
+- dataset-specific analytics such as OP aging, complaint trend, stock value/status and business-area analysis
+- interactive table search, column sorting, paging and CSV export
+- chart image export
 - PWA shell without caching report data
 - self-contained web application payload; IIS ASP.NET Core Module v2 remains a server prerequisite
 
-`DynReport System` does **not** try to reproduce the SSRS page layout. The RDL is used as a migration/data-logic source for SQL datasets, parameters and field definitions. The modern report layout is stored separately as a DynReport dashboard definition. Widgets (KPIs, charts, rankings and drill-down links) are responsive and interactive. The planned visual browser designer will edit this DynReport definition rather than the old RDL page layout.
+## Architecture
+
+DynReport System does **not** reproduce the SSRS page layout.
+
+- **RDL / SQL layer:** existing datasets, parameters and business logic can be reused during migration.
+- **DynReport definition:** modern layout, widget bindings, chart types, aggregation and interaction rules.
+- **Blazor runtime:** renders responsive reports and enforces Windows/AD permissions.
+- **ECharts runtime:** rich local visualization without requiring Internet access on APP-01.
+- **Future designer:** will edit DynReport definitions visually rather than the old RDL page layout.
+
+The Kundencockpit is the first migrated report. The RDL remains the data source, while the user-facing report is an independent interactive dashboard.
+
+## Kundencockpit 0.2
+
+The dashboard includes:
+
+- Umsatz, offener Auftragswert, Rahmenwert, Bestelleingang and Angebotsvolumen KPIs
+- Umsatz / Auftragslage / Rahmenwerte as a multi-series monthly chart
+- top customers as an interactive horizontal ranking
+- monthly order intake
+- offer-status donut
+- rejection-reason ranking
+- offer lead-time trend
+- revenue world map and business-area treemap in the revenue detail
+- open-items aging
+- complaint count/cost trend
+- stock status and customer-bound inventory value charts
+- modern searchable/sortable detail tables with CSV export
 
 ## Security
 
@@ -21,20 +55,21 @@ Production RDLs are not committed while this repository is public. They can cont
 
 SQL credentials belong only in `appsettings.Production.json` on APP-01. Never commit them.
 
+The installer preserves an existing production configuration, report permissions and IIS site bindings during an update.
+
 ## Build
 
-GitHub Actions builds `DynReportSystem-Server-Setup-0.1.0-win-x64.exe`. The setup payload is self-contained for .NET, but IIS must have ASP.NET Core Module v2 installed. Windows Authentication is enabled for the IIS site by the installer.
+GitHub Actions builds `DynReportSystem-Server-Setup-0.2.0-win-x64.exe`.
+
+The workflow installs the pinned frontend dependencies, vendors ECharts and the world SVG map into the published application, publishes the self-contained .NET application and creates the server setup executable.
+
+## Third-party components
+
+- Apache ECharts 6.1.0 — Apache-2.0
+- @svg-maps/world 2.0.0 — CC BY 4.0
+
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## License
 
-Proprietary / all rights reserved. See [LICENSE](LICENSE).
-
-
-## Architecture direction
-
-- **RDL / SQL layer:** existing business logic can be reused during migration.
-- **DynReport definition:** independent modern layout, widget bindings, interaction rules and responsive sizing.
-- **Blazor runtime:** renders the dashboard and enforces Windows/AD permissions.
-- **Future designer:** edits DynReport definitions visually; no dependency on the SSRS layout designer.
-
-The Kundencockpit pilot already supports interactive month filtering, customer drill/filter actions and dynamic detail datasets.
+DynReport System itself is proprietary / all rights reserved. See [LICENSE](LICENSE).
