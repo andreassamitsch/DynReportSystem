@@ -8,79 +8,263 @@
       "Id": "umsatz",
       "Type": "kpi",
       "Title": "Umsatz",
+      "Subtitle": "Ausgewählter Zeitraum",
       "Dataset": "KundenUmsatzAuftragMonat",
       "ValueField": "Umsatz",
+      "CategoryField": "Monat",
+      "TimeBucket": "month",
       "Format": "currency",
+      "TrendMode": "last-vs-prev",
       "Order": 10
     },
     {
       "Id": "offene-auftraege",
       "Type": "kpi",
       "Title": "Offener Auftragswert",
+      "Subtitle": "Ausgewählter Zeitraum",
       "Dataset": "KundenUmsatzAuftragMonat",
       "ValueField": "OffenerAuftragswert",
+      "CategoryField": "Monat",
+      "TimeBucket": "month",
       "Format": "currency",
+      "TrendMode": "last-vs-prev",
       "Order": 20
     },
     {
       "Id": "rahmenwert",
       "Type": "kpi",
       "Title": "Rahmenwert",
+      "Subtitle": "Ausgewählter Zeitraum",
       "Dataset": "KundenUmsatzAuftragMonat",
       "ValueField": "Rahmenwert",
+      "CategoryField": "Monat",
+      "TimeBucket": "month",
       "Format": "currency",
+      "TrendMode": "last-vs-prev",
       "Order": 30
     },
     {
+      "Id": "bestelleingang-kpi",
+      "Type": "kpi",
+      "Title": "Bestelleingang",
+      "Subtitle": "inkl. Zu-/Abschläge",
+      "Dataset": "Bestelleingang",
+      "ValueField": "BestellwertInklZuAbschlag",
+      "CategoryField": "Monatsdatum",
+      "TimeBucket": "month",
+      "Format": "currency",
+      "TrendMode": "last-vs-prev",
+      "Order": 40
+    },
+    {
+      "Id": "angebotsvolumen-kpi",
+      "Type": "kpi",
+      "Title": "Angebotsvolumen",
+      "Subtitle": "Summe der Statusanalyse",
+      "Dataset": "AngebotsStatusAnalyse",
+      "ValueField": "Angebotswert",
+      "Format": "currency",
+      "Order": 50
+    },
+    {
       "Id": "umsatzverlauf",
-      "Type": "combo-chart",
+      "Type": "echarts-combo",
       "Title": "Umsatz & Auftragslage",
+      "Subtitle": "Umsatz, offene Aufträge und Rahmenwerte je Monat",
       "Dataset": "KundenUmsatzAuftragMonat",
       "CategoryField": "Monat",
-      "ValueField": "Umsatz",
-      "SecondaryValueField": "OffenerAuftragswert",
-      "Order": 40,
+      "TimeBucket": "month",
+      "Order": 100,
       "ColSpan": 2,
-      "Interactive": true
+      "Height": 390,
+      "Interactive": true,
+      "Series": [
+        {
+          "Name": "Umsatz",
+          "Field": "Umsatz",
+          "Type": "bar",
+          "Aggregate": "sum",
+          "Format": "currency"
+        },
+        {
+          "Name": "Offener Auftragswert",
+          "Field": "OffenerAuftragswert",
+          "Type": "bar",
+          "Aggregate": "sum",
+          "Format": "currency"
+        },
+        {
+          "Name": "Rahmenwert",
+          "Field": "Rahmenwert",
+          "Type": "line",
+          "Aggregate": "sum",
+          "Format": "currency"
+        }
+      ]
     },
     {
       "Id": "top-kunden",
-      "Type": "ranking",
+      "Type": "echarts-bar",
       "Title": "Top-Kunden",
+      "Subtitle": "Klick auf einen Kunden filtert das gesamte Cockpit",
       "Dataset": "UmsatzTopKunden",
       "CategoryField": "KundeGruppe",
-      "ValueField": "Umsatz",
-      "Format": "currency",
-      "Order": 50,
-      "Interactive": true
+      "Horizontal": true,
+      "Sort": "value-desc",
+      "Limit": 10,
+      "Order": 110,
+      "Height": 390,
+      "Interactive": true,
+      "Series": [
+        {
+          "Name": "Umsatz",
+          "Field": "Umsatz",
+          "Type": "bar",
+          "Aggregate": "sum",
+          "Format": "currency"
+        }
+      ]
     },
     {
-      "Id": "bestelleingang",
+      "Id": "bestelleingang-verlauf",
+      "Type": "echarts-area",
+      "Title": "Bestelleingang",
+      "Subtitle": "Monatlicher Auftragseingang inkl. Zu-/Abschläge",
+      "Dataset": "Bestelleingang",
+      "CategoryField": "Monatsdatum",
+      "TimeBucket": "month",
+      "Order": 120,
+      "ColSpan": 2,
+      "Height": 340,
+      "Series": [
+        {
+          "Name": "Bestelleingang",
+          "Field": "BestellwertInklZuAbschlag",
+          "Type": "line",
+          "Aggregate": "sum",
+          "Format": "currency",
+          "Area": true
+        }
+      ]
+    },
+    {
+      "Id": "angebotsstatus",
+      "Type": "echarts-donut",
+      "Title": "Angebotsstatus",
+      "Subtitle": "Verteilung des Angebotswerts",
+      "Dataset": "AngebotsStatusAnalyse",
+      "CategoryField": "Status",
+      "Sort": "value-desc",
+      "Order": 130,
+      "Height": 340,
+      "Series": [
+        {
+          "Name": "Angebotswert",
+          "Field": "Angebotswert",
+          "Type": "pie",
+          "Aggregate": "sum",
+          "Format": "currency"
+        }
+      ]
+    },
+    {
+      "Id": "ablehnungsgruende",
+      "Type": "echarts-bar",
+      "Title": "Ablehnungsgründe",
+      "Subtitle": "Größte verlorene Angebotswerte",
+      "Dataset": "AngebotsAblehnungsgruende",
+      "CategoryField": "Ablehnungsgrund",
+      "Horizontal": true,
+      "Sort": "value-desc",
+      "Limit": 8,
+      "Order": 140,
+      "Height": 340,
+      "Series": [
+        {
+          "Name": "Angebotswert",
+          "Field": "Angebotswert",
+          "Type": "bar",
+          "Aggregate": "sum",
+          "Format": "currency"
+        }
+      ]
+    },
+    {
+      "Id": "angebotsdurchlaufzeit",
+      "Type": "echarts-line",
+      "Title": "Angebotsdurchlaufzeit",
+      "Subtitle": "Durchschnittliche Arbeitstage je Monat",
+      "Dataset": "AngebotsDurchlaufzeit",
+      "CategoryField": "Monatsdatum",
+      "TimeBucket": "month",
+      "Order": 150,
+      "ColSpan": 2,
+      "Height": 330,
+      "Series": [
+        {
+          "Name": "Ø Arbeitstage",
+          "Field": "DurchschnittArbeitstage",
+          "Type": "line",
+          "Aggregate": "average",
+          "Format": "number"
+        }
+      ]
+    },
+    {
+      "Id": "detail-umsatz",
+      "Type": "detail-link",
+      "Title": "Umsatz & Länder",
+      "Dataset": "Umsatz",
+      "Order": 200
+    },
+    {
+      "Id": "detail-bestelleingang",
       "Type": "detail-link",
       "Title": "Bestelleingang",
       "Dataset": "Bestelleingang",
-      "Order": 60
+      "Order": 210
     },
     {
-      "Id": "angebote",
+      "Id": "detail-angebote",
       "Type": "detail-link",
       "Title": "Angebote",
       "Dataset": "Angebote",
-      "Order": 70
+      "Order": 220
     },
     {
-      "Id": "offene-ab",
+      "Id": "detail-offene-ab",
       "Type": "detail-link",
       "Title": "Offene Auftragsbestätigungen",
       "Dataset": "offeneABs",
-      "Order": 80
+      "Order": 230
     },
     {
-      "Id": "offene-posten",
+      "Id": "detail-offene-ra",
+      "Type": "detail-link",
+      "Title": "Offene Rahmenaufträge",
+      "Dataset": "offeneRAs",
+      "Order": 240
+    },
+    {
+      "Id": "detail-offene-posten",
       "Type": "detail-link",
       "Title": "Offene Posten",
       "Dataset": "offenPosten",
-      "Order": 90
+      "Order": 250
+    },
+    {
+      "Id": "detail-reklamationen",
+      "Type": "detail-link",
+      "Title": "Reklamationen",
+      "Dataset": "KundenReklamationen",
+      "Order": 260
+    },
+    {
+      "Id": "detail-lager",
+      "Type": "detail-link",
+      "Title": "Lagernde Kundenartikel",
+      "Dataset": "LagerndeKundenartikel",
+      "Order": 270
     }
   ]
 }
