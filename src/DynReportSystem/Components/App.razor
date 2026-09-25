@@ -12,6 +12,8 @@
 </head>
 <body>
     <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    <script src="/vendor/echarts.min.js"></script>
+    <script src="/js/dynreport-charts.js"></script>
     <script src="/_framework/blazor.web.js"></script>
     <script>
         if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js').catch(() => {});
