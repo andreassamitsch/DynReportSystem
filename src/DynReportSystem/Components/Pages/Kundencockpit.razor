@@ -4,12 +4,17 @@
 @inject AuthenticationStateProvider Authentication
 @inject ReportService Reports
 @inject DashboardCatalog Dashboards
+@inject ChartOptionFactory Charts
+@inject IJSRuntime JS
 
 <PageTitle>Kundencockpit · DynReport System</PageTitle>
 
 @if (!initialized)
 {
-    <div class="notice">Bericht wird initialisiert …</div>
+    <div class="page-loading">
+        <div class="loading-ring"></div>
+        <span>Bericht wird initialisiert …</span>
+    </div>
 }
 else if (!allowed)
 {
@@ -24,17 +29,24 @@ else
             <strong>@dashboard.Title</strong>
             <span>DynReport System · Fuchshofer</span>
         </div>
-        <div class="topbar-tag">APP-01 · Interaktiv</div>
+        <div class="topbar-tag">
+            <span class="live-dot"></span>
+            APP-01 · Live
+        </div>
     </header>
 
     <div class="app-layout">
         <aside class="sidebar">
             <a class="nav-btn" href="/">← Berichtsordner</a>
+
             <div class="section-label">ANSICHT</div>
-            <button class="nav-btn @(selected == OverviewKey ? "active" : "")" @onclick="ShowOverviewAsync">Dashboard</button>
+            <button class="nav-btn @(selected == OverviewKey ? "active" : "")"
+                    @onclick="ShowOverviewAsync">
+                Dashboard
+            </button>
 
             <div class="section-label nav-title">DETAILS</div>
-            @foreach (var widget in dashboard.Widgets.Where(w => w.Type == "detail-link").OrderBy(w => w.Order))
+            @foreach (var widget in DetailWidgets)
             {
                 <button class="nav-btn @(selected == widget.Dataset ? "active" : "")"
                         @onclick="() => ShowDatasetAsync(widget.Dataset)">
@@ -42,18 +54,22 @@ else
                 </button>
             }
 
-            <div class="section-label nav-title">WEITERE DATEN</div>
-            @foreach (var dataset in OtherDatasets)
+            @if (OtherDatasets.Any())
             {
-                <button class="nav-btn @(selected == dataset ? "active" : "")"
-                        @onclick="() => ShowDatasetAsync(dataset)">
-                    @LabelFor(dataset)
-                </button>
+                <div class="section-label nav-title">WEITERE DATEN</div>
+                @foreach (var dataset in OtherDatasets)
+                {
+                    <button class="nav-btn @(selected == dataset ? "active" : "")"
+                            @onclick="() => ShowDatasetAsync(dataset)">
+                        @LabelFor(dataset)
+                    </button>
+                }
             }
 
             <div class="sidebar-foot">
-                Datenlogik: @rdlFile<br />
-                Layout: DynReport Dashboard-Definition
+                <strong>DynReport 0.2.0</strong><br />
+                RDL = Datenlogik<br />
+                DynReport = Darstellung & Interaktion
             </div>
         </aside>
 
@@ -62,16 +78,44 @@ else
                 <div>
                     <p class="eyebrow">VERTRIEB · LIVE ANALYTICS</p>
                     <h1>@(selected == OverviewKey ? dashboard.Title : LabelFor(selected))</h1>
-                    <p class="subtitle">@dashboard.Subtitle</p>
+                    <p class="subtitle">
+                        @(selected == OverviewKey
+                            ? dashboard.Subtitle
+                            : "Interaktive Detailanalyse mit Live-Daten aus der aktuellen RDL-Logik")
+                    </p>
                 </div>
-                <span class="data-badge">● SQL Live</span>
+
+                <div class="heading-actions">
+                    <span class="data-badge"><span class="live-dot"></span> SQL Live</span>
+                    @if (selected != OverviewKey)
+                    {
+                        <button class="ghost-btn" @onclick="ShowOverviewAsync">Dashboard</button>
+                    }
+                </div>
             </div>
 
             <section class="filterbar" aria-label="Filter">
-                <label>Von<input type="date" @bind="start" /></label>
-                <label>Bis<input type="date" @bind="ende" /></label>
-                <label>Kunde<input type="search" maxlength="100" placeholder="Kundenname (optional)" @bind="kunde" @bind:event="oninput" /></label>
-                <label>Vertriebsmitarbeiter
+                <label>
+                    Von
+                    <input type="date" @bind="start" />
+                </label>
+
+                <label>
+                    Bis
+                    <input type="date" @bind="ende" />
+                </label>
+
+                <label>
+                    Kunde
+                    <input type="search"
+                           maxlength="100"
+                           placeholder="Kundenname (optional)"
+                           @bind="kunde"
+                           @bind:event="oninput" />
+                </label>
+
+                <label>
+                    Vertriebsmitarbeiter
                     <select @bind="mitarbeiter">
                         @foreach (var person in people)
                         {
@@ -79,135 +123,223 @@ else
                         }
                     </select>
                 </label>
+
                 <button class="primary-btn" disabled="@busy" @onclick="RefreshAsync">
                     @(busy ? "Lädt …" : "Anwenden")
+                </button>
+
+                <button class="ghost-btn filter-reset" disabled="@busy" @onclick="ResetFiltersAsync">
+                    Zurücksetzen
                 </button>
             </section>
 
             @if (error is not null)
             {
                 <div role="alert" class="notice error">
-                    <strong>Auswertung nicht verfügbar</strong><br />@error
+                    <strong>Auswertung nicht verfügbar</strong><br />
+                    @error
                 </div>
             }
 
             @if (busy)
             {
-                <div role="status" class="notice">Daten werden aus SQL geladen …</div>
+                <div class="loading-strip">
+                    <span></span>
+                </div>
             }
 
             @if (selected == OverviewKey)
             {
-                <div class="kpi-grid">
-                    @foreach (var widget in KpiWidgets)
-                    {
-                        <button class="kpi-card kpi-button" @onclick="() => ShowDatasetAsync(widget.Dataset)">
-                            <div class="kpi-label">@widget.Title</div>
-                            <div class="kpi-value">@WidgetValue(widget)</div>
-                            <div class="kpi-foot">Details öffnen →</div>
-                        </button>
-                    }
-                </div>
+                <section class="dashboard-section">
+                    <div class="section-heading">
+                        <div>
+                            <p class="eyebrow">KENNZAHLEN</p>
+                            <h2>Aktuelle Geschäftslage</h2>
+                        </div>
+                        <span class="section-note">@start.ToString("dd.MM.yyyy") – @ende.ToString("dd.MM.yyyy")</span>
+                    </div>
 
-                <div class="dynamic-dashboard-grid">
-                    @foreach (var widget in MainWidgets)
-                    {
-                        if (widget.Type == "combo-chart")
+                    <div class="kpi-grid">
+                        @foreach (var widget in KpiWidgets)
                         {
                             var result = ResultFor(widget.Dataset);
-                            <section class="panel dashboard-widget" style="grid-column: span @Math.Max(1, widget.ColSpan)">
-                                <div class="panel-head">
-                                    <div>
-                                        <h2>@widget.Title</h2>
-                                        <p>Monat anklicken, um den Zeitraum direkt zu filtern.</p>
-                                    </div>
-                                    <span class="muted">interaktiv</span>
-                                </div>
+                            var summary = result is null ? null : Charts.Summarize(widget, result);
 
-                                @if (result is null || result.Rows.Count == 0)
-                                {
-                                    <div class="empty">Keine Daten vorhanden.</div>
-                                }
-                                else
-                                {
-                                    <div class="bar-chart">
-                                        @foreach (var row in result.Rows)
-                                        {
-                                            <button class="bar-group chart-click"
-                                                    title="@ChartTooltip(widget, row)"
-                                                    @onclick="() => FilterByCategoryAsync(widget, row)">
-                                                <div class="bar-container">
-                                                    <div class="bar sales-bar" style="height:@BarHeight(widget, row, widget.ValueField)%"></div>
-                                                    @if (!string.IsNullOrWhiteSpace(widget.SecondaryValueField))
-                                                    {
-                                                        <div class="bar orders-bar" style="height:@BarHeight(widget, row, widget.SecondaryValueField)%"></div>
-                                                    }
-                                                </div>
-                                                <span>@CategoryLabel(widget, row)</span>
-                                            </button>
-                                        }
-                                    </div>
-                                }
-                            </section>
-                        }
-                        else if (widget.Type == "ranking")
-                        {
-                            var result = ResultFor(widget.Dataset);
-                            <section class="panel dashboard-widget" style="grid-column: span @Math.Max(1, widget.ColSpan)">
-                                <div class="panel-head">
+                            <button class="kpi-card kpi-button"
+                                    @onclick="() => ShowDatasetAsync(widget.Dataset)">
+                                <div class="kpi-topline">
                                     <div>
-                                        <h2>@widget.Title</h2>
-                                        <p>Kunde anklicken, um das gesamte Dashboard zu filtern.</p>
+                                        <div class="kpi-label">@widget.Title</div>
+                                        <div class="kpi-subtitle">@widget.Subtitle</div>
                                     </div>
-                                </div>
 
-                                @if (result is null || result.Rows.Count == 0)
-                                {
-                                    <div class="empty">Keine Daten vorhanden.</div>
-                                }
-                                else
-                                {
-                                    @foreach (var row in result.Rows.Take(12))
+                                    @if (summary?.TrendPercent is decimal trend)
                                     {
-                                        <button class="customer-row customer-button"
-                                                @onclick="() => FilterByRankingAsync(widget, row)">
-                                            <div class="customer-title">@CategoryLabel(widget, row)</div>
-                                            <strong>@FormatValue(Number(row, widget.ValueField), widget.Format)</strong>
-                                        </button>
+                                        <span class="trend-chip @(trend >= 0 ? "positive" : "negative")">
+                                            @(trend >= 0 ? "▲" : "▼")
+                                            @Math.Abs(trend).ToString("N1", DeAt) %
+                                        </span>
                                     }
+                                </div>
+
+                                <div class="kpi-value">@MetricValue(widget, summary)</div>
+
+                                @if (result is not null && !string.IsNullOrWhiteSpace(widget.CategoryField))
+                                {
+                                    <EChart ChartKey="@($"spark-{widget.Id}")"
+                                            Options="@Charts.Sparkline(widget, result)"
+                                            Height="52px" />
                                 }
-                            </section>
-                        }
-                        else if (widget.Type == "detail-link")
-                        {
-                            <button class="insight-tile" @onclick="() => ShowDatasetAsync(widget.Dataset)">
-                                <span class="insight-icon">↗</span>
-                                <strong>@widget.Title</strong>
-                                <span>Detailansicht öffnen</span>
+
+                                <div class="kpi-foot">
+                                    <span>Details öffnen</span>
+                                    <span>→</span>
+                                </div>
                             </button>
                         }
+                    </div>
+                </section>
+
+                @if (overviewResults.Values.Any(x => x.Truncated))
+                {
+                    <div class="notice warn">
+                        Mindestens ein Dashboard-Dataset wurde auf die konfigurierte Maximalzeilenzahl begrenzt.
+                        Summen aus diesem Dataset können unvollständig sein.
+                    </div>
+                }
+
+                <section class="dashboard-section">
+                    <div class="section-heading">
+                        <div>
+                            <p class="eyebrow">ENTWICKLUNG & STRUKTUR</p>
+                            <h2>Interaktive Analysen</h2>
+                        </div>
+                        <span class="section-note">Grafiken sind zoombar und als Bild exportierbar</span>
+                    </div>
+
+                    <div class="dynamic-dashboard-grid">
+                        @foreach (var widget in ChartWidgets)
+                        {
+                            var result = ResultFor(widget.Dataset);
+
+                            <section class="panel dashboard-widget"
+                                     style="grid-column: span @Math.Max(1, widget.ColSpan)">
+                                <div class="panel-head">
+                                    <div>
+                                        <h2>@widget.Title</h2>
+                                        <p>@widget.Subtitle</p>
+                                    </div>
+                                    @if (widget.Interactive)
+                                    {
+                                        <span class="interactive-badge">interaktiv</span>
+                                    }
+                                </div>
+
+                                @if (result is null)
+                                {
+                                    <div class="chart-placeholder">
+                                        <div class="loading-ring small"></div>
+                                        <span>Wird geladen …</span>
+                                    </div>
+                                }
+                                else if (result.Rows.Count == 0)
+                                {
+                                    <div class="empty">Keine Daten im gewählten Zeitraum.</div>
+                                }
+                                else
+                                {
+                                    <EChart @key="@($"{widget.Id}-{start:yyyyMMdd}-{ende:yyyyMMdd}-{kunde}-{mitarbeiter}")"
+                                            ChartKey="@widget.Id"
+                                            Options="@Charts.BuildDashboard(widget, result)"
+                                            Height="@($"{Math.Max(260, widget.Height)}px")"
+                                            OnPointClick="HandleChartClickAsync" />
+                                }
+                            </section>
+                        }
+                    </div>
+                </section>
+
+                <section class="quick-links">
+                    @foreach (var widget in DetailWidgets)
+                    {
+                        <button class="insight-tile" @onclick="() => ShowDatasetAsync(widget.Dataset)">
+                            <span class="insight-icon">↗</span>
+                            <strong>@widget.Title</strong>
+                            <span>@DetailHint(widget.Dataset)</span>
+                        </button>
                     }
-                </div>
+                </section>
 
                 <div class="notice info">
-                    Die RDL liefert ausschließlich Datenlogik und Parameter. Darstellung, Interaktion und Layout stammen
-                    aus der DynReport-Dashboarddefinition und können später im visuellen Designer bearbeitet werden.
+                    Die RDL wird ausschließlich als Daten- und Geschäftslogikquelle verwendet.
+                    Layout, Kennzahlen, Charts, Karten und Interaktionen stammen aus DynReport.
                 </div>
             }
             else
             {
-                <section class="panel detail-panel">
-                    <div class="panel-head">
-                        <div>
-                            <h2>@LabelFor(selected)</h2>
-                            <p>Interaktive Detailansicht · Daten aus der aktuellen RDL-Logik</p>
+                @if (detailCharts.Count > 0)
+                {
+                    <section class="dashboard-section">
+                        <div class="section-heading">
+                            <div>
+                                <p class="eyebrow">VISUELLE ANALYSE</p>
+                                <h2>@LabelFor(selected)</h2>
+                            </div>
+                            @if (selected == "Umsatz")
+                            {
+                                <span class="section-note">Kartendaten: @("@svg-maps/world") · CC BY 4.0</span>
+                            }
                         </div>
-                        <span class="muted">@(detail?.Rows.Count ?? 0) Zeilen</span>
+
+                        <div class="detail-visual-grid">
+                            @foreach (var chart in detailCharts)
+                            {
+                                <section class="panel dashboard-widget">
+                                    <div class="panel-head">
+                                        <div>
+                                            <h2>@chart.Title</h2>
+                                            <p>@chart.Subtitle</p>
+                                        </div>
+                                    </div>
+
+                                    <EChart @key="@($"{chart.Key}-{start:yyyyMMdd}-{ende:yyyyMMdd}-{kunde}-{mitarbeiter}")"
+                                            ChartKey="@chart.Key"
+                                            Options="@chart.Options"
+                                            Height="@chart.Height" />
+                                </section>
+                            }
+                        </div>
+                    </section>
+                }
+
+                <section class="panel detail-panel">
+                    <div class="panel-head detail-head">
+                        <div>
+                            <h2>Datensätze</h2>
+                            <p>@LabelFor(selected) · aus der aktuell installierten RDL</p>
+                        </div>
+
+                        <div class="detail-actions">
+                            <span class="muted">
+                                @FilteredDetailRows.Count.ToString("N0", DeAt)
+                                @if (detail is not null && FilteredDetailRows.Count != detail.Rows.Count)
+                                {
+                                    <text> von @detail.Rows.Count.ToString("N0", DeAt)</text>
+                                }
+                                Zeilen
+                            </span>
+
+                            <button class="ghost-btn" disabled="@(detail is null || detail.Rows.Count == 0)" @onclick="ExportCsvAsync">
+                                CSV exportieren
+                            </button>
+                        </div>
                     </div>
 
                     @if (detail?.Truncated == true)
                     {
-                        <div class="notice warn">Die Ergebnisanzeige wurde serverseitig begrenzt.</div>
+                        <div class="notice warn">
+                            Das SQL-Ergebnis wurde serverseitig auf die konfigurierte Maximalzeilenzahl begrenzt.
+                        </div>
                     }
 
                     @if (detail is null || detail.Rows.Count == 0)
@@ -216,23 +348,54 @@ else
                     }
                     else
                     {
+                        <div class="table-toolbar">
+                            <label class="table-search">
+                                <span>Suche</span>
+                                <input type="search"
+                                       placeholder="In allen sichtbaren Feldern suchen …"
+                                       @bind="TableSearch"
+                                       @bind:event="oninput" />
+                            </label>
+
+                            <label class="page-size">
+                                <span>Zeilen</span>
+                                <select @bind="pageSize">
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                    <option value="250">250</option>
+                                    <option value="500">500</option>
+                                </select>
+                            </label>
+                        </div>
+
                         <div class="table-scroll">
                             <table class="data-table">
                                 <thead>
                                     <tr>
                                         @foreach (var column in detail.Columns)
                                         {
-                                            <th>@column</th>
+                                            <th>
+                                                <button class="column-sort" @onclick="() => SortBy(column)">
+                                                    @column
+                                                    @if (sortColumn == column)
+                                                    {
+                                                        <span>@(sortAscending ? "▲" : "▼")</span>
+                                                    }
+                                                </button>
+                                            </th>
                                         }
                                     </tr>
                                 </thead>
+
                                 <tbody>
-                                    @foreach (var row in detail.Rows.Skip(page * PageSize).Take(PageSize))
+                                    @foreach (var row in VisibleRows)
                                     {
                                         <tr>
                                             @foreach (var column in detail.Columns)
                                             {
-                                                <td title="@Cell(row, column)">@Cell(row, column)</td>
+                                                <td title="@Cell(row, column)">
+                                                    @Cell(row, column)
+                                                </td>
                                             }
                                         </tr>
                                     }
@@ -251,7 +414,9 @@ else
                 </section>
             }
 
-            <footer>DynReport System 0.1.0 · Windows SSO · modernes Dashboard auf bestehender Datenlogik</footer>
+            <footer>
+                DynReport System 0.2.0 · Windows SSO · moderne Visualisierung auf bestehender RDL-Datenlogik
+            </footer>
         </main>
     </div>
 </div>
@@ -259,7 +424,7 @@ else
 
 @code {
     private const string OverviewKey = "__overview__";
-    private const int PageSize = 100;
+    private static readonly CultureInfo DeAt = CultureInfo.GetCultureInfo("de-AT");
 
     private bool initialized;
     private bool allowed;
@@ -268,21 +433,45 @@ else
     private string selected = OverviewKey;
     private string kunde = "";
     private string mitarbeiter = "";
-    private string rdlFile = "Kundencockpit.rdl";
     private DateTime start;
     private DateTime ende;
     private int page;
+    private int pageSize = 100;
+    private string tableSearch = "";
+    private string? sortColumn;
+    private bool sortAscending = true;
 
     private DashboardDefinition dashboard = new();
     private List<KeyValuePair<string, string>> people = [new("", "Alle")];
     private readonly Dictionary<string, QueryResult> overviewResults = new(StringComparer.OrdinalIgnoreCase);
     private QueryResult? detail;
+    private IReadOnlyList<ChartDefinition> detailCharts = [];
+
+    private string TableSearch
+    {
+        get => tableSearch;
+        set
+        {
+            tableSearch = value ?? "";
+            page = 0;
+        }
+    }
 
     private IEnumerable<DashboardWidget> KpiWidgets =>
-        dashboard.Widgets.Where(w => w.Type == "kpi").OrderBy(w => w.Order);
+        dashboard.Widgets
+            .Where(w => w.Type.Equals("kpi", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(w => w.Order);
 
-    private IEnumerable<DashboardWidget> MainWidgets =>
-        dashboard.Widgets.Where(w => w.Type != "kpi").OrderBy(w => w.Order);
+    private IEnumerable<DashboardWidget> ChartWidgets =>
+        dashboard.Widgets
+            .Where(w => !w.Type.Equals("kpi", StringComparison.OrdinalIgnoreCase)
+                     && !w.Type.Equals("detail-link", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(w => w.Order);
+
+    private IEnumerable<DashboardWidget> DetailWidgets =>
+        dashboard.Widgets
+            .Where(w => w.Type.Equals("detail-link", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(w => w.Order);
 
     private IEnumerable<string> OtherDatasets =>
         Reports.Datasets.Keys
@@ -290,15 +479,42 @@ else
             .Where(x => !dashboard.Widgets.Any(w => w.Dataset.Equals(x, StringComparison.OrdinalIgnoreCase)))
             .OrderBy(LabelFor);
 
-    private int PageCount => detail is null
-        ? 1
-        : Math.Max(1, (int)Math.Ceiling(detail.Rows.Count / (double)PageSize));
+    private List<Dictionary<string, object?>> FilteredDetailRows
+    {
+        get
+        {
+            if (detail is null)
+                return [];
+
+            IEnumerable<Dictionary<string, object?>> rows = detail.Rows;
+
+            if (!string.IsNullOrWhiteSpace(tableSearch))
+            {
+                rows = rows.Where(row =>
+                    detail.Columns.Any(column =>
+                        Cell(row, column).Contains(tableSearch, StringComparison.CurrentCultureIgnoreCase)));
+            }
+
+            if (!string.IsNullOrWhiteSpace(sortColumn))
+            {
+                rows = sortAscending
+                    ? rows.OrderBy(row => SortValue(row, sortColumn), ObjectComparer.Instance)
+                    : rows.OrderByDescending(row => SortValue(row, sortColumn), ObjectComparer.Instance);
+            }
+
+            return rows.ToList();
+        }
+    }
+
+    private IEnumerable<Dictionary<string, object?>> VisibleRows =>
+        FilteredDetailRows.Skip(page * pageSize).Take(pageSize);
+
+    private int PageCount =>
+        Math.Max(1, (int)Math.Ceiling(FilteredDetailRows.Count / (double)pageSize));
 
     protected override async Task OnInitializedAsync()
     {
-        var now = DateTime.Today;
-        start = new DateTime(now.Year - 1, now.Month, 1);
-        ende = new DateTime(now.Year + 1, now.Month, 1).AddDays(-1);
+        SetDefaultDates();
 
         var user = (await Authentication.GetAuthenticationStateAsync()).User;
         allowed = Access.Can(user, "kundencockpit", "View") && Access.Can(user, "kundencockpit", "Run");
@@ -318,6 +534,13 @@ else
         }
 
         initialized = true;
+    }
+
+    private void SetDefaultDates()
+    {
+        var now = DateTime.Today;
+        start = new DateTime(now.Year - 1, now.Month, 1);
+        ende = new DateTime(now.Year + 1, now.Month, 1).AddDays(-1);
     }
 
     private ReportFilters Filters => new(start, ende, kunde ?? "", mitarbeiter ?? "");
@@ -347,6 +570,7 @@ else
     {
         selected = OverviewKey;
         page = 0;
+        tableSearch = "";
         await LoadOverviewAsync();
     }
 
@@ -354,11 +578,29 @@ else
     {
         selected = dataset;
         page = 0;
+        tableSearch = "";
+        sortColumn = null;
+        sortAscending = true;
         await LoadDetailAsync(dataset);
     }
 
     private async Task RefreshAsync()
     {
+        page = 0;
+
+        if (selected == OverviewKey)
+            await LoadOverviewAsync();
+        else
+            await LoadDetailAsync(selected);
+    }
+
+    private async Task ResetFiltersAsync()
+    {
+        SetDefaultDates();
+        kunde = "";
+        mitarbeiter = "";
+        page = 0;
+
         if (selected == OverviewKey)
             await LoadOverviewAsync();
         else
@@ -373,11 +615,16 @@ else
         try
         {
             overviewResults.Clear();
-            foreach (var dataset in dashboard.Widgets.Select(w => w.Dataset).Distinct(StringComparer.OrdinalIgnoreCase))
-            {
-                if (Reports.Datasets.ContainsKey(dataset))
-                    overviewResults[dataset] = await Reports.RunAsync(dataset, Filters);
-            }
+
+            var datasets = dashboard.Widgets
+                .Where(w => !w.Type.Equals("detail-link", StringComparison.OrdinalIgnoreCase))
+                .Select(w => w.Dataset)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(Reports.Datasets.ContainsKey)
+                .ToArray();
+
+            foreach (var dataset in datasets)
+                overviewResults[dataset] = await Reports.RunAsync(dataset, Filters);
         }
         catch (Exception ex)
         {
@@ -397,11 +644,13 @@ else
         try
         {
             detail = await Reports.RunAsync(dataset, Filters);
+            detailCharts = Charts.BuildDetail(dataset, detail);
             page = 0;
         }
         catch (Exception ex)
         {
             detail = null;
+            detailCharts = [];
             error = Friendly(ex);
         }
         finally
@@ -410,87 +659,119 @@ else
         }
     }
 
-    private async Task FilterByRankingAsync(DashboardWidget widget, IReadOnlyDictionary<string, object?> row)
+    private async Task HandleChartClickAsync(ChartPointEvent e)
     {
-        var value = CategoryLabel(widget, row);
-        if (string.IsNullOrWhiteSpace(value) || value.Equals("Übrige Kunden", StringComparison.OrdinalIgnoreCase))
+        var widget = dashboard.Widgets.FirstOrDefault(w => w.Id.Equals(e.ChartKey, StringComparison.OrdinalIgnoreCase));
+        if (widget is null || !widget.Interactive)
             return;
 
-        kunde = value;
-        selected = OverviewKey;
-        await LoadOverviewAsync();
-    }
+        if (e.Data.ValueKind == JsonValueKind.Object)
+        {
+            if (e.Data.TryGetProperty("categoryKey", out var keyElement))
+            {
+                var key = keyElement.GetString();
 
-    private async Task FilterByCategoryAsync(DashboardWidget widget, IReadOnlyDictionary<string, object?> row)
-    {
-        var value = QueryResult.Get(row, widget.CategoryField ?? "");
-        if (value is not DateTime date)
-            return;
+                if (DateTime.TryParse(key, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+                    && widget.TimeBucket.Equals("month", StringComparison.OrdinalIgnoreCase))
+                {
+                    start = new DateTime(date.Year, date.Month, 1);
+                    ende = start.AddMonths(1).AddDays(-1);
+                    await LoadOverviewAsync();
+                    return;
+                }
+            }
 
-        start = new DateTime(date.Year, date.Month, 1);
-        ende = start.AddMonths(1).AddDays(-1);
-        selected = OverviewKey;
-        await LoadOverviewAsync();
+            if (e.Data.TryGetProperty("categoryLabel", out var labelElement)
+                && widget.Id.Equals("top-kunden", StringComparison.OrdinalIgnoreCase))
+            {
+                var label = labelElement.GetString() ?? "";
+                if (!string.IsNullOrWhiteSpace(label)
+                    && !label.Equals("Übrige Kunden", StringComparison.OrdinalIgnoreCase))
+                {
+                    kunde = label;
+                    await LoadOverviewAsync();
+                    return;
+                }
+            }
+        }
+
+        if (!widget.Type.Equals("kpi", StringComparison.OrdinalIgnoreCase))
+            await ShowDatasetAsync(widget.Dataset);
     }
 
     private QueryResult? ResultFor(string dataset) =>
         overviewResults.TryGetValue(dataset, out var result) ? result : null;
 
-    private string WidgetValue(DashboardWidget widget)
+    private string MetricValue(DashboardWidget widget, MetricSummary? summary)
     {
-        var result = ResultFor(widget.Dataset);
-        return FormatValue(result?.Sum(widget.ValueField ?? ""), widget.Format);
+        if (summary?.Value is not decimal value)
+            return "–";
+
+        return FormatValue(value, widget.Format);
     }
 
-    private static string FormatValue(decimal? value, string? format) =>
+    private static string FormatValue(decimal value, string? format) =>
         format?.Equals("currency", StringComparison.OrdinalIgnoreCase) == true
-            ? Currency(value)
-            : value?.ToString("N2", CultureInfo.GetCultureInfo("de-AT")) ?? "–";
+            ? value.ToString("C0", DeAt)
+            : format?.Equals("integer", StringComparison.OrdinalIgnoreCase) == true
+                ? value.ToString("N0", DeAt)
+                : value.ToString("N1", DeAt);
 
-    private decimal ChartMax(DashboardWidget widget)
+    private void SortBy(string column)
     {
-        var result = ResultFor(widget.Dataset);
-        if (result is null) return 1m;
-
-        var values = result.Rows.SelectMany(r => new[]
+        if (sortColumn == column)
+            sortAscending = !sortAscending;
+        else
         {
-            Math.Abs(Number(r, widget.ValueField) ?? 0),
-            Math.Abs(Number(r, widget.SecondaryValueField) ?? 0)
-        });
+            sortColumn = column;
+            sortAscending = true;
+        }
 
-        return Math.Max(1m, values.DefaultIfEmpty(1m).Max());
+        page = 0;
     }
 
-    private decimal BarHeight(DashboardWidget widget, IReadOnlyDictionary<string, object?> row, string? field)
-    {
-        if (string.IsNullOrWhiteSpace(field)) return 0;
-        return Math.Clamp(Math.Abs(Number(row, field) ?? 0) / ChartMax(widget) * 100m, 0m, 100m);
-    }
+    private static object? SortValue(IReadOnlyDictionary<string, object?> row, string column) =>
+        QueryResult.Get(row, column);
 
-    private string CategoryLabel(DashboardWidget widget, IReadOnlyDictionary<string, object?> row)
+    private async Task ExportCsvAsync()
     {
-        var key = widget.CategoryField ?? "";
-        var value = QueryResult.Get(row, key);
-        if (value is DateTime date) return date.ToString("MM/yy", CultureInfo.GetCultureInfo("de-AT"));
-        return Convert.ToString(value, CultureInfo.GetCultureInfo("de-AT")) ?? "";
-    }
+        if (detail is null)
+            return;
 
-    private string ChartTooltip(DashboardWidget widget, IReadOnlyDictionary<string, object?> row)
-    {
-        var first = FormatValue(Number(row, widget.ValueField), "currency");
-        var second = FormatValue(Number(row, widget.SecondaryValueField), "currency");
-        return $"{CategoryLabel(widget, row)} · {first} · {second}";
+        var rows = FilteredDetailRows
+            .Select(row => detail.Columns.ToDictionary(column => column, column => (object?)Cell(row, column)))
+            .ToArray();
+
+        var safeName = string.Concat(LabelFor(selected).Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
+        var fileName = $"{safeName}_{DateTime.Now:yyyyMMdd_HHmm}.csv";
+
+        await JS.InvokeVoidAsync("DynReportCharts.downloadCsv", fileName, detail.Columns, rows);
     }
 
     private void PreviousPage()
     {
-        if (page > 0) page--;
+        if (page > 0)
+            page--;
     }
 
     private void NextPage()
     {
-        if (page + 1 < PageCount) page++;
+        if (page + 1 < PageCount)
+            page++;
     }
+
+    private static string DetailHint(string dataset) => dataset switch
+    {
+        "Umsatz" => "Weltkarte, Geschäftsbereichsmix und Buchungsdetails",
+        "Bestelleingang" => "Verlauf, Geschäftsbereiche und Auftragsdetails",
+        "Angebote" => "Status, Geschäftsbereiche und Angebotspositionen",
+        "offeneABs" => "Offene Aufträge nach Geschäftsbereich",
+        "offeneRAs" => "Rahmenabrufe und offene Werte",
+        "offenPosten" => "OP-Aging nach Fälligkeit",
+        "KundenReklamationen" => "Reklamationstrend und Kosten",
+        "LagerndeKundenartikel" => "Lagerstatus und gebundener Lagerwert",
+        _ => "Interaktive Detailanalyse"
+    };
 
     private static string LabelFor(string name) => name switch
     {
@@ -523,22 +804,42 @@ else
     private static string Cell(IReadOnlyDictionary<string, object?> row, string key)
     {
         var value = QueryResult.Get(row, key);
-        if (value is null) return "";
-        if (value is DateTime date) return date.ToString("dd.MM.yyyy", CultureInfo.GetCultureInfo("de-AT"));
-        if (value is decimal dec) return dec.ToString("N2", CultureInfo.GetCultureInfo("de-AT"));
-        if (value is double dbl) return dbl.ToString("N2", CultureInfo.GetCultureInfo("de-AT"));
-        return Convert.ToString(value, CultureInfo.GetCultureInfo("de-AT")) ?? "";
+        if (value is null)
+            return "";
+
+        string result = value switch
+        {
+            DateTime date => date.ToString("dd.MM.yyyy", DeAt),
+            DateTimeOffset dto => dto.ToString("dd.MM.yyyy", DeAt),
+            decimal dec => dec.ToString("N2", DeAt),
+            double dbl => dbl.ToString("N2", DeAt),
+            float flt => flt.ToString("N2", DeAt),
+            _ => Convert.ToString(value, DeAt) ?? ""
+        };
+
+        return result
+            .Replace("\r\n", " · ")
+            .Replace("\n", " · ")
+            .Replace("\r", " · ");
     }
 
-    private static decimal? Number(IReadOnlyDictionary<string, object?> row, string? key)
+    private sealed class ObjectComparer : IComparer<object?>
     {
-        if (string.IsNullOrWhiteSpace(key)) return null;
-        var value = QueryResult.Get(row, key);
-        if (value is null) return null;
-        try { return Convert.ToDecimal(value, CultureInfo.InvariantCulture); }
-        catch { return null; }
-    }
+        public static ObjectComparer Instance { get; } = new();
 
-    private static string Currency(decimal? value) =>
-        value.HasValue ? value.Value.ToString("C0", CultureInfo.GetCultureInfo("de-AT")) : "–";
+        public int Compare(object? x, object? y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (x is null) return -1;
+            if (y is null) return 1;
+
+            if (x is IComparable comparable && x.GetType() == y.GetType())
+                return comparable.CompareTo(y);
+
+            return string.Compare(
+                Convert.ToString(x, DeAt),
+                Convert.ToString(y, DeAt),
+                StringComparison.CurrentCultureIgnoreCase);
+        }
+    }
 }
