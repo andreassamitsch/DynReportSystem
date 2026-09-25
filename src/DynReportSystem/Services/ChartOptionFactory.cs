@@ -791,7 +791,7 @@ public sealed class ChartOptionFactory
 
     private static string CategoryKey(object? raw, DateTime? date, string? bucket)
     {
-        if (date.HasValue && bucket.Equals("month", StringComparison.OrdinalIgnoreCase))
+        if (date.HasValue && string.Equals(bucket, "month", StringComparison.OrdinalIgnoreCase))
             return new DateTime(date.Value.Year, date.Value.Month, 1).ToString("yyyy-MM-dd");
         if (date.HasValue)
             return date.Value.ToString("yyyy-MM-dd");
@@ -800,7 +800,7 @@ public sealed class ChartOptionFactory
 
     private static string CategoryLabel(object? raw, DateTime? date, string? bucket)
     {
-        if (date.HasValue && bucket.Equals("month", StringComparison.OrdinalIgnoreCase))
+        if (date.HasValue && string.Equals(bucket, "month", StringComparison.OrdinalIgnoreCase))
             return date.Value.ToString("MM/yy", DeAt);
         if (date.HasValue)
             return date.Value.ToString("dd.MM.yy", DeAt);
