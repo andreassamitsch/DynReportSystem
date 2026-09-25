@@ -18,6 +18,7 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddSingleton<FolderAccess>();
 builder.Services.AddSingleton<RdlCatalog>();
+builder.Services.AddSingleton<DashboardCatalog>();
 builder.Services.AddScoped<ReportService>();
 
 var app = builder.Build();
