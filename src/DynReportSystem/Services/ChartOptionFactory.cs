@@ -1,0 +1,826 @@
+using System.Globalization;
+using DynReportSystem.Models;
+
+namespace DynReportSystem.Services;
+
+public sealed class ChartOptionFactory
+{
+    private static readonly CultureInfo DeAt = CultureInfo.GetCultureInfo("de-AT");
+
+    public object BuildDashboard(DashboardWidget widget, QueryResult result)
+    {
+        var series = widget.Series.Count > 0
+            ? widget.Series
+            : [new DashboardSeries
+            {
+                Name = widget.Title,
+                Field = widget.ValueField ?? "",
+                Type = widget.Type.Contains("line", StringComparison.OrdinalIgnoreCase) ? "line" : "bar",
+                Aggregate = "sum",
+                Format = widget.Format ?? "number"
+            }];
+
+        var points = Aggregate(widget, result, series);
+
+        return widget.Type.ToLowerInvariant() switch
+        {
+            "echarts-donut" => Donut(widget, points, series[0]),
+            "echarts-line" => Cartesian(widget, points, series, area: false),
+            "echarts-area" => Cartesian(widget, points, series, area: true),
+            "echarts-bar" => Cartesian(widget, points, series, area: false),
+            "echarts-combo" => Cartesian(widget, points, series, area: false),
+            _ => Cartesian(widget, points, series, area: false)
+        };
+    }
+
+    public MetricSummary Summarize(DashboardWidget widget, QueryResult result)
+    {
+        var field = widget.ValueField ?? widget.Series.FirstOrDefault()?.Field;
+        if (string.IsNullOrWhiteSpace(field))
+            return new MetricSummary(null, null, null, null);
+
+        var value = result.Rows.Sum(r => Decimal(r, field) ?? 0m);
+
+        if (string.IsNullOrWhiteSpace(widget.CategoryField))
+            return new MetricSummary(value, null, null, null);
+
+        var oneSeries = new List<DashboardSeries>
+        {
+            new()
+            {
+                Name = widget.Title,
+                Field = field,
+                Aggregate = "sum",
+                Type = "line",
+                Format = widget.Format ?? "number"
+            }
+        };
+
+        var points = Aggregate(widget, result, oneSeries);
+        if (points.Count < 2)
+            return new MetricSummary(value, points.LastOrDefault()?.Values.GetValueOrDefault(widget.Title), null, null);
+
+        var current = points[^1].Values.GetValueOrDefault(widget.Title);
+        var previous = points[^2].Values.GetValueOrDefault(widget.Title);
+        decimal? trend = previous == 0
+            ? null
+            : (current - previous) / Math.Abs(previous) * 100m;
+
+        return new MetricSummary(value, current, previous, trend);
+    }
+
+    public object Sparkline(DashboardWidget widget, QueryResult result)
+    {
+        var field = widget.ValueField ?? widget.Series.FirstOrDefault()?.Field ?? "";
+        var series = new List<DashboardSeries>
+        {
+            new()
+            {
+                Name = widget.Title,
+                Field = field,
+                Type = "line",
+                Aggregate = "sum",
+                Format = widget.Format ?? "number"
+            }
+        };
+        var points = Aggregate(widget, result, series);
+
+        return new Dictionary<string, object?>
+        {
+            ["animation"] = true,
+            ["grid"] = new Dictionary<string, object?> { ["left"] = 0, ["right"] = 0, ["top"] = 3, ["bottom"] = 0 },
+            ["xAxis"] = new Dictionary<string, object?> { ["type"] = "category", ["show"] = false, ["data"] = points.Select(x => x.Label).ToArray() },
+            ["yAxis"] = new Dictionary<string, object?> { ["type"] = "value", ["show"] = false, ["scale"] = true },
+            ["tooltip"] = new Dictionary<string, object?> { ["show"] = false },
+            ["series"] = new object[]
+            {
+                new Dictionary<string, object?>
+                {
+                    ["name"] = widget.Title,
+                    ["type"] = "line",
+                    ["smooth"] = true,
+                    ["symbol"] = "none",
+                    ["lineStyle"] = new Dictionary<string, object?> { ["width"] = 2 },
+                    ["areaStyle"] = new Dictionary<string, object?> { ["opacity"] = 0.08 },
+                    ["data"] = points.Select(x => (object)x.Values.GetValueOrDefault(widget.Title)).ToArray()
+                }
+            }
+        };
+    }
+
+    public IReadOnlyList<ChartDefinition> BuildDetail(string dataset, QueryResult result)
+    {
+        return dataset switch
+        {
+            "Umsatz" => RevenueDetail(result),
+            "offenPosten" => OpenItemsDetail(result),
+            "KundenReklamationen" => ComplaintsDetail(result),
+            "LagerndeKundenartikel" => StockDetail(result),
+            "offeneABs" => OpenOrdersDetail(result, false),
+            "offeneRAs" => OpenOrdersDetail(result, true),
+            "Bestelleingang" => OrderIntakeDetail(result),
+            "Angebote" => OffersDetail(result),
+            "AngebotsStatusAnalyse" =>
+                [new ChartDefinition("offer-status-detail", "Angebotsstatus", "Verteilung nach Angebotswert",
+                    SimpleDonut(result, "Status", "Angebotswert", "currency"))],
+            "AngebotsAblehnungsgruende" =>
+                [new ChartDefinition("offer-reject-detail", "Ablehnungsgründe", "Wert der abgelehnten Angebote",
+                    SimpleBar(result, "Ablehnungsgrund", "Angebotswert", "currency", true, 12))],
+            "AngebotsDurchlaufzeit" =>
+                [new ChartDefinition("offer-lead-detail", "Angebotsdurchlaufzeit", "Durchschnittliche Arbeitstage im Zeitverlauf",
+                    SimpleLine(result, "Monatsdatum", "DurchschnittArbeitstage", "number", average: true))],
+            _ => []
+        };
+    }
+
+    private static List<GroupPoint> Aggregate(
+        DashboardWidget widget,
+        QueryResult result,
+        IReadOnlyList<DashboardSeries> series)
+    {
+        var categoryField = widget.CategoryField ?? "";
+        var groups = new Dictionary<string, GroupAccumulator>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in result.Rows)
+        {
+            var rawCategory = string.IsNullOrWhiteSpace(categoryField)
+                ? "Gesamt"
+                : QueryResult.Get(row, categoryField);
+
+            var date = ToDate(rawCategory);
+            var key = CategoryKey(rawCategory, date, widget.TimeBucket);
+            var label = CategoryLabel(rawCategory, date, widget.TimeBucket);
+
+            if (!groups.TryGetValue(key, out var group))
+            {
+                group = new GroupAccumulator(key, label, date);
+                groups[key] = group;
+            }
+
+            foreach (var s in series)
+            {
+                var value = s.Aggregate.Equals("count", StringComparison.OrdinalIgnoreCase)
+                    ? 1m
+                    : Decimal(row, s.Field) ?? 0m;
+
+                group.Add(s.Name, value);
+            }
+        }
+
+        var list = groups.Values
+            .Select(g =>
+            {
+                var values = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+                foreach (var s in series)
+                {
+                    var acc = g.Values.GetValueOrDefault(s.Name);
+                    values[s.Name] = s.Aggregate.Equals("average", StringComparison.OrdinalIgnoreCase)
+                        ? (acc.Count == 0 ? 0m : acc.Sum / acc.Count)
+                        : acc.Sum;
+                }
+
+                return new GroupPoint(g.Key, g.Label, g.Date, values);
+            })
+            .ToList();
+
+        if (list.Any(x => x.Date.HasValue))
+            list = list.OrderBy(x => x.Date ?? DateTime.MaxValue).ToList();
+        else if (widget.Sort.Equals("value-desc", StringComparison.OrdinalIgnoreCase) && series.Count > 0)
+            list = list.OrderByDescending(x => x.Values.GetValueOrDefault(series[0].Name)).ToList();
+        else
+            list = list.OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase).ToList();
+
+        if (widget.Limit > 0 && list.Count > widget.Limit)
+            list = list.Take(widget.Limit).ToList();
+
+        return list;
+    }
+
+    private static object Cartesian(
+        DashboardWidget widget,
+        IReadOnlyList<GroupPoint> points,
+        IReadOnlyList<DashboardSeries> series,
+        bool area)
+    {
+        var horizontal = widget.Horizontal;
+        var categories = points.Select(x => x.Label).ToArray();
+        var formats = series.ToDictionary(x => x.Name, x => x.Format, StringComparer.OrdinalIgnoreCase);
+
+        var chartSeries = series.Select((s, index) =>
+        {
+            var type = string.IsNullOrWhiteSpace(s.Type) ? "bar" : s.Type;
+            var data = points.Select(p => (object)new Dictionary<string, object?>
+            {
+                ["value"] = p.Values.GetValueOrDefault(s.Name),
+                ["categoryKey"] = p.Key,
+                ["categoryLabel"] = p.Label
+            }).ToArray();
+
+            var entry = new Dictionary<string, object?>
+            {
+                ["name"] = s.Name,
+                ["type"] = type,
+                ["data"] = data,
+                ["smooth"] = type.Equals("line", StringComparison.OrdinalIgnoreCase),
+                ["symbolSize"] = 7,
+                ["emphasis"] = new Dictionary<string, object?> { ["focus"] = "series" }
+            };
+
+            if (type.Equals("bar", StringComparison.OrdinalIgnoreCase))
+            {
+                entry["barMaxWidth"] = 28;
+                entry["itemStyle"] = new Dictionary<string, object?> { ["borderRadius"] = horizontal ? new[] { 0, 5, 5, 0 } : new[] { 5, 5, 0, 0 } };
+            }
+
+            if (area || s.Area)
+                entry["areaStyle"] = new Dictionary<string, object?> { ["opacity"] = 0.12 };
+
+            if (s.Axis > 0)
+                entry["yAxisIndex"] = s.Axis;
+
+            return (object)entry;
+        }).ToArray();
+
+        var categoryAxis = new Dictionary<string, object?>
+        {
+            ["type"] = "category",
+            ["data"] = categories,
+            ["axisTick"] = new Dictionary<string, object?> { ["show"] = false },
+            ["axisLine"] = new Dictionary<string, object?> { ["lineStyle"] = new Dictionary<string, object?> { ["color"] = "#d8e2e5" } },
+            ["axisLabel"] = new Dictionary<string, object?>
+            {
+                ["color"] = "#71848c",
+                ["hideOverlap"] = true,
+                ["interval"] = 0,
+                ["rotate"] = horizontal ? 0 : (categories.Length > 14 ? 35 : 0)
+            }
+        };
+
+        var valueFormat = series.FirstOrDefault()?.Format ?? "number";
+        var valueAxis = new Dictionary<string, object?>
+        {
+            ["type"] = "value",
+            ["scale"] = false,
+            ["splitLine"] = new Dictionary<string, object?> { ["lineStyle"] = new Dictionary<string, object?> { ["color"] = "#edf2f3" } },
+            ["axisLabel"] = new Dictionary<string, object?> { ["color"] = "#71848c" },
+            ["__dynFormat"] = valueFormat
+        };
+
+        var option = BaseOption();
+        option["__dynSeriesFormats"] = formats;
+        option["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "axis", ["axisPointer"] = new Dictionary<string, object?> { ["type"] = "shadow" } };
+        option["legend"] = new Dictionary<string, object?> { ["top"] = 0, ["right"] = 0, ["textStyle"] = new Dictionary<string, object?> { ["color"] = "#5f747c" } };
+        option["grid"] = new Dictionary<string, object?> { ["left"] = horizontal ? 125 : 55, ["right"] = 30, ["top"] = 48, ["bottom"] = categories.Length > 14 ? 65 : 45, ["containLabel"] = true };
+        option["xAxis"] = horizontal ? valueAxis : categoryAxis;
+        option["yAxis"] = horizontal ? categoryAxis : valueAxis;
+        option["series"] = chartSeries;
+        option["toolbox"] = Toolbox();
+
+        if (!horizontal && categories.Length > 18)
+        {
+            option["dataZoom"] = new object[]
+            {
+                new Dictionary<string, object?> { ["type"] = "inside", ["start"] = 0, ["end"] = 70 },
+                new Dictionary<string, object?> { ["type"] = "slider", ["height"] = 14, ["bottom"] = 3 }
+            };
+        }
+
+        return option;
+    }
+
+    private static object Donut(
+        DashboardWidget widget,
+        IReadOnlyList<GroupPoint> points,
+        DashboardSeries series)
+    {
+        var data = points.Select(p => (object)new Dictionary<string, object?>
+        {
+            ["name"] = p.Label,
+            ["value"] = p.Values.GetValueOrDefault(series.Name),
+            ["categoryKey"] = p.Key
+        }).ToArray();
+
+        var option = BaseOption();
+        option["__dynItemFormat"] = series.Format;
+        option["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "item" };
+        option["legend"] = new Dictionary<string, object?> { ["type"] = "scroll", ["bottom"] = 0, ["textStyle"] = new Dictionary<string, object?> { ["color"] = "#61767e" } };
+        option["toolbox"] = Toolbox();
+        option["series"] = new object[]
+        {
+            new Dictionary<string, object?>
+            {
+                ["name"] = series.Name,
+                ["type"] = "pie",
+                ["radius"] = new[] { "48%", "72%" },
+                ["center"] = new[] { "50%", "44%" },
+                ["avoidLabelOverlap"] = true,
+                ["itemStyle"] = new Dictionary<string, object?> { ["borderColor"] = "#fff", ["borderWidth"] = 3, ["borderRadius"] = 6 },
+                ["label"] = new Dictionary<string, object?> { ["show"] = false },
+                ["emphasis"] = new Dictionary<string, object?>
+                {
+                    ["label"] = new Dictionary<string, object?> { ["show"] = true, ["fontSize"] = 14, ["fontWeight"] = "bold" }
+                },
+                ["data"] = data
+            }
+        };
+        return option;
+    }
+
+    private static Dictionary<string, object?> BaseOption() => new()
+    {
+        ["animationDuration"] = 500,
+        ["textStyle"] = new Dictionary<string, object?> { ["fontFamily"] = "Inter, Segoe UI, Arial, sans-serif" }
+    };
+
+    private static object Toolbox() => new Dictionary<string, object?>
+    {
+        ["right"] = 0,
+        ["top"] = 0,
+        ["feature"] = new Dictionary<string, object?>
+        {
+            ["saveAsImage"] = new Dictionary<string, object?> { ["title"] = "Grafik speichern", ["pixelRatio"] = 2 }
+        }
+    };
+
+    private static IReadOnlyList<ChartDefinition> RevenueDetail(QueryResult result)
+    {
+        var country = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        var area = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in result.Rows)
+        {
+            var amount = Decimal(row, "Betrag") ?? 0m;
+            var iso = Text(row, "Land").Trim().ToUpperInvariant();
+            var business = Text(row, "Geschäftsbereich");
+
+            if (iso.Length == 2)
+                country[iso] = country.GetValueOrDefault(iso) + amount;
+
+            if (!string.IsNullOrWhiteSpace(business))
+                area[business] = area.GetValueOrDefault(business) + amount;
+        }
+
+        var charts = new List<ChartDefinition>();
+
+        if (country.Count > 0)
+        {
+            var data = country.Select(x => (object)new Dictionary<string, object?> { ["name"] = x.Key, ["value"] = x.Value }).ToArray();
+            var max = country.Values.Select(Math.Abs).DefaultIfEmpty(1m).Max();
+
+            charts.Add(new ChartDefinition(
+                "revenue-world",
+                "Umsatz nach Land",
+                "Interaktive Weltkarte · Landcode aus Oxaion",
+                new Dictionary<string, object?>
+                {
+                    ["__dynMap"] = "world",
+                    ["__dynItemFormat"] = "currency",
+                    ["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "item" },
+                    ["visualMap"] = new Dictionary<string, object?>
+                    {
+                        ["min"] = 0,
+                        ["max"] = max,
+                        ["left"] = 10,
+                        ["bottom"] = 10,
+                        ["calculable"] = true,
+                        ["textStyle"] = new Dictionary<string, object?> { ["color"] = "#61767e" }
+                    },
+                    ["toolbox"] = Toolbox(),
+                    ["series"] = new object[]
+                    {
+                        new Dictionary<string, object?>
+                        {
+                            ["name"] = "Umsatz",
+                            ["type"] = "map",
+                            ["map"] = "dyn-world",
+                            ["roam"] = true,
+                            ["selectedMode"] = false,
+                            ["data"] = data,
+                            ["emphasis"] = new Dictionary<string, object?> { ["label"] = new Dictionary<string, object?> { ["show"] = false } }
+                        }
+                    }
+                },
+                "430px"));
+        }
+
+        if (area.Count > 0)
+        {
+            var data = area.OrderByDescending(x => x.Value)
+                .Select(x => (object)new Dictionary<string, object?> { ["name"] = x.Key, ["value"] = x.Value })
+                .ToArray();
+
+            charts.Add(new ChartDefinition(
+                "revenue-area",
+                "Umsatzmix",
+                "Anteil nach Geschäftsbereich",
+                new Dictionary<string, object?>
+                {
+                    ["__dynItemFormat"] = "currency",
+                    ["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "item" },
+                    ["toolbox"] = Toolbox(),
+                    ["series"] = new object[]
+                    {
+                        new Dictionary<string, object?>
+                        {
+                            ["type"] = "treemap",
+                            ["roam"] = false,
+                            ["nodeClick"] = false,
+                            ["breadcrumb"] = new Dictionary<string, object?> { ["show"] = false },
+                            ["label"] = new Dictionary<string, object?> { ["show"] = true, ["formatter"] = "{b}" },
+                            ["upperLabel"] = new Dictionary<string, object?> { ["show"] = false },
+                            ["itemStyle"] = new Dictionary<string, object?> { ["borderColor"] = "#fff", ["borderWidth"] = 3, ["gapWidth"] = 3 },
+                            ["data"] = data
+                        }
+                    }
+                }));
+        }
+
+        return charts;
+    }
+
+    private static IReadOnlyList<ChartDefinition> OpenItemsDetail(QueryResult result)
+    {
+        var labels = new[] { "Nicht fällig", "1–30 Tage", "31–60 Tage", "61–90 Tage", "> 90 Tage" };
+        var amounts = labels.ToDictionary(x => x, _ => 0m);
+        var counts = labels.ToDictionary(x => x, _ => 0);
+
+        foreach (var row in result.Rows)
+        {
+            var due = ToDate(QueryResult.Get(row, "Fällig_am"));
+            var amount = Decimal(row, "Betrag") ?? 0m;
+            if (!due.HasValue) continue;
+
+            var days = (DateTime.Today - due.Value.Date).Days;
+            var bucket = days <= 0 ? labels[0] : days <= 30 ? labels[1] : days <= 60 ? labels[2] : days <= 90 ? labels[3] : labels[4];
+            amounts[bucket] += amount;
+            counts[bucket]++;
+        }
+
+        var option = BaseOption();
+        option["__dynSeriesFormats"] = new Dictionary<string, string> { ["Offener Betrag"] = "currency", ["Posten"] = "integer" };
+        option["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "axis" };
+        option["legend"] = new Dictionary<string, object?> { ["top"] = 0, ["right"] = 0 };
+        option["grid"] = new Dictionary<string, object?> { ["left"] = 50, ["right"] = 55, ["top"] = 45, ["bottom"] = 40, ["containLabel"] = true };
+        option["xAxis"] = new Dictionary<string, object?> { ["type"] = "category", ["data"] = labels };
+        option["yAxis"] = new object[]
+        {
+            new Dictionary<string, object?> { ["type"] = "value", ["__dynFormat"] = "currency", ["splitLine"] = new Dictionary<string, object?> { ["lineStyle"] = new Dictionary<string, object?> { ["color"] = "#edf2f3" } } },
+            new Dictionary<string, object?> { ["type"] = "value", ["__dynFormat"] = "integer", ["splitLine"] = new Dictionary<string, object?> { ["show"] = false } }
+        };
+        option["series"] = new object[]
+        {
+            new Dictionary<string, object?> { ["name"] = "Offener Betrag", ["type"] = "bar", ["barMaxWidth"] = 42, ["data"] = labels.Select(x => (object)amounts[x]).ToArray(), ["itemStyle"] = new Dictionary<string, object?> { ["borderRadius"] = new[] { 6,6,0,0 } } },
+            new Dictionary<string, object?> { ["name"] = "Posten", ["type"] = "line", ["smooth"] = true, ["yAxisIndex"] = 1, ["data"] = labels.Select(x => (object)counts[x]).ToArray() }
+        };
+        option["toolbox"] = Toolbox();
+
+        return [new ChartDefinition("op-aging", "OP-Aging", "Offene Posten nach Fälligkeit · Betrag und Anzahl", option, "360px")];
+    }
+
+    private static IReadOnlyList<ChartDefinition> ComplaintsDetail(QueryResult result)
+    {
+        var groups = new SortedDictionary<DateTime, (decimal Cost, int Count)>();
+
+        foreach (var row in result.Rows)
+        {
+            var date = ToDate(QueryResult.Get(row, "ReklamationEröffnet")) ?? ToDate(QueryResult.Get(row, "ReklamationAngelegt"));
+            if (!date.HasValue) continue;
+            var month = new DateTime(date.Value.Year, date.Value.Month, 1);
+            var current = groups.GetValueOrDefault(month);
+            groups[month] = (current.Cost + (Decimal(row, "ReklamationKosten") ?? 0m), current.Count + 1);
+        }
+
+        if (groups.Count == 0) return [];
+
+        var labels = groups.Keys.Select(x => x.ToString("MM/yy", DeAt)).ToArray();
+        var option = BaseOption();
+        option["__dynSeriesFormats"] = new Dictionary<string, string> { ["Kosten"] = "currency", ["Reklamationen"] = "integer" };
+        option["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "axis" };
+        option["legend"] = new Dictionary<string, object?> { ["top"] = 0, ["right"] = 0 };
+        option["grid"] = new Dictionary<string, object?> { ["left"] = 50, ["right"] = 55, ["top"] = 45, ["bottom"] = 45, ["containLabel"] = true };
+        option["xAxis"] = new Dictionary<string, object?> { ["type"] = "category", ["data"] = labels };
+        option["yAxis"] = new object[]
+        {
+            new Dictionary<string, object?> { ["type"] = "value", ["__dynFormat"] = "currency" },
+            new Dictionary<string, object?> { ["type"] = "value", ["__dynFormat"] = "integer", ["splitLine"] = new Dictionary<string, object?> { ["show"] = false } }
+        };
+        option["series"] = new object[]
+        {
+            new Dictionary<string, object?> { ["name"] = "Kosten", ["type"] = "bar", ["barMaxWidth"] = 30, ["data"] = groups.Values.Select(x => (object)x.Cost).ToArray() },
+            new Dictionary<string, object?> { ["name"] = "Reklamationen", ["type"] = "line", ["smooth"] = true, ["yAxisIndex"] = 1, ["data"] = groups.Values.Select(x => (object)x.Count).ToArray() }
+        };
+        option["toolbox"] = Toolbox();
+
+        return [new ChartDefinition("complaints-trend", "Reklamationen im Verlauf", "Anzahl und Reklamationskosten je Monat", option, "360px")];
+    }
+
+    private static IReadOnlyList<ChartDefinition> StockDetail(QueryResult result)
+    {
+        var status = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        var customers = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in result.Rows)
+        {
+            var value = Decimal(row, "Lagerwert") ?? 0m;
+            var s = Text(row, "Status");
+            var c = Text(row, "Kunde");
+
+            if (!string.IsNullOrWhiteSpace(s))
+                status[s] = status.GetValueOrDefault(s) + value;
+            if (!string.IsNullOrWhiteSpace(c))
+                customers[c] = customers.GetValueOrDefault(c) + value;
+        }
+
+        var charts = new List<ChartDefinition>();
+        if (status.Count > 0)
+        {
+            charts.Add(new ChartDefinition(
+                "stock-status",
+                "Lagerwert nach Status",
+                "Verteilung der lagernden Kundenartikel",
+                DictionaryDonut(status, "Lagerwert", "currency")));
+        }
+
+        if (customers.Count > 0)
+        {
+            charts.Add(new ChartDefinition(
+                "stock-customers",
+                "Größte gebundene Lagerwerte",
+                "Top-Kunden nach Lagerwert",
+                DictionaryBar(customers, "Lagerwert", "currency", 12),
+                "390px"));
+        }
+
+        return charts;
+    }
+
+    private static IReadOnlyList<ChartDefinition> OpenOrdersDetail(QueryResult result, bool framework)
+    {
+        var field = framework ? "OffenerAbrufwertRA" : "BestellwertInklZuAbschlag";
+        var values = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in result.Rows)
+        {
+            var name = Text(row, "GeschäftsbereichBezeichnung");
+            if (string.IsNullOrWhiteSpace(name)) name = Text(row, "Geschäftsbereich");
+            if (string.IsNullOrWhiteSpace(name)) name = "Ohne Zuordnung";
+            values[name] = values.GetValueOrDefault(name) + (Decimal(row, field) ?? 0m);
+        }
+
+        return values.Count == 0 ? [] :
+            [new ChartDefinition(
+                framework ? "ra-business" : "ab-business",
+                framework ? "Offene Rahmenabrufe" : "Offene Aufträge",
+                "Wert nach Geschäftsbereich",
+                DictionaryBar(values, "Wert", "currency", 12),
+                "360px")];
+    }
+
+    private static IReadOnlyList<ChartDefinition> OrderIntakeDetail(QueryResult result)
+    {
+        var month = new SortedDictionary<DateTime, decimal>();
+        var business = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in result.Rows)
+        {
+            var value = Decimal(row, "BestellwertInklZuAbschlag") ?? 0m;
+            var date = ToDate(QueryResult.Get(row, "Monatsdatum")) ?? ToDate(QueryResult.Get(row, "Datum"));
+            if (date.HasValue)
+            {
+                var m = new DateTime(date.Value.Year, date.Value.Month, 1);
+                month[m] = month.GetValueOrDefault(m) + value;
+            }
+
+            var b = Text(row, "GeschäftsbereichBezeichnung");
+            if (string.IsNullOrWhiteSpace(b)) b = Text(row, "Geschäftsbereich");
+            if (!string.IsNullOrWhiteSpace(b))
+                business[b] = business.GetValueOrDefault(b) + value;
+        }
+
+        var charts = new List<ChartDefinition>();
+        if (month.Count > 0)
+        {
+            charts.Add(new ChartDefinition(
+                "order-intake-month",
+                "Bestelleingang im Verlauf",
+                "Auftragseingang je Monat",
+                DictionaryTimeLine(month, "Bestelleingang", "currency", true),
+                "360px"));
+        }
+
+        if (business.Count > 0)
+        {
+            charts.Add(new ChartDefinition(
+                "order-intake-business",
+                "Bestelleingang nach Geschäftsbereich",
+                "Verteilung des Bestellwerts",
+                DictionaryDonut(business, "Bestelleingang", "currency")));
+        }
+
+        return charts;
+    }
+
+    private static IReadOnlyList<ChartDefinition> OffersDetail(QueryResult result)
+    {
+        var status = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        var business = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in result.Rows)
+        {
+            var value = Decimal(row, "BestellwertInklZuAbschlag") ?? Decimal(row, "Bestellwert") ?? 0m;
+            var s = Text(row, "Status");
+            var b = Text(row, "GeschäftsbereichBezeichnung");
+
+            if (!string.IsNullOrWhiteSpace(s))
+                status[s] = status.GetValueOrDefault(s) + value;
+            if (!string.IsNullOrWhiteSpace(b))
+                business[b] = business.GetValueOrDefault(b) + value;
+        }
+
+        var charts = new List<ChartDefinition>();
+        if (status.Count > 0)
+            charts.Add(new ChartDefinition("offers-status-raw", "Angebote nach Status", "Angebotswert", DictionaryDonut(status, "Angebotswert", "currency")));
+        if (business.Count > 0)
+            charts.Add(new ChartDefinition("offers-business", "Angebote nach Geschäftsbereich", "Angebotswert", DictionaryBar(business, "Angebotswert", "currency", 12)));
+        return charts;
+    }
+
+    private static object SimpleDonut(QueryResult result, string category, string value, string format)
+    {
+        var dict = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in result.Rows)
+        {
+            var key = Text(row, category);
+            if (!string.IsNullOrWhiteSpace(key))
+                dict[key] = dict.GetValueOrDefault(key) + (Decimal(row, value) ?? 0m);
+        }
+        return DictionaryDonut(dict, value, format);
+    }
+
+    private static object SimpleBar(QueryResult result, string category, string value, string format, bool horizontal, int limit)
+    {
+        var dict = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in result.Rows)
+        {
+            var key = Text(row, category);
+            if (!string.IsNullOrWhiteSpace(key))
+                dict[key] = dict.GetValueOrDefault(key) + (Decimal(row, value) ?? 0m);
+        }
+        return DictionaryBar(dict, value, format, limit);
+    }
+
+    private static object SimpleLine(QueryResult result, string category, string value, string format, bool average)
+    {
+        var dict = new SortedDictionary<DateTime, (decimal Sum, int Count)>();
+        foreach (var row in result.Rows)
+        {
+            var date = ToDate(QueryResult.Get(row, category));
+            if (!date.HasValue) continue;
+            var month = new DateTime(date.Value.Year, date.Value.Month, 1);
+            var current = dict.GetValueOrDefault(month);
+            dict[month] = (current.Sum + (Decimal(row, value) ?? 0m), current.Count + 1);
+        }
+
+        var values = dict.ToDictionary(x => x.Key, x => average && x.Value.Count > 0 ? x.Value.Sum / x.Value.Count : x.Value.Sum);
+        return DictionaryTimeLine(values, value, format, false);
+    }
+
+    private static object DictionaryDonut(IReadOnlyDictionary<string, decimal> values, string name, string format)
+    {
+        var data = values.OrderByDescending(x => Math.Abs(x.Value))
+            .Select(x => (object)new Dictionary<string, object?> { ["name"] = x.Key, ["value"] = x.Value })
+            .ToArray();
+
+        return new Dictionary<string, object?>
+        {
+            ["__dynItemFormat"] = format,
+            ["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "item" },
+            ["legend"] = new Dictionary<string, object?> { ["type"] = "scroll", ["bottom"] = 0 },
+            ["toolbox"] = Toolbox(),
+            ["series"] = new object[]
+            {
+                new Dictionary<string, object?>
+                {
+                    ["name"] = name,
+                    ["type"] = "pie",
+                    ["radius"] = new[] { "48%", "72%" },
+                    ["center"] = new[] { "50%", "44%" },
+                    ["itemStyle"] = new Dictionary<string, object?> { ["borderColor"] = "#fff", ["borderWidth"] = 3, ["borderRadius"] = 5 },
+                    ["label"] = new Dictionary<string, object?> { ["show"] = false },
+                    ["data"] = data
+                }
+            }
+        };
+    }
+
+    private static object DictionaryBar(IReadOnlyDictionary<string, decimal> values, string name, string format, int limit)
+    {
+        var points = values.OrderByDescending(x => Math.Abs(x.Value)).Take(limit).Reverse().ToArray();
+
+        return new Dictionary<string, object?>
+        {
+            ["__dynSeriesFormats"] = new Dictionary<string, string> { [name] = format },
+            ["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "axis" },
+            ["grid"] = new Dictionary<string, object?> { ["left"] = 135, ["right"] = 30, ["top"] = 25, ["bottom"] = 35, ["containLabel"] = true },
+            ["xAxis"] = new Dictionary<string, object?> { ["type"] = "value", ["__dynFormat"] = format, ["splitLine"] = new Dictionary<string, object?> { ["lineStyle"] = new Dictionary<string, object?> { ["color"] = "#edf2f3" } } },
+            ["yAxis"] = new Dictionary<string, object?> { ["type"] = "category", ["data"] = points.Select(x => x.Key).ToArray(), ["axisTick"] = new Dictionary<string, object?> { ["show"] = false } },
+            ["toolbox"] = Toolbox(),
+            ["series"] = new object[]
+            {
+                new Dictionary<string, object?>
+                {
+                    ["name"] = name,
+                    ["type"] = "bar",
+                    ["barMaxWidth"] = 28,
+                    ["itemStyle"] = new Dictionary<string, object?> { ["borderRadius"] = new[] { 0,6,6,0 } },
+                    ["data"] = points.Select(x => (object)x.Value).ToArray()
+                }
+            }
+        };
+    }
+
+    private static object DictionaryTimeLine(IReadOnlyDictionary<DateTime, decimal> values, string name, string format, bool area)
+    {
+        var ordered = values.OrderBy(x => x.Key).ToArray();
+        return new Dictionary<string, object?>
+        {
+            ["__dynSeriesFormats"] = new Dictionary<string, string> { [name] = format },
+            ["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "axis" },
+            ["grid"] = new Dictionary<string, object?> { ["left"] = 55, ["right"] = 25, ["top"] = 25, ["bottom"] = 45, ["containLabel"] = true },
+            ["xAxis"] = new Dictionary<string, object?> { ["type"] = "category", ["data"] = ordered.Select(x => x.Key.ToString("MM/yy", DeAt)).ToArray() },
+            ["yAxis"] = new Dictionary<string, object?> { ["type"] = "value", ["__dynFormat"] = format, ["splitLine"] = new Dictionary<string, object?> { ["lineStyle"] = new Dictionary<string, object?> { ["color"] = "#edf2f3" } } },
+            ["toolbox"] = Toolbox(),
+            ["series"] = new object[]
+            {
+                new Dictionary<string, object?>
+                {
+                    ["name"] = name,
+                    ["type"] = "line",
+                    ["smooth"] = true,
+                    ["symbolSize"] = 7,
+                    ["areaStyle"] = area ? new Dictionary<string, object?> { ["opacity"] = 0.12 } : null,
+                    ["data"] = ordered.Select(x => (object)x.Value).ToArray()
+                }
+            }
+        };
+    }
+
+    private static decimal? Decimal(IReadOnlyDictionary<string, object?> row, string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return null;
+        var value = QueryResult.Get(row, key);
+        if (value is null) return null;
+        try { return Convert.ToDecimal(value, CultureInfo.InvariantCulture); }
+        catch { return null; }
+    }
+
+    private static string Text(IReadOnlyDictionary<string, object?> row, string key) =>
+        Convert.ToString(QueryResult.Get(row, key), DeAt)?.Trim() ?? "";
+
+    private static DateTime? ToDate(object? value)
+    {
+        if (value is DateTime date) return date;
+        if (value is DateTimeOffset dto) return dto.DateTime;
+        if (value is null) return null;
+        return DateTime.TryParse(Convert.ToString(value, DeAt), DeAt, DateTimeStyles.AllowWhiteSpaces, out var parsed)
+            ? parsed
+            : DateTime.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out parsed)
+                ? parsed
+                : null;
+    }
+
+    private static string CategoryKey(object? raw, DateTime? date, string? bucket)
+    {
+        if (date.HasValue && bucket.Equals("month", StringComparison.OrdinalIgnoreCase))
+            return new DateTime(date.Value.Year, date.Value.Month, 1).ToString("yyyy-MM-dd");
+        if (date.HasValue)
+            return date.Value.ToString("yyyy-MM-dd");
+        return Convert.ToString(raw, DeAt)?.Trim() ?? "";
+    }
+
+    private static string CategoryLabel(object? raw, DateTime? date, string? bucket)
+    {
+        if (date.HasValue && bucket.Equals("month", StringComparison.OrdinalIgnoreCase))
+            return date.Value.ToString("MM/yy", DeAt);
+        if (date.HasValue)
+            return date.Value.ToString("dd.MM.yy", DeAt);
+        return Convert.ToString(raw, DeAt)?.Trim() ?? "";
+    }
+
+    private sealed class GroupAccumulator(string key, string label, DateTime? date)
+    {
+        public string Key { get; } = key;
+        public string Label { get; } = label;
+        public DateTime? Date { get; } = date;
+        public Dictionary<string, Accumulator> Values { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public void Add(string name, decimal value)
+        {
+            var current = Values.GetValueOrDefault(name);
+            Values[name] = new Accumulator(current.Sum + value, current.Count + 1);
+        }
+    }
+
+    private readonly record struct Accumulator(decimal Sum, int Count);
+    private sealed record GroupPoint(string Key, string Label, DateTime? Date, Dictionary<string, decimal> Values);
+}
