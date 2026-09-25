@@ -19,6 +19,7 @@ builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddSingleton<FolderAccess>();
 builder.Services.AddSingleton<RdlCatalog>();
 builder.Services.AddSingleton<DashboardCatalog>();
+builder.Services.AddSingleton<ChartOptionFactory>();
 builder.Services.AddScoped<ReportService>();
 
 var app = builder.Build();
