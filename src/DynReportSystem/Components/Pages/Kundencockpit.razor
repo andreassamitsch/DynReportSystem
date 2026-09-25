@@ -672,7 +672,7 @@ else
                 var key = keyElement.GetString();
 
                 if (DateTime.TryParse(key, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
-                    && widget.TimeBucket.Equals("month", StringComparison.OrdinalIgnoreCase))
+                    && string.Equals(widget.TimeBucket, "month", StringComparison.OrdinalIgnoreCase))
                 {
                     start = new DateTime(date.Year, date.Month, 1);
                     ende = start.AddMonths(1).AddDays(-1);
