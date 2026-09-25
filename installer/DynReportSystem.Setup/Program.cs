@@ -126,6 +126,19 @@ void Install()
         File.Copy(self, Path.Combine(installDir, "DynReportSystem-Setup.exe"), true);
 
     EnsureIisFeatures();
+
+    if (!HasAspNetCoreModule())
+    {
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine("\nVORAUSSETZUNG FEHLT: ASP.NET Core Module v2 wurde nicht gefunden.");
+        Console.WriteLine("Installiere auf APP-01 zuerst das aktuelle .NET 10 Hosting Bundle von Microsoft.");
+        Console.WriteLine("Danach WAS/W3SVC neu starten und dieses Setup erneut ausführen.");
+        Console.ResetColor();
+
+        throw new InvalidOperationException(
+            "ASP.NET Core Module v2 fehlt. IIS-Konfiguration wurde daher nicht fortgesetzt.");
+    }
+
     ConfigureIis(installDir);
     RegisterUninstall(installDir);
 
@@ -137,15 +150,6 @@ void Install()
     Console.WriteLine($"SQL-Konfiguration: {existingProd}");
     Console.WriteLine($"Berechtigungen: {existingAcl}");
     Console.WriteLine($"Berichte: {reportsDir}");
-
-    if (!HasAspNetCoreModule())
-    {
-        Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine("\nWICHTIG: ASP.NET Core Module v2 wurde nicht erkannt.");
-        Console.WriteLine("Auf APP-01 muss das aktuelle .NET 10 Hosting Bundle installiert sein.");
-        Console.WriteLine("Danach IIS neu starten (iisreset).");
-        Console.ResetColor();
-    }
 
     try
     {
