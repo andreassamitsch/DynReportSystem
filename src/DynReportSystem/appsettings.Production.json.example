@@ -1,0 +1,9 @@
+{
+  "AllowedHosts": "*",
+  "Cockpit": {
+    "RdlPath": "Reports/Kundencockpit.rdl",
+    "ConnectionString": "Server=SQLSERVER;Database=DATABASE;Integrated Security=True;TrustServerCertificate=True;",
+    "CommandTimeoutSeconds": 120,
+    "MaxRowsPerDataset": 20000
+  }
+}
