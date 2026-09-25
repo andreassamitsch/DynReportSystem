@@ -1,0 +1,13 @@
+{
+  "name": "DynReport System",
+  "short_name": "DynReport",
+  "description": "Internes dynamisches Berichtsportal",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f3f7f8",
+  "theme_color": "#006479",
+  "lang": "de-AT",
+  "icons": []
+}
