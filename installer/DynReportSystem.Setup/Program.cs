@@ -35,7 +35,7 @@ catch (Exception ex)
     Environment.ExitCode = 1;
 }
 
-static void Install()
+void Install()
 {
     var installDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
@@ -162,7 +162,7 @@ static void Install()
     Console.ReadLine();
 }
 
-static void Uninstall()
+void Uninstall()
 {
     var installDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
@@ -189,7 +189,7 @@ if (Test-Path 'IIS:\AppPools\{AppPool}') {{ Remove-WebAppPool -Name '{AppPool}' 
     Console.WriteLine($"Ordner bei Bedarf manuell löschen: {installDir}");
 }
 
-static void ConfigureIis(string installDir)
+void ConfigureIis(string installDir)
 {
     var escaped = installDir.Replace("'", "''");
 
@@ -211,7 +211,7 @@ Start-Website -Name '{SiteName}' -ErrorAction SilentlyContinue
 ");
 }
 
-static void EnsureIisFeatures()
+void EnsureIisFeatures()
 {
     RunPowerShell(@"
 if (Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue) {
@@ -220,7 +220,7 @@ if (Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue) {
 ", throwOnError: false);
 }
 
-static bool HasAspNetCoreModule()
+bool HasAspNetCoreModule()
 {
     var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
     return File.Exists(Path.Combine(
@@ -231,7 +231,7 @@ static bool HasAspNetCoreModule()
         "aspnetcorev2.dll"));
 }
 
-static void RegisterUninstall(string installDir)
+void RegisterUninstall(string installDir)
 {
     using var key = Registry.LocalMachine.CreateSubKey(
         @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DynReportSystem");
@@ -247,7 +247,7 @@ static void RegisterUninstall(string installDir)
     key?.SetValue("NoRepair", 1, RegistryValueKind.DWord);
 }
 
-static void RunPowerShell(string script, bool throwOnError = true)
+void RunPowerShell(string script, bool throwOnError = true)
 {
     var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
 
@@ -282,7 +282,7 @@ static void RunPowerShell(string script, bool throwOnError = true)
     }
 }
 
-static void CopyDirectory(string source, string target)
+void CopyDirectory(string source, string target)
 {
     foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
     {
@@ -300,7 +300,7 @@ static void CopyDirectory(string source, string target)
     }
 }
 
-static void TryDeleteDirectory(string path)
+void TryDeleteDirectory(string path)
 {
     try
     {
@@ -310,7 +310,7 @@ static void TryDeleteDirectory(string path)
     catch { }
 }
 
-static void Header(string action)
+void Header(string action)
 {
     Console.WriteLine("============================================================");
     Console.WriteLine($" {ProductName} {Version} · {action}");
