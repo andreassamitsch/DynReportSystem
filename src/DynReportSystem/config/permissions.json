@@ -1,0 +1,59 @@
+{
+  "Folders": [
+    {
+      "Id": "vertrieb",
+      "Title": "Vertrieb",
+      "ParentId": null,
+      "Grants": [
+        {
+          "PrincipalType": "User",
+          "Principal": "__INSTALLER_USER__",
+          "Permissions": [ "View", "Run", "Edit", "Publish", "Manage" ]
+        }
+      ]
+    },
+    {
+      "Id": "produktion",
+      "Title": "Produktion",
+      "ParentId": null,
+      "Grants": []
+    },
+    {
+      "Id": "kalkulation",
+      "Title": "Kalkulation",
+      "ParentId": null,
+      "Grants": []
+    },
+    {
+      "Id": "geschaeftsfuehrung",
+      "Title": "Geschäftsführung",
+      "ParentId": null,
+      "Grants": []
+    }
+  ],
+  "Reports": [
+    {
+      "Id": "kundencockpit",
+      "FolderId": "vertrieb",
+      "Title": "Kundencockpit",
+      "Url": "/reports/kundencockpit",
+      "Datasets": [
+        "Umsatz",
+        "offeneABs",
+        "KundenReklamationen",
+        "offenPosten",
+        "offeneRAs",
+        "UmsatzTopKunden",
+        "KundenUmsatzAuftragMonat",
+        "Angebote",
+        "AngebotsStatusAnalyse",
+        "AngebotsAblehnungsgruende",
+        "AngebotsDurchlaufzeit",
+        "VertriebsmitarbeiterListe",
+        "LagerndeKundenartikel",
+        "Bestelleingang"
+      ],
+      "Grants": []
+    }
+  ]
+}
