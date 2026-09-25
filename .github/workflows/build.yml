@@ -18,6 +18,16 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Vendor chart assets
+        shell: pwsh
+        run: |
+          npm install --no-audit --no-fund
+          node scripts/vendor-assets.mjs
+
       - name: Publish web app
         shell: pwsh
         run: |
@@ -27,6 +37,7 @@ jobs:
             -o artifacts/web
           New-Item -ItemType Directory -Force artifacts/web/Reports | Out-Null
           Copy-Item src/DynReportSystem/appsettings.Production.json.example artifacts/web/appsettings.Production.json.example -Force
+          Copy-Item THIRD_PARTY_NOTICES.md artifacts/web/THIRD_PARTY_NOTICES.md -Force
 
       - name: Build setup executable
         shell: pwsh
@@ -39,6 +50,6 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: DynReportSystem-Server-Setup-0.1.0-win-x64
-          path: artifacts/setup/DynReportSystem-Server-Setup-0.1.0-win-x64.exe
+          name: DynReportSystem-Server-Setup-0.2.0-win-x64
+          path: artifacts/setup/DynReportSystem-Server-Setup-0.2.0-win-x64.exe
           if-no-files-found: error
