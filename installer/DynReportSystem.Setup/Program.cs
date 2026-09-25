@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Reflection;
 using System.Security.Principal;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Win32;
 
 const string ProductName = "DynReport System";
@@ -96,8 +97,9 @@ void Install()
     else if (File.Exists(existingAcl))
     {
         var installerUser = WindowsIdentity.GetCurrent().Name;
+        var jsonEscapedInstallerUser = JsonSerializer.Serialize(installerUser)[1..^1];
         var acl = File.ReadAllText(existingAcl)
-            .Replace("__INSTALLER_USER__", installerUser, StringComparison.Ordinal);
+            .Replace("__INSTALLER_USER__", jsonEscapedInstallerUser, StringComparison.Ordinal);
         File.WriteAllText(existingAcl, acl, new UTF8Encoding(false));
         Console.WriteLine($"Erstadministrator: {installerUser}");
     }
