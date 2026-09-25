@@ -1,0 +1,71 @@
+@page "/"
+@attribute [Authorize]
+@inject FolderAccess Access
+@inject AuthenticationStateProvider Authentication
+
+<PageTitle>DynReport System</PageTitle>
+
+<div class="shell">
+    <header class="topbar">
+        <div class="brand-mark">D</div>
+        <div class="brand-text"><strong>DynReport System</strong><span>Fuchshofer · APP-01</span></div>
+        <span class="topbar-tag">Windows SSO</span>
+    </header>
+
+    <main class="main-area portal">
+        <div class="heading-line">
+            <div>
+                <p class="eyebrow">BERICHTSPORTAL</p>
+                <h1>Meine Auswertungen</h1>
+                <p class="subtitle">Angemeldet als @userName</p>
+            </div>
+        </div>
+
+        @if (folders.Count == 0)
+        {
+            <div class="notice error">Für diesen Windows-Benutzer sind noch keine Berichte freigegeben.</div>
+        }
+
+        @foreach (var folder in folders)
+        {
+            <section class="panel folder-card">
+                <div class="panel-head"><h2>📁 @folder.Title</h2></div>
+                <div class="report-links">
+                    @foreach (var report in folder.Reports)
+                    {
+                        <a href="@report.Url" class="report-link">
+                            <strong>@report.Title</strong>
+                            <span>Öffnen →</span>
+                        </a>
+                    }
+                </div>
+            </section>
+        }
+
+        <footer>DynReport System 0.1.0 · Ordner- und Berichtsrechte aus Windows/AD-Gruppen</footer>
+    </main>
+</div>
+
+@code {
+    private string userName = "";
+    private List<VisibleFolder> folders = [];
+    private sealed record VisibleFolder(string Title, List<ReportItem> Reports);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = (await Authentication.GetAuthenticationStateAsync()).User;
+        userName = user.Identity?.Name ?? "Unbekannt";
+        var catalog = Access.Catalog;
+
+        folders = catalog.Folders
+            .Select(f => new VisibleFolder(
+                f.Title,
+                catalog.Reports
+                    .Where(r => r.FolderId.Equals(f.Id, StringComparison.OrdinalIgnoreCase)
+                        && Access.Can(user, r.Id, "View")
+                        && Access.Can(user, r.Id, "Run"))
+                    .ToList()))
+            .Where(f => f.Reports.Count != 0)
+            .ToList();
+    }
+}
