@@ -64,6 +64,8 @@ void Install()
     string? prodBackup = File.Exists(existingProd) ? File.ReadAllText(existingProd) : null;
     string? aclBackup = File.Exists(existingAcl) ? File.ReadAllText(existingAcl) : null;
 
+    StopExistingIisForUpdate();
+
     using (var resource = Assembly.GetExecutingAssembly()
                .GetManifestResourceStream("DynReportSystem.Payload.zip")
            ?? throw new InvalidOperationException("Installations-Payload fehlt."))
@@ -193,6 +195,24 @@ if (Test-Path 'IIS:\AppPools\{AppPool}') {{ Remove-WebAppPool -Name '{AppPool}' 
     Console.WriteLine("IIS-Site und AppPool wurden entfernt.");
     Console.WriteLine("Konfiguration und Reports bleiben aus Sicherheitsgründen erhalten.");
     Console.WriteLine($"Ordner bei Bedarf manuell löschen: {installDir}");
+}
+
+void StopExistingIisForUpdate()
+{
+    // During an update, IIS may keep the published EXE/DLL files open.
+    // Stop only DynReport resources; bindings and site configuration are preserved.
+    RunPowerShell($@"
+Import-Module WebAdministration -ErrorAction SilentlyContinue
+if (Test-Path 'IIS:\Sites\{SiteName}') {{
+  Stop-Website -Name '{SiteName}' -ErrorAction SilentlyContinue
+}}
+if (Test-Path 'IIS:\AppPools\{AppPool}') {{
+  Stop-WebAppPool -Name '{AppPool}' -ErrorAction SilentlyContinue
+}}
+", throwOnError: false);
+
+    // Give w3wp/ANCM a short moment to release mapped files.
+    Thread.Sleep(1200);
 }
 
 void ConfigureIis(string installDir)
