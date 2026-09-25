@@ -10,3 +10,6 @@ installer/**/payload/
 Reports/*.rdl
 !Reports/README.md
 src/DynReportSystem/Reports/*.rdl
+
+node_modules/
+src/DynReportSystem/wwwroot/vendor/
