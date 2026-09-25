@@ -7,13 +7,13 @@
     <AssemblyName>DynReportSystem</AssemblyName>
     <RootNamespace>DynReportSystem</RootNamespace>
     <Product>DynReport System</Product>
-    <Description>Internal dynamic RDL reporting platform with Windows SSO for APP-01.</Description>
+    <Description>Modern dynamic reporting and analytics platform with Windows SSO for APP-01.</Description>
     <Company>Fuchshofer</Company>
     <Authors>Fuchshofer</Authors>
     <Copyright>Copyright © 2026 Fuchshofer. All rights reserved.</Copyright>
-    <Version>0.1.0</Version>
-    <AssemblyVersion>0.1.0.0</AssemblyVersion>
-    <FileVersion>0.1.0.0</FileVersion>
+    <Version>0.2.0</Version>
+    <AssemblyVersion>0.2.0.0</AssemblyVersion>
+    <FileVersion>0.2.0.0</FileVersion>
     <RepositoryUrl>https://github.com/andreassamitsch/DynReportSystem</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
