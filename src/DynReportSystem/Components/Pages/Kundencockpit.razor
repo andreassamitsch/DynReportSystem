@@ -1,0 +1,449 @@
+@page "/reports/kundencockpit"
+@attribute [Authorize]
+@inject FolderAccess Access
+@inject AuthenticationStateProvider Authentication
+@inject ReportService Reports
+
+<PageTitle>Kundencockpit · DynReport System</PageTitle>
+
+@if (!initialized)
+{
+    <div class="notice">Bericht wird initialisiert …</div>
+}
+else if (!allowed)
+{
+    <div class="notice error">Für das Kundencockpit wurde keine Ausführungsberechtigung vergeben.</div>
+}
+else
+{
+<div class="shell">
+    <header class="topbar">
+        <div class="brand-mark">D</div>
+        <div class="brand-text"><strong>Kundencockpit</strong><span>DynReport System · Fuchshofer</span></div>
+        <div class="topbar-tag">APP-01 · RDL Live</div>
+    </header>
+
+    <div class="app-layout">
+        <aside class="sidebar">
+            <a class="nav-btn" href="/">← Berichtsordner</a>
+            <div class="section-label">Übersicht</div>
+            <button class="nav-btn @(selected == OverviewKey ? "active" : "")" @onclick="ShowOverviewAsync">Dashboard</button>
+
+            <div class="section-label nav-title">RDL-Datasets</div>
+            @foreach (var dataset in datasetNames)
+            {
+                <button class="nav-btn @(selected == dataset ? "active" : "")"
+                        @onclick="() => ShowDatasetAsync(dataset)">
+                    @LabelFor(dataset)
+                </button>
+            }
+
+            <div class="sidebar-foot">
+                Quelle: @rdlFile<br />
+                Datasets werden zur Laufzeit aus der RDL gelesen.
+            </div>
+        </aside>
+
+        <main class="main-area">
+            <div class="heading-line">
+                <div>
+                    <p class="eyebrow">VERTRIEB · ANALYTICS</p>
+                    <h1>@(selected == OverviewKey ? "Kunden im Überblick" : LabelFor(selected))</h1>
+                    <p class="subtitle">Filter gelten für alle unterstützten RDL-Datasets.</p>
+                </div>
+                <span class="data-badge">● SQL Live</span>
+            </div>
+
+            <section class="filterbar" aria-label="Filter">
+                <label>Von<input type="date" @bind="start" /></label>
+                <label>Bis<input type="date" @bind="ende" /></label>
+                <label>Kunde<input type="search" maxlength="100" placeholder="Kundenname (optional)" @bind="kunde" @bind:event="oninput" /></label>
+                <label>Vertriebsmitarbeiter
+                    <select @bind="mitarbeiter">
+                        @foreach (var person in people)
+                        {
+                            <option value="@person.Key">@person.Value</option>
+                        }
+                    </select>
+                </label>
+                <button class="primary-btn" disabled="@busy" @onclick="RefreshAsync">
+                    @(busy ? "Lädt …" : "Anwenden")
+                </button>
+            </section>
+
+            @if (error is not null)
+            {
+                <div role="alert" class="notice error">
+                    <strong>Auswertung nicht verfügbar</strong><br />@error
+                </div>
+            }
+
+            @if (busy)
+            {
+                <div role="status" class="notice">Daten werden aus SQL geladen …</div>
+            }
+
+            @if (selected == OverviewKey)
+            {
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-label">Umsatz · Zeitraum</div>
+                        <div class="kpi-value">@Currency(monthly?.Sum("Umsatz"))</div>
+                        <div class="kpi-foot">RDL: KundenUmsatzAuftragMonat</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Offener Auftragswert</div>
+                        <div class="kpi-value">@Currency(monthly?.Sum("OffenerAuftragswert"))</div>
+                        <div class="kpi-foot">Zeitraum gemäß RDL-Logik</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Rahmenwert</div>
+                        <div class="kpi-value">@Currency(monthly?.Sum("Rahmenwert"))</div>
+                        <div class="kpi-foot">RDL-Dataset dynamisch ausgeführt</div>
+                    </div>
+                </div>
+
+                <div class="content-grid">
+                    <section class="panel">
+                        <div class="panel-head">
+                            <div><h2>Umsatzentwicklung</h2><p>Umsatz und offener Auftragswert nach Monat</p></div>
+                            <span class="muted">EUR</span>
+                        </div>
+
+                        @if (monthly is null || monthly.Rows.Count == 0)
+                        {
+                            <div class="empty">Keine Monatsdaten vorhanden.</div>
+                        }
+                        else
+                        {
+                            <div class="bar-chart">
+                                @foreach (var month in monthly.Rows)
+                                {
+                                    <div class="bar-group" title="@MonthTooltip(month)">
+                                        <div class="bar-container">
+                                            <div class="bar sales-bar" style="height:@BarHeight(month, "Umsatz")%"></div>
+                                            <div class="bar orders-bar" style="height:@BarHeight(month, "OffenerAuftragswert")%"></div>
+                                        </div>
+                                        <span>@MonthLabel(month)</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-head"><div><h2>Top-Kunden</h2><p>Direkt aus UmsatzTopKunden</p></div></div>
+                        @if (topCustomers is null || topCustomers.Rows.Count == 0)
+                        {
+                            <div class="empty">Keine Kundendaten vorhanden.</div>
+                        }
+                        else
+                        {
+                            @foreach (var row in topCustomers.Rows.Take(12))
+                            {
+                                <div class="customer-row">
+                                    <div class="customer-title">@Cell(row, "KundeGruppe")</div>
+                                    <strong>@Currency(Number(row, "Umsatz"))</strong>
+                                </div>
+                            }
+                        }
+                    </section>
+                </div>
+
+                <div class="notice info">
+                    Pilot 0.1.0: SQL, Parameter und Dataset-Felder kommen dynamisch aus der installierten RDL.
+                    Das ursprüngliche SSRS-Seitenlayout wird noch nicht 1:1 gerendert.
+                </div>
+            }
+            else
+            {
+                <section class="panel detail-panel">
+                    <div class="panel-head">
+                        <div><h2>@LabelFor(selected)</h2><p>Dataset aus der aktuell installierten RDL</p></div>
+                        <span class="muted">@(detail?.Rows.Count ?? 0) Zeilen</span>
+                    </div>
+
+                    @if (detail?.Truncated == true)
+                    {
+                        <div class="notice warn">Die Ergebnisanzeige wurde serverseitig begrenzt.</div>
+                    }
+
+                    @if (detail is null || detail.Rows.Count == 0)
+                    {
+                        <div class="empty">Keine Daten vorhanden.</div>
+                    }
+                    else
+                    {
+                        <div class="table-scroll">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        @foreach (var column in detail.Columns)
+                                        {
+                                            <th>@column</th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in detail.Rows.Skip(page * PageSize).Take(PageSize))
+                                    {
+                                        <tr>
+                                            @foreach (var column in detail.Columns)
+                                            {
+                                                <td title="@Cell(row, column)">@Cell(row, column)</td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="pagination">
+                            <span>Seite @(page + 1) / @PageCount</span>
+                            <div>
+                                <button disabled="@(page == 0)" @onclick="PreviousPage">← Zurück</button>
+                                <button disabled="@(page + 1 >= PageCount)" @onclick="NextPage">Weiter →</button>
+                            </div>
+                        </div>
+                    }
+                </section>
+            }
+
+            <footer>DynReport System 0.1.0 · Windows SSO · @rdlFile</footer>
+        </main>
+    </div>
+</div>
+}
+
+@code {
+    private const string OverviewKey = "__overview__";
+    private const int PageSize = 100;
+
+    private bool initialized;
+    private bool allowed;
+    private bool busy;
+    private string? error;
+    private string selected = OverviewKey;
+    private string kunde = "";
+    private string mitarbeiter = "";
+    private string rdlFile = "Kundencockpit.rdl";
+    private DateTime start;
+    private DateTime ende;
+    private int page;
+
+    private List<string> datasetNames = [];
+    private List<KeyValuePair<string, string>> people = [new("", "Alle")];
+    private QueryResult? monthly;
+    private QueryResult? topCustomers;
+    private QueryResult? detail;
+
+    private int PageCount => detail is null
+        ? 1
+        : Math.Max(1, (int)Math.Ceiling(detail.Rows.Count / (double)PageSize));
+
+    protected override async Task OnInitializedAsync()
+    {
+        var now = DateTime.Today;
+        start = new DateTime(now.Year - 1, now.Month, 1);
+        ende = new DateTime(now.Year + 1, now.Month, 1).AddDays(-1);
+
+        var user = (await Authentication.GetAuthenticationStateAsync()).User;
+        allowed = Access.Can(user, "kundencockpit", "View") && Access.Can(user, "kundencockpit", "Run");
+
+        if (allowed)
+        {
+            try
+            {
+                datasetNames = Reports.Datasets.Keys
+                    .Where(x => !x.Equals("VertriebsmitarbeiterListe", StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(LabelFor)
+                    .ToList();
+
+                await LoadPeopleAsync();
+                await LoadOverviewAsync();
+            }
+            catch (Exception ex)
+            {
+                error = Friendly(ex);
+            }
+        }
+
+        initialized = true;
+    }
+
+    private ReportFilters Filters => new(start, ende, kunde ?? "", mitarbeiter ?? "");
+
+    private async Task LoadPeopleAsync()
+    {
+        if (!Reports.Datasets.ContainsKey("VertriebsmitarbeiterListe"))
+            return;
+
+        var result = await Reports.RunAsync("VertriebsmitarbeiterListe", Filters);
+        var list = new List<KeyValuePair<string, string>>();
+
+        foreach (var row in result.Rows)
+        {
+            var value = Cell(row, "Wert");
+            var label = Cell(row, "Bezeichnung");
+            list.Add(new(value, string.IsNullOrWhiteSpace(label) ? value : label));
+        }
+
+        if (list.All(x => x.Key.Length != 0))
+            list.Insert(0, new("", "Alle"));
+
+        people = list;
+    }
+
+    private async Task ShowOverviewAsync()
+    {
+        selected = OverviewKey;
+        page = 0;
+        await LoadOverviewAsync();
+    }
+
+    private async Task ShowDatasetAsync(string dataset)
+    {
+        selected = dataset;
+        page = 0;
+        await LoadDetailAsync(dataset);
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (selected == OverviewKey)
+            await LoadOverviewAsync();
+        else
+            await LoadDetailAsync(selected);
+    }
+
+    private async Task LoadOverviewAsync()
+    {
+        busy = true;
+        error = null;
+
+        try
+        {
+            monthly = Reports.Datasets.ContainsKey("KundenUmsatzAuftragMonat")
+                ? await Reports.RunAsync("KundenUmsatzAuftragMonat", Filters)
+                : null;
+
+            topCustomers = Reports.Datasets.ContainsKey("UmsatzTopKunden")
+                ? await Reports.RunAsync("UmsatzTopKunden", Filters)
+                : null;
+        }
+        catch (Exception ex)
+        {
+            error = Friendly(ex);
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task LoadDetailAsync(string dataset)
+    {
+        busy = true;
+        error = null;
+
+        try
+        {
+            detail = await Reports.RunAsync(dataset, Filters);
+            page = 0;
+        }
+        catch (Exception ex)
+        {
+            detail = null;
+            error = Friendly(ex);
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private void PreviousPage()
+    {
+        if (page > 0) page--;
+    }
+
+    private void NextPage()
+    {
+        if (page + 1 < PageCount) page++;
+    }
+
+    private static string LabelFor(string name) => name switch
+    {
+        "Umsatz" => "Umsatzbuchungen",
+        "offeneABs" => "Offene Auftragsbestätigungen",
+        "KundenReklamationen" => "Reklamationen",
+        "offenPosten" => "Offene Posten",
+        "offeneRAs" => "Offene Rahmenaufträge",
+        "UmsatzTopKunden" => "Top-Kunden",
+        "KundenUmsatzAuftragMonat" => "Umsatz & Aufträge je Monat",
+        "Angebote" => "Angebote",
+        "AngebotsStatusAnalyse" => "Angebotsstatus",
+        "AngebotsAblehnungsgruende" => "Ablehnungsgründe",
+        "AngebotsDurchlaufzeit" => "Angebotsdurchlaufzeit",
+        "LagerndeKundenartikel" => "Lagernde Kundenartikel",
+        "Bestelleingang" => "Bestelleingang",
+        _ => name
+    };
+
+    private static string Friendly(Exception ex) => ex switch
+    {
+        UnauthorizedAccessException => ex.Message,
+        FileNotFoundException => ex.Message,
+        InvalidDataException => ex.Message,
+        InvalidOperationException => ex.Message,
+        ArgumentException => ex.Message,
+        _ => "Fehler beim Laden der Berichtsdaten. Details stehen im Server-Log."
+    };
+
+    private static string Cell(IReadOnlyDictionary<string, object?> row, string key)
+    {
+        var value = QueryResult.Get(row, key);
+        if (value is null) return "";
+        if (value is DateTime date) return date.ToString("dd.MM.yyyy", CultureInfo.GetCultureInfo("de-AT"));
+        if (value is decimal dec) return dec.ToString("N2", CultureInfo.GetCultureInfo("de-AT"));
+        if (value is double dbl) return dbl.ToString("N2", CultureInfo.GetCultureInfo("de-AT"));
+        return Convert.ToString(value, CultureInfo.GetCultureInfo("de-AT")) ?? "";
+    }
+
+    private static decimal? Number(IReadOnlyDictionary<string, object?> row, string key)
+    {
+        var value = QueryResult.Get(row, key);
+        if (value is null) return null;
+        try { return Convert.ToDecimal(value, CultureInfo.InvariantCulture); }
+        catch { return null; }
+    }
+
+    private static string Currency(decimal? value) =>
+        value.HasValue ? value.Value.ToString("C0", CultureInfo.GetCultureInfo("de-AT")) : "–";
+
+    private decimal ChartMax
+    {
+        get
+        {
+            if (monthly is null) return 1m;
+            var values = monthly.Rows.SelectMany(r => new[]
+            {
+                Math.Abs(Number(r, "Umsatz") ?? 0),
+                Math.Abs(Number(r, "OffenerAuftragswert") ?? 0)
+            });
+            return Math.Max(1m, values.DefaultIfEmpty(1m).Max());
+        }
+    }
+
+    private decimal BarHeight(IReadOnlyDictionary<string, object?> row, string key) =>
+        Math.Clamp(Math.Abs(Number(row, key) ?? 0) / ChartMax * 100m, 0m, 100m);
+
+    private static string MonthLabel(IReadOnlyDictionary<string, object?> row)
+    {
+        var value = QueryResult.Get(row, "Monat");
+        return value is DateTime date ? date.ToString("MM/yy") : Convert.ToString(value) ?? "";
+    }
+
+    private string MonthTooltip(IReadOnlyDictionary<string, object?> row) =>
+        $"{MonthLabel(row)} · Umsatz {Currency(Number(row, "Umsatz"))} · offen {Currency(Number(row, "OffenerAuftragswert"))}";
+}
