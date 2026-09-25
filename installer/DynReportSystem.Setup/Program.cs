@@ -211,9 +211,9 @@ if (Test-Path 'IIS:\Sites\{SiteName}') {{
 }}
 $appcmd = Join-Path $env:windir 'System32\inetsrv\appcmd.exe'
 & $appcmd set config '{SiteName}' /section:system.webServer/security/authentication/anonymousAuthentication /enabled:false /commit:apphost | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Anonymous Authentication konnte nicht in ApplicationHost.config konfiguriert werden.' }
+if ($LASTEXITCODE -ne 0) {{ throw 'Anonymous Authentication konnte nicht in ApplicationHost.config konfiguriert werden.' }}
 & $appcmd set config '{SiteName}' /section:system.webServer/security/authentication/windowsAuthentication /enabled:true /commit:apphost | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Windows Authentication konnte nicht in ApplicationHost.config konfiguriert werden.' }
+if ($LASTEXITCODE -ne 0) {{ throw 'Windows Authentication konnte nicht in ApplicationHost.config konfiguriert werden.' }}
 icacls '{escaped}' /grant 'IIS_IUSRS:(OI)(CI)(RX)' /T /C | Out-Null
 Start-WebAppPool -Name '{AppPool}' -ErrorAction SilentlyContinue
 Start-Website -Name '{SiteName}' -ErrorAction SilentlyContinue
