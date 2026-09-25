@@ -1,0 +1,44 @@
+name: Build server installer
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish web app
+        shell: pwsh
+        run: |
+          dotnet publish src/DynReportSystem/DynReportSystem.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=false `
+            -o artifacts/web
+          New-Item -ItemType Directory -Force artifacts/web/Reports | Out-Null
+          Copy-Item src/DynReportSystem/appsettings.Production.json.example artifacts/web/appsettings.Production.json.example -Force
+
+      - name: Build setup executable
+        shell: pwsh
+        run: |
+          Compress-Archive -Path artifacts/web/* -DestinationPath installer/DynReportSystem.Setup/payload.zip -Force
+          dotnet publish installer/DynReportSystem.Setup/DynReportSystem.Setup.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -o artifacts/setup
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: DynReportSystem-Server-Setup-0.1.0-win-x64
+          path: artifacts/setup/DynReportSystem-Server-Setup-0.1.0-win-x64.exe
+          if-no-files-found: error
