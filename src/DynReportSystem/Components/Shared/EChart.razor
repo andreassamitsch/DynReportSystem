@@ -1,0 +1,50 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div id="@elementId" class="echart" style="height:@Height"></div>
+
+@code {
+    [Parameter, EditorRequired] public string ChartKey { get; set; } = "";
+    [Parameter, EditorRequired] public object Options { get; set; } = new();
+    [Parameter] public string Height { get; set; } = "340px";
+    [Parameter] public EventCallback<ChartPointEvent> OnPointClick { get; set; }
+
+    private readonly string elementId = "chart-" + Guid.NewGuid().ToString("N");
+    private DotNetObjectReference<EChart>? dotnetRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        dotnetRef ??= DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("DynReportCharts.render", elementId, Options, dotnetRef);
+    }
+
+    [JSInvokable]
+    public async Task HandleChartClick(JsonElement payload)
+    {
+        string? name = null;
+        string? seriesName = null;
+        JsonElement data = default;
+
+        if (payload.TryGetProperty("name", out var nameElement))
+            name = nameElement.GetString();
+
+        if (payload.TryGetProperty("seriesName", out var seriesElement))
+            seriesName = seriesElement.GetString();
+
+        if (payload.TryGetProperty("data", out var dataElement))
+            data = dataElement.Clone();
+
+        await OnPointClick.InvokeAsync(new ChartPointEvent(ChartKey, name, seriesName, data));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("DynReportCharts.dispose", elementId);
+        }
+        catch (JSDisconnectedException) { }
+
+        dotnetRef?.Dispose();
+    }
+}
