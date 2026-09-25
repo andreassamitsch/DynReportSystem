@@ -13,7 +13,7 @@ Internal reporting platform for APP-01. The goal is a modern successor path for 
 - PWA shell without caching report data
 - self-contained web application payload; IIS ASP.NET Core Module v2 remains a server prerequisite
 
-The current renderer is a modernization adapter, not a complete SSRS rendering engine. Dataset/filter logic is loaded dynamically from the RDL, while the first Kundencockpit dashboard has a purpose-built responsive layout. Pixel-perfect SSRS page layout, all RDL expressions, and the browser designer are later stages.
+`DynReport System` does **not** try to reproduce the SSRS page layout. The RDL is used as a migration/data-logic source for SQL datasets, parameters and field definitions. The modern report layout is stored separately as a DynReport dashboard definition. Widgets (KPIs, charts, rankings and drill-down links) are responsive and interactive. The planned visual browser designer will edit this DynReport definition rather than the old RDL page layout.
 
 ## Security
 
@@ -28,3 +28,13 @@ GitHub Actions builds `DynReportSystem-Server-Setup-0.1.0-win-x64.exe`. The setu
 ## License
 
 Proprietary / all rights reserved. See [LICENSE](LICENSE).
+
+
+## Architecture direction
+
+- **RDL / SQL layer:** existing business logic can be reused during migration.
+- **DynReport definition:** independent modern layout, widget bindings, interaction rules and responsive sizing.
+- **Blazor runtime:** renders the dashboard and enforces Windows/AD permissions.
+- **Future designer:** edits DynReport definitions visually; no dependency on the SSRS layout designer.
+
+The Kundencockpit pilot already supports interactive month filtering, customer drill/filter actions and dynamic detail datasets.
