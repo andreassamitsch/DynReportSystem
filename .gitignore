@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+.vs/
+.vscode/
+artifacts/
+publish/
+installer/**/payload.zip
+installer/**/payload/
+# Production RDL files contain internal SQL/business logic.
+Reports/*.rdl
+!Reports/README.md
+src/DynReportSystem/Reports/*.rdl
