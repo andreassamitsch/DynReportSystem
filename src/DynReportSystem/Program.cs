@@ -31,8 +31,6 @@ builder.Services.AddSingleton<ImportedPortalCatalog>();
 builder.Services.AddSingleton<DynReportPackageStore>();
 builder.Services.AddSingleton<DynExpressionEngine>();
 builder.Services.AddScoped<DynReportPackageExecutionService>();
-builder.Services.AddSingleton<CustomReportStore>();
-builder.Services.AddSingleton<ProductionTvReportService>();
 builder.Services.AddSingleton<DynamicRdlService>();
 builder.Services.AddSingleton<RdlPresentationService>();
 builder.Services.AddSingleton<RdlExpressionEvaluator>();
