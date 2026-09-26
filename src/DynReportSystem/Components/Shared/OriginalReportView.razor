@@ -26,6 +26,11 @@ else
                 continue;
             }
 
+            if (!Renderer.IsVisible(item, result, ParameterValues))
+            {
+                continue;
+            }
+
             var filteredResult = Renderer.ApplyFilters(item, result, ParameterValues);
 
             if (item.Kind == "Tablix" && item.Table is not null)
