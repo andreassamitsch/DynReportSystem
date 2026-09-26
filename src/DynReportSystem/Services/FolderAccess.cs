@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Claims;
 using System.Text.Json;
 
@@ -46,6 +47,8 @@ public sealed class FolderAccess(IWebHostEnvironment host)
     private PlatformCatalog? _catalog;
     private DateTime _mtime;
     private DateTime _migrationMtime;
+    private readonly ConcurrentDictionary<string, bool> _principalMatchCache =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public PlatformCatalog Catalog
     {
@@ -176,7 +179,7 @@ public sealed class FolderAccess(IWebHostEnvironment host)
             throw new InvalidDataException("Doppelte Ordner-/Berichts-ID in der ACL.");
     }
 
-    private static bool Allowed(
+    private bool Allowed(
         IEnumerable<ReportGrant> grants,
         ClaimsPrincipal user,
         string permission) =>
@@ -184,7 +187,7 @@ public sealed class FolderAccess(IWebHostEnvironment host)
             g.Permissions.Contains(permission, StringComparer.OrdinalIgnoreCase)
             && PrincipalMatches(g, user));
 
-    private static bool PrincipalMatches(ReportGrant grant, ClaimsPrincipal user)
+    private bool PrincipalMatches(ReportGrant grant, ClaimsPrincipal user)
     {
         if (string.IsNullOrWhiteSpace(grant.Principal))
             return false;
@@ -194,22 +197,32 @@ public sealed class FolderAccess(IWebHostEnvironment host)
             || grant.Principal.Equals("Everyone", StringComparison.OrdinalIgnoreCase))
             return user.Identity?.IsAuthenticated == true;
 
+        var userName = user.Identity?.Name ?? "";
         if (grant.PrincipalType.Equals("User", StringComparison.OrdinalIgnoreCase))
-            return string.Equals(
-                user.Identity?.Name,
-                grant.Principal,
-                StringComparison.OrdinalIgnoreCase);
+            return string.Equals(userName, grant.Principal, StringComparison.OrdinalIgnoreCase);
 
-        if (grant.PrincipalType.Equals("WindowsPrincipal", StringComparison.OrdinalIgnoreCase))
+        if (!grant.PrincipalType.Equals("WindowsPrincipal", StringComparison.OrdinalIgnoreCase)
+            && !grant.PrincipalType.Equals("Group", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (string.Equals(userName, grant.Principal, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Imported SSRS permissions contain many repeated Windows principals.
+        // Calling WindowsPrincipal.IsInRole for every report/folder grant can
+        // otherwise result in tens of thousands of domain/group checks during
+        // the first portal render. Cache each user/principal pair once.
+        var key = $"{userName}\n{grant.Principal}";
+        return _principalMatchCache.GetOrAdd(key, _ =>
         {
-            return string.Equals(
-                       user.Identity?.Name,
-                       grant.Principal,
-                       StringComparison.OrdinalIgnoreCase)
-                   || user.IsInRole(grant.Principal);
-        }
-
-        return grant.PrincipalType.Equals("Group", StringComparison.OrdinalIgnoreCase)
-               && user.IsInRole(grant.Principal);
+            try
+            {
+                return user.IsInRole(grant.Principal);
+            }
+            catch
+            {
+                return false;
+            }
+        });
     }
 }
