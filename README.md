@@ -2,9 +2,16 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
-## Version 0.3.1
+## Version 0.3.2
 
 Version 0.3 turns the Kundencockpit pilot into a **generic reporting portal**.
+
+### 0.3.2 installer hotfix
+
+- waits for the DynReport IIS app pool and its worker process to actually stop before replacing native ANCM files
+- force-terminates only a lingering DynReport `w3wp.exe` worker when IIS does not release mapped files in time
+- retries locked file replacements for up to 15 seconds
+- extracts the update payload before stopping IIS, reducing portal downtime
 
 ### 0.3.1 portal startup hotfix
 
@@ -78,7 +85,7 @@ If an imported SQL data source has no explicit configuration, DynReport can use 
 
 ## Installation / update
 
-GitHub Actions builds DynReportSystem-Server-Setup-0.3.1-win-x64.exe.
+GitHub Actions builds DynReportSystem-Server-Setup-0.3.2-win-x64.exe.
 
 For an SSRS migration, keep the setup EXE, MigrationBundle.zip and the optimized Kundencockpit.rdl (when updating it) next to each other. The setup performs an in-place update and preserves the existing production appsettings, local DynReport permissions and IIS/HTTPS bindings.
 
