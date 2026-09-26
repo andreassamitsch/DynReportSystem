@@ -384,7 +384,7 @@ public sealed partial class DynamicRdlService(ImportedPortalCatalog portal)
     private static partial Regex ParameterReferenceRegex();
 
     [GeneratedRegex(
-        @"^=DateAdd\(s*[""'](?<unit>[^""']+)[""']s*,s*(?<amount>-?\d+)s*,s*(?<basis>Today|Now)\(\)s*\)$",
+        @"^=DateAdd\(\s*[""'](?<unit>[^""']+)[""']\s*,\s*(?<amount>-?\d+)\s*,\s*(?<basis>Today|Now)\(\)\s*\)$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex DateAddRegex();
 
