@@ -198,8 +198,12 @@
                     fontSize: 10,
                     fontWeight: 700,
                     formatter: p => {
-                        const total = p?.data?.stackTotal;
-                        return total == null ? "" : formatValue(total, stackTotalFormat);
+                        const total = Number(p?.data?.stackTotal);
+                        if (!Number.isFinite(total)) return "";
+                        if (stackTotalFormat === "currency" && Math.abs(total) >= 100000) {
+                            return compact.format(total) + " €";
+                        }
+                        return formatValue(total, stackTotalFormat);
                     }
                 };
             }
