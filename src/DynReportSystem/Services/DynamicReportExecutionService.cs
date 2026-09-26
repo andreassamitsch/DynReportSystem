@@ -100,7 +100,7 @@ public sealed class DynamicReportExecutionService(
     public async Task ApplyDataSetDefaultsAsync(
         string reportId,
         DynamicReportDefinition definition,
-        IDictionary<string, DynamicParameterValue> values,
+        IReadOnlyDictionary<string, DynamicParameterValue> values,
         CancellationToken cancellationToken = default)
     {
         await EnsureAccessAsync(reportId);
