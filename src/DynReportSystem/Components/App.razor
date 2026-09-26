@@ -14,8 +14,21 @@
     <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
     <script src="/vendor/echarts.min.js"></script>
     <script src="/js/dynreport-charts.js"></script>
-    <script src="/_framework/blazor.web.js"></script>
+    <script src="/_framework/blazor.web.js" autostart="false"></script>
     <script>
+        Blazor.start({
+            circuit: {
+                reconnectionOptions: {
+                    maxRetries: 20,
+                    retryIntervalMilliseconds: (previousAttempts, maxRetries) => {
+                        if (previousAttempts >= maxRetries) return null;
+                        if (previousAttempts < 3) return 0;
+                        return Math.min(5000, (previousAttempts - 2) * 750);
+                    }
+                }
+            }
+        });
+
         if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js').catch(() => {});
     </script>
 </body>
