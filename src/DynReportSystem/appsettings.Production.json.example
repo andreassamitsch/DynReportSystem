@@ -2,7 +2,7 @@
   "AllowedHosts": "*",
   "Cockpit": {
     "RdlPath": "Reports/Kundencockpit.rdl",
-    "ConnectionString": "Server=OXDB\\OXAION;Database=FUCHSHOFER;User ID=REPORTUSER;Password=CHANGE_ME;Encrypt=True;TrustServerCertificate=True;",
+    "ConnectionString": "Server=OXAION_SQL_SERVER;Database=OXAION_DATABASE;User ID=REPORTUSER;Password=CHANGE_ME;Encrypt=True;TrustServerCertificate=True;",
     "CommandTimeoutSeconds": 120,
     "MaxRowsPerDataset": 20000
   },
@@ -15,13 +15,13 @@
       "ConnectionString": ""
     },
     "SyncosPRD": {
-      "ConnectionString": "Server=tcp:192.168.100.205,1435;Database=syncos_prd_102;User ID=REPORTUSER;Password=CHANGE_ME;Encrypt=True;TrustServerCertificate=True;"
+      "ConnectionString": "Server=SYNCOS_SQL_SERVER;Database=SYNCOS_DATABASE;User ID=REPORTUSER;Password=CHANGE_ME;Encrypt=True;TrustServerCertificate=True;"
     },
     "SyncosPRDHephax": {
-      "ConnectionString": "Server=tcp:192.168.100.205,1435;Database=syncos_prd_104;User ID=REPORTUSER;Password=CHANGE_ME;Encrypt=True;TrustServerCertificate=True;"
+      "ConnectionString": "Server=SYNCOS_SQL_SERVER;Database=SYNCOS_SECONDARY_DATABASE;User ID=REPORTUSER;Password=CHANGE_ME;Encrypt=True;TrustServerCertificate=True;"
     },
     "ReportServerDB": {
-      "ConnectionString": "Server=tcp:192.168.100.205,1435;Database=ReportServer;User ID=REPORTUSER;Password=CHANGE_ME;Encrypt=True;TrustServerCertificate=True;"
+      "ConnectionString": "Server=REPORTING_SQL_SERVER;Database=REPORTSERVER_DATABASE;User ID=REPORTUSER;Password=CHANGE_ME;Encrypt=True;TrustServerCertificate=True;"
     }
   }
 }
