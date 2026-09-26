@@ -64,8 +64,19 @@ public sealed partial class RdlPresentationService(ImportedPortalCatalog portal)
         var root = doc.Root ?? throw new InvalidDataException("RDL ist leer.");
         var ns = root.Name.Namespace;
 
-        var body = root.Element(ns + "Body");
-        var bodyWidth = UnitToPoints(Text(body, ns + "Width"))
+        // RDL 2016+ stores the printable body below
+        // ReportSections/ReportSection. Older RDL versions may still expose
+        // Body directly below Report, so support both layouts.
+        var reportSection = root
+            .Element(ns + "ReportSections")?
+            .Elements(ns + "ReportSection")
+            .FirstOrDefault();
+
+        var body = root.Element(ns + "Body")
+                   ?? reportSection?.Element(ns + "Body");
+
+        var bodyWidth = UnitToPoints(Text(reportSection, ns + "Width"))
+                        ?? UnitToPoints(Text(body, ns + "Width"))
                         ?? UnitToPoints(Text(root, ns + "Width"))
                         ?? 720d;
 
