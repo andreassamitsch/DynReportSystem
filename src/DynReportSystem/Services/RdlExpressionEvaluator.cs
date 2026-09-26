@@ -15,6 +15,14 @@ public sealed class RdlExpressionEvaluator
 {
     private static readonly CultureInfo DeAt = CultureInfo.GetCultureInfo("de-AT");
 
+    public object? ApplyFormat(object? value, string? format)
+    {
+        if (string.IsNullOrWhiteSpace(format) || value is null)
+            return value;
+
+        return Format(value, format);
+    }
+
     public object? Evaluate(
         string expression,
         IReadOnlyDictionary<string, object?> row,
