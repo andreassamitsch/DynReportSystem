@@ -163,7 +163,7 @@
             ? []
             : Catalog.Reports
                 .Where(r => Access.Can(user, r.Id, "View") && Access.Can(user, r.Id, "Run"))
-                .Where(r => showHidden || !IsHidden(r.Id))
+                .Where(r => showHidden || (!IsHidden(r.Id) && !HasHiddenAncestor(r.FolderId)))
                 .OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
 
@@ -175,6 +175,7 @@
             return Catalog.Folders
                 .Where(folder =>
                     string.Equals(folder.ParentId, parent, StringComparison.OrdinalIgnoreCase)
+                    && (showHidden || !IsHiddenFolder(folder.Id))
                     && DescendantReportCount(folder.Id) > 0)
                 .OrderBy(folder => folder.Title, StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
@@ -269,6 +270,27 @@
     private bool IsHidden(string reportId) =>
         Imported.Catalog.Reports.FirstOrDefault(x =>
             x.Id.Equals(reportId, StringComparison.OrdinalIgnoreCase))?.Hidden == true;
+
+    private bool IsHiddenFolder(string folderId) =>
+        Imported.Catalog.Folders.FirstOrDefault(x =>
+            x.Id.Equals(folderId, StringComparison.OrdinalIgnoreCase))?.Hidden == true;
+
+    private bool HasHiddenAncestor(string folderId)
+    {
+        var currentId = folderId;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (!string.IsNullOrWhiteSpace(currentId) && visited.Add(currentId))
+        {
+            if (IsHiddenFolder(currentId))
+                return true;
+
+            currentId = Catalog.Folders.FirstOrDefault(x =>
+                x.Id.Equals(currentId, StringComparison.OrdinalIgnoreCase))?.ParentId ?? "";
+        }
+
+        return false;
+    }
 
     private RenderFragment ReportCard(ReportItem report) => builder =>
     {
