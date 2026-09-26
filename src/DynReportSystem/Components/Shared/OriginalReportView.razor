@@ -31,14 +31,9 @@ else
                 continue;
             }
 
-            var filteredResult = Renderer.ApplyFilters(item, result, ParameterValues);
-
             if (item.Kind == "Tablix" && item.Table is not null)
             {
-                var columns = item.Table.Columns
-                    .Select(x => x.Field)
-                    .Where(field => filteredResult.Columns.Contains(field, StringComparer.OrdinalIgnoreCase))
-                    .ToArray();
+                var projected = Renderer.BuildTableResult(item, result, ParameterValues);
 
                 <section class="panel rdl-visual-card rdl-table-card"
                          style="@GridStyle(item)">
@@ -52,10 +47,10 @@ else
                             }
                         </div>
 
-                        @if (item.Table.GroupFields.Count > 0)
+                        @if (projected.GroupColumns.Count > 0)
                         {
                             <div class="rdl-group-chips">
-                                @foreach (var group in item.Table.GroupFields.Take(4))
+                                @foreach (var group in projected.GroupColumns.Take(4))
                                 {
                                     <span>@group</span>
                                 }
@@ -64,10 +59,10 @@ else
                     </div>
 
                     <DynamicResultTable @key="@($"{ReportId}-{item.Id}")"
-                                        Result="@filteredResult"
-                                        Columns="@columns"
-                                        GroupColumns="@item.Table.GroupFields"
-                                        InitialSortColumns="@item.Table.SortFields"
+                                        Result="@projected.Result"
+                                        Columns="@projected.DisplayColumns"
+                                        GroupColumns="@projected.GroupColumns"
+                                        InitialSortColumns="@projected.SortColumns"
                                         ExportName="@($"{ReportTitle}_{item.Title}")" />
                 </section>
 
@@ -76,6 +71,7 @@ else
 
             if (item.Kind is "Chart" or "Gauge")
             {
+                var filteredResult = Renderer.ApplyFilters(item, result, ParameterValues);
                 var visual = Renderer.Render(item, filteredResult, Presentation.ColorMap);
                 if (visual is null)
                     continue;
