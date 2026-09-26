@@ -95,6 +95,12 @@ public sealed class RdlGaugePresentation
     public string? Format { get; init; }
 }
 
+public sealed record RdlProjectedTable(
+    QueryResult Result,
+    IReadOnlyList<string> DisplayColumns,
+    IReadOnlyList<string> GroupColumns,
+    IReadOnlyList<string> SortColumns);
+
 public sealed record RdlRenderedVisual(
     string Kind,
     string Title,
