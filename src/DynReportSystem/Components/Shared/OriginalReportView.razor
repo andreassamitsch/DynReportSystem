@@ -26,11 +26,13 @@ else
                 continue;
             }
 
+            var filteredResult = Renderer.ApplyFilters(item, result, ParameterValues);
+
             if (item.Kind == "Tablix" && item.Table is not null)
             {
                 var columns = item.Table.Columns
                     .Select(x => x.Field)
-                    .Where(field => result.Columns.Contains(field, StringComparer.OrdinalIgnoreCase))
+                    .Where(field => filteredResult.Columns.Contains(field, StringComparer.OrdinalIgnoreCase))
                     .ToArray();
 
                 <section class="panel rdl-visual-card rdl-table-card"
@@ -57,7 +59,7 @@ else
                     </div>
 
                     <DynamicResultTable @key="@($"{ReportId}-{item.Id}")"
-                                        Result="@result"
+                                        Result="@filteredResult"
                                         Columns="@columns"
                                         GroupColumns="@item.Table.GroupFields"
                                         InitialSortColumns="@item.Table.SortFields"
@@ -69,7 +71,7 @@ else
 
             if (item.Kind is "Chart" or "Gauge")
             {
-                var visual = Renderer.Render(item, result, Presentation.ColorMap);
+                var visual = Renderer.Render(item, filteredResult, Presentation.ColorMap);
                 if (visual is null)
                     continue;
 
@@ -111,6 +113,7 @@ else
     [Parameter, EditorRequired] public string ReportTitle { get; set; } = "";
     [Parameter, EditorRequired] public RdlPresentationDefinition Presentation { get; set; } = null!;
     [Parameter, EditorRequired] public DynamicReportRun Run { get; set; } = null!;
+    [Parameter] public IReadOnlyDictionary<string, DynamicParameterValue>? ParameterValues { get; set; }
 
     private static string GridStyle(RdlPresentationItem item) =>
         $"grid-column:span {Math.Clamp(item.ColumnSpan, 3, 12)};";
