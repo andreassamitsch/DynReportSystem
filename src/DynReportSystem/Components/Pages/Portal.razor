@@ -170,6 +170,7 @@
     private string loadError = "";
     private ImportedPortalStats importedStats = new();
     private List<ReportItem> authorizedReports = [];
+    private HashSet<string> optimizedReportIds = new(StringComparer.OrdinalIgnoreCase);
 
     private PlatformCatalog Catalog => Access.Catalog;
 
@@ -243,6 +244,9 @@
         try
         {
             importedStats = Imported.Catalog.Stats;
+            optimizedReportIds = CustomReports.List()
+                .Select(x => x.TargetReportId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             // Resolve expensive SSRS/Windows ACL checks exactly once per report
             // for this portal session. All folder counters/navigation then work
@@ -345,7 +349,7 @@
             builder.CloseElement();
         }
 
-        if (CustomReports.GetForReport(report.Id) is not null)
+        if (optimizedReportIds.Contains(report.Id))
         {
             builder.OpenElement(sequence++, "span");
             builder.AddAttribute(sequence++, "class", "custom-report-badge");
