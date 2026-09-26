@@ -161,11 +161,15 @@
         const seriesFormats = option.__dynSeriesFormats || {};
         const itemFormat = option.__dynItemFormat || null;
         const responsiveMode = option.__dynResponsive || null;
+        const stackTotalSeries = option.__dynStackTotalSeries || null;
+        const stackTotalFormat = option.__dynStackTotalFormat || "number";
 
         if (option.__dynMap === "world") delete option.__dynMap;
         delete option.__dynSeriesFormats;
         delete option.__dynItemFormat;
         delete option.__dynResponsive;
+        delete option.__dynStackTotalSeries;
+        delete option.__dynStackTotalFormat;
 
         const axes = [];
         if (Array.isArray(option.yAxis)) axes.push(...option.yAxis);
@@ -182,6 +186,24 @@
         }
 
         option.tooltip ??= {};
+
+        if (stackTotalSeries && Array.isArray(option.series)) {
+            for (const s of option.series) {
+                if (s.name !== stackTotalSeries) continue;
+                s.label = {
+                    show: true,
+                    position: "top",
+                    distance: 7,
+                    color: "#4d626a",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    formatter: p => {
+                        const total = p?.data?.stackTotal;
+                        return total == null ? "" : formatValue(total, stackTotalFormat);
+                    }
+                };
+            }
+        }
 
         if (option.tooltip.trigger === "axis") {
             option.tooltip.formatter = params => {
