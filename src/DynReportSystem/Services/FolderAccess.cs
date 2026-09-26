@@ -36,14 +36,16 @@ public sealed class ReportGrant
 
 /// <summary>
 /// Explicit allow only. Rights are inherited from ancestor folders.
-/// Windows users and AD groups are evaluated server-side.
+/// The local config can be extended by an imported SSRS migration ACL.
 /// </summary>
 public sealed class FolderAccess(IWebHostEnvironment host)
 {
     private readonly string _path = Path.Combine(host.ContentRootPath, "config", "permissions.json");
+    private readonly string _migrationPath = Path.Combine(host.ContentRootPath, "migration", "permissions.json");
     private readonly object _lock = new();
     private PlatformCatalog? _catalog;
     private DateTime _mtime;
+    private DateTime _migrationMtime;
 
     public PlatformCatalog Catalog
     {
@@ -53,21 +55,25 @@ public sealed class FolderAccess(IWebHostEnvironment host)
             if (time == DateTime.MinValue)
                 throw new FileNotFoundException("ACL-Konfiguration fehlt.", _path);
 
+            var migrationTime = File.Exists(_migrationPath)
+                ? File.GetLastWriteTimeUtc(_migrationPath)
+                : DateTime.MinValue;
+
             lock (_lock)
             {
-                if (_catalog is not null && time == _mtime) return _catalog;
+                if (_catalog is not null && time == _mtime && migrationTime == _migrationMtime)
+                    return _catalog;
 
-                var config = JsonSerializer.Deserialize<PlatformCatalog>(
-                    File.ReadAllText(_path),
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                    ?? throw new InvalidDataException("ACL-Datei ist leer.");
+                var config = Read(_path);
 
-                if (config.Folders.GroupBy(f => f.Id, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1)
-                    || config.Reports.GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
-                    throw new InvalidDataException("Doppelte Ordner-/Berichts-ID in der ACL.");
+                if (File.Exists(_migrationPath))
+                    Merge(config, Read(_migrationPath));
+
+                Validate(config);
 
                 _catalog = config;
                 _mtime = time;
+                _migrationMtime = migrationTime;
                 return config;
             }
         }
@@ -75,21 +81,33 @@ public sealed class FolderAccess(IWebHostEnvironment host)
 
     public bool Can(ClaimsPrincipal user, string reportId, string permission)
     {
-        if (user.Identity?.IsAuthenticated != true) return false;
+        if (user.Identity?.IsAuthenticated != true)
+            return false;
 
         var catalog = Catalog;
-        var report = catalog.Reports.FirstOrDefault(r => r.Id.Equals(reportId, StringComparison.OrdinalIgnoreCase));
-        if (report is null) return false;
+        var report = catalog.Reports.FirstOrDefault(r =>
+            r.Id.Equals(reportId, StringComparison.OrdinalIgnoreCase));
 
-        if (Allowed(report.Grants, user, permission)) return true;
+        if (report is null)
+            return false;
+
+        if (Allowed(report.Grants, user, permission))
+            return true;
 
         var folderId = report.FolderId;
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         while (!string.IsNullOrWhiteSpace(folderId) && visited.Add(folderId))
         {
-            var folder = catalog.Folders.FirstOrDefault(f => f.Id.Equals(folderId, StringComparison.OrdinalIgnoreCase));
-            if (folder is null) return false;
-            if (Allowed(folder.Grants, user, permission)) return true;
+            var folder = catalog.Folders.FirstOrDefault(f =>
+                f.Id.Equals(folderId, StringComparison.OrdinalIgnoreCase));
+
+            if (folder is null)
+                return false;
+
+            if (Allowed(folder.Grants, user, permission))
+                return true;
+
             folderId = folder.ParentId;
         }
 
@@ -102,11 +120,96 @@ public sealed class FolderAccess(IWebHostEnvironment host)
             && Can(user, r.Id, "View")
             && Can(user, r.Id, "Run"));
 
-    private static bool Allowed(IEnumerable<ReportGrant> grants, ClaimsPrincipal user, string permission) =>
+    private static PlatformCatalog Read(string path) =>
+        JsonSerializer.Deserialize<PlatformCatalog>(
+            File.ReadAllText(path),
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+        ?? throw new InvalidDataException($"ACL-Datei '{path}' ist leer.");
+
+    private static void Merge(PlatformCatalog target, PlatformCatalog imported)
+    {
+        foreach (var folder in imported.Folders)
+        {
+            var existing = target.Folders.FirstOrDefault(x =>
+                x.Id.Equals(folder.Id, StringComparison.OrdinalIgnoreCase));
+
+            if (existing is null)
+            {
+                target.Folders.Add(folder);
+            }
+            else
+            {
+                existing.Grants.AddRange(folder.Grants);
+            }
+        }
+
+        foreach (var report in imported.Reports)
+        {
+            var sameId = target.Reports.FirstOrDefault(x =>
+                x.Id.Equals(report.Id, StringComparison.OrdinalIgnoreCase));
+
+            if (sameId is not null)
+            {
+                sameId.Grants.AddRange(report.Grants);
+                continue;
+            }
+
+            // The imported SSRS Kundencockpit deliberately points at the custom
+            // modern route. Prefer the imported catalog item over the bootstrap
+            // pilot entry so it appears only once in the portal.
+            target.Reports.RemoveAll(x =>
+                !string.IsNullOrWhiteSpace(report.Url)
+                && x.Url.Equals(report.Url, StringComparison.OrdinalIgnoreCase));
+
+            target.Reports.Add(report);
+        }
+    }
+
+    private static void Validate(PlatformCatalog config)
+    {
+        if (config.Folders
+                .GroupBy(f => f.Id, StringComparer.OrdinalIgnoreCase)
+                .Any(g => g.Count() > 1)
+            || config.Reports
+                .GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
+                .Any(g => g.Count() > 1))
+            throw new InvalidDataException("Doppelte Ordner-/Berichts-ID in der ACL.");
+    }
+
+    private static bool Allowed(
+        IEnumerable<ReportGrant> grants,
+        ClaimsPrincipal user,
+        string permission) =>
         grants.Any(g =>
             g.Permissions.Contains(permission, StringComparer.OrdinalIgnoreCase)
-            && !string.IsNullOrWhiteSpace(g.Principal)
-            && (g.PrincipalType.Equals("User", StringComparison.OrdinalIgnoreCase)
-                ? string.Equals(user.Identity?.Name, g.Principal, StringComparison.OrdinalIgnoreCase)
-                : g.PrincipalType.Equals("Group", StringComparison.OrdinalIgnoreCase) && user.IsInRole(g.Principal)));
+            && PrincipalMatches(g, user));
+
+    private static bool PrincipalMatches(ReportGrant grant, ClaimsPrincipal user)
+    {
+        if (string.IsNullOrWhiteSpace(grant.Principal))
+            return false;
+
+        if (grant.Principal.Equals(@"Jeder", StringComparison.OrdinalIgnoreCase)
+            || grant.Principal.Equals("Jeder", StringComparison.OrdinalIgnoreCase)
+            || grant.Principal.Equals("Everyone", StringComparison.OrdinalIgnoreCase))
+            return user.Identity?.IsAuthenticated == true;
+
+        if (grant.PrincipalType.Equals("User", StringComparison.OrdinalIgnoreCase))
+            return string.Equals(
+                user.Identity?.Name,
+                grant.Principal,
+                StringComparison.OrdinalIgnoreCase);
+
+        if (grant.PrincipalType.Equals("WindowsPrincipal", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Equals(
+                       user.Identity?.Name,
+                       grant.Principal,
+                       StringComparison.OrdinalIgnoreCase)
+                   || user.IsInRole(grant.Principal);
+        }
+
+        return grant.PrincipalType.Equals("Group", StringComparison.OrdinalIgnoreCase)
+               && user.IsInRole(grant.Principal);
+    }
 }
