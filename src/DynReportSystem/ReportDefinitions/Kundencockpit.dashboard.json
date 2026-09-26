@@ -93,7 +93,7 @@
       "Dataset": "Umsatz",
       "CategoryField": "Belegdatum",
       "GroupField": "Geschäftsbereich",
-      "GroupColorField": "Geschäftsbereich_Nr",
+      "GroupColorField": "Geschäftsbereich Nr",
       "TimeBucket": "month",
       "Order": 100,
       "ColSpan": 2,
