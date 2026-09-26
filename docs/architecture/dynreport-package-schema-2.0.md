@@ -97,7 +97,7 @@ Core expression operators in 2.0 include:
 - equals / not-equals / comparisons
 - and / or / not
 - empty / has-value / contains
-- now / today / shift label
+- now / today / generic time extraction (for example `hour`)
 
 The expression tree is intentionally structured so the visual designer can create and edit it without parsing arbitrary source code.
 
