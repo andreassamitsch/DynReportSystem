@@ -28,6 +28,8 @@ builder.Services.AddSingleton<RdlStyleCatalog>();
 builder.Services.AddSingleton<DashboardCatalog>();
 builder.Services.AddSingleton<ChartOptionFactory>();
 builder.Services.AddSingleton<ImportedPortalCatalog>();
+builder.Services.AddSingleton<CustomReportStore>();
+builder.Services.AddSingleton<ProductionTvReportService>();
 builder.Services.AddSingleton<DynamicRdlService>();
 builder.Services.AddSingleton<RdlPresentationService>();
 builder.Services.AddSingleton<RdlExpressionEvaluator>();
