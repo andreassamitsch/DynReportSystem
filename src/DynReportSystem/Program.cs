@@ -15,9 +15,16 @@ builder.Services.AddAuthorization(options =>
         .Build());
 
 builder.Services.AddCascadingAuthenticationState();
-builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+builder.Services.AddRazorComponents().AddInteractiveServerComponents(options =>
+{
+    // Mobile browsers suspend tabs and WLAN changes can interrupt SignalR briefly.
+    // Retain disconnected circuits longer so the existing report state can rejoin.
+    options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(10);
+    options.DisconnectedCircuitMaxRetained = 250;
+});
 builder.Services.AddSingleton<FolderAccess>();
 builder.Services.AddSingleton<RdlCatalog>();
+builder.Services.AddSingleton<RdlStyleCatalog>();
 builder.Services.AddSingleton<DashboardCatalog>();
 builder.Services.AddSingleton<ChartOptionFactory>();
 builder.Services.AddScoped<ReportService>();
