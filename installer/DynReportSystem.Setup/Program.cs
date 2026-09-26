@@ -8,7 +8,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Win32;
 
 const string ProductName = "DynReport System";
-const string Version = "0.3.1";
+const string Version = "0.3.2";
 const string SiteName = "DynReportSystem";
 const string AppPool = "DynReportSystem";
 const int DefaultPort = 47131;
@@ -65,8 +65,6 @@ void Install()
     string? prodBackup = File.Exists(existingProd) ? File.ReadAllText(existingProd) : null;
     string? aclBackup = File.Exists(existingAcl) ? File.ReadAllText(existingAcl) : null;
 
-    StopExistingIisForUpdate();
-
     using (var resource = Assembly.GetExecutingAssembly()
                .GetManifestResourceStream("DynReportSystem.Payload.zip")
            ?? throw new InvalidOperationException("Installations-Payload fehlt."))
@@ -76,6 +74,10 @@ void Install()
     }
 
     ZipFile.ExtractToDirectory(payloadZip, payloadDir, true);
+
+    // Keep the existing portal online while the embedded payload is unpacked.
+    // Only stop DynReport immediately before replacing files.
+    StopExistingIisForUpdate();
 
     Directory.CreateDirectory(installDir);
     CopyDirectory(payloadDir, installDir);
@@ -210,20 +212,59 @@ if (Test-Path 'IIS:\AppPools\{AppPool}') {{ Remove-WebAppPool -Name '{AppPool}' 
 
 void StopExistingIisForUpdate()
 {
-    // During an update, IIS may keep the published EXE/DLL files open.
-    // Stop only DynReport resources; bindings and site configuration are preserved.
+    // IIS app-pool shutdown is asynchronous. Native ANCM files such as
+    // aspnetcorev2_inprocess.dll can remain mapped for several seconds after
+    // Stop-WebAppPool returns. Wait for the pool/worker to disappear and, if
+    // necessary, terminate only the DynReport w3wp process.
     RunPowerShell($@"
+$ProgressPreference = 'SilentlyContinue'
 Import-Module WebAdministration -ErrorAction SilentlyContinue
+
 if (Test-Path 'IIS:\Sites\{SiteName}') {{
   Stop-Website -Name '{SiteName}' -ErrorAction SilentlyContinue
 }}
+
 if (Test-Path 'IIS:\AppPools\{AppPool}') {{
   Stop-WebAppPool -Name '{AppPool}' -ErrorAction SilentlyContinue
 }}
+
+function Get-DynReportWorkers {{
+  @(Get-CimInstance Win32_Process -Filter ""Name='w3wp.exe'"" -ErrorAction SilentlyContinue |
+    Where-Object {{
+      $_.CommandLine -match '-ap\s+""?{AppPool}""?'
+    }})
+}}
+
+for ($i = 0; $i -lt 40; $i++) {{
+  $poolStopped = $true
+  if (Test-Path 'IIS:\AppPools\{AppPool}') {{
+    try {{
+      $poolStopped = ((Get-WebAppPoolState -Name '{AppPool}').Value -eq 'Stopped')
+    }} catch {{
+      $poolStopped = $true
+    }}
+  }}
+
+  $workers = Get-DynReportWorkers
+  if ($poolStopped -and $workers.Count -eq 0) {{
+    break
+  }}
+
+  Start-Sleep -Milliseconds 250
+}}
+
+$workers = Get-DynReportWorkers
+foreach ($worker in $workers) {{
+  Stop-Process -Id $worker.ProcessId -Force -ErrorAction SilentlyContinue
+}}
+
+for ($i = 0; $i -lt 20; $i++) {{
+  if ((Get-DynReportWorkers).Count -eq 0) {{ break }}
+  Start-Sleep -Milliseconds 250
+}}
 ", throwOnError: false);
 
-    // Give w3wp/ANCM a short moment to release mapped files.
-    Thread.Sleep(1200);
+    Thread.Sleep(500);
 }
 
 void EnsureMigrationAdministrator(string installDir)
@@ -390,8 +431,36 @@ void CopyDirectory(string source, string target)
         var destination = Path.Combine(target, relative);
 
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-        File.Copy(file, destination, true);
+        CopyFileWithRetry(file, destination);
     }
+}
+
+void CopyFileWithRetry(string source, string destination)
+{
+    const int attempts = 30;
+
+    for (var attempt = 1; attempt <= attempts; attempt++)
+    {
+        try
+        {
+            File.Copy(source, destination, true);
+            return;
+        }
+        catch (IOException) when (attempt < attempts)
+        {
+            if (attempt == 1)
+                Console.WriteLine($"Datei noch in Verwendung, warte auf Freigabe: {Path.GetFileName(destination)}");
+
+            Thread.Sleep(500);
+        }
+        catch (UnauthorizedAccessException) when (attempt < attempts)
+        {
+            Thread.Sleep(500);
+        }
+    }
+
+    // Let the final exception keep the original file path/details.
+    File.Copy(source, destination, true);
 }
 
 void TryDeleteDirectory(string path)
