@@ -92,20 +92,11 @@ public sealed class ProductionTvReportService
         var setupActual = FirstDecimal(rows, config.SetupActualField);
         var setupTarget = FirstDecimal(rows, config.SetupTargetField);
 
+        // Matches the original SSRS expression Sum(Fields!RELEASEDCOUNT.Value)
+        // in the operation scope. Keep this intentionally aligned with the
+        // productive report instead of inventing a different quantity rule.
         var releasedQuantity = rows
-            .Where(row => Decimal(row, config.ReleasedField) is > 0m)
-            .GroupBy(row =>
-            {
-                var key = Text(row, config.ContainerKeyField);
-                if (!string.IsNullOrWhiteSpace(key))
-                    return key;
-
-                return $"{Date(row, config.ContainerFinishedField):O}|{Decimal(row, config.ReleasedField)}";
-            }, StringComparer.OrdinalIgnoreCase)
-            .Sum(group => group
-                .Select(row => Decimal(row, config.ReleasedField) ?? 0m)
-                .DefaultIfEmpty(0m)
-                .Max());
+            .Sum(row => Decimal(row, config.ReleasedField) ?? 0m);
 
         var shiftTargetQuantity = cycleTarget is > 0m
             ? productionMinutes / cycleTarget.Value
