@@ -2,14 +2,58 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
-## Version 0.5.0
+## Version 0.6.0
+
+Version 0.6 introduces the **self-contained, designer-first report architecture**.
+
+### 0.6.0 self-contained DynReport packages
+
+Converted production reports are no longer presentation overlays on top of RDL files. A finished
+`.dynreport` package is the complete runtime definition of the report.
+
+- `.dynreport` is a ZIP-based portable package
+- `manifest.json` contains report identity, path, version and access rules
+- `report.json` contains data-source references, parameters, calculations, layout and visuals
+- `datasets/*.sql` contains the complete dataset SQL/command definitions
+- data-source credentials stay centrally configured on APP-01 and are never embedded in packages
+- converted reports run through `/reports/package/{reportId}` without reading an RDL
+- package import creates a revision before replacing the current version
+- installed packages live under `C:\ProgramData\DynReportSystem\Packages`
+- revisions live under `C:\ProgramData\DynReportSystem\Revisions`
+- the portal treats installed packages as first-class reports and marks them as optimized
+- the original SSRS report remains only a migration/validation source for reports that have not yet been converted
+
+### Designer-first contract
+
+The runtime and designer use exactly the same schema. Report-specific C#, Razor or JavaScript is
+not allowed for converted reports.
+
+The generic runtime currently supports schema-defined headings/text, metric strips, grouped boards,
+tables and charts plus a safe declarative calculation/expression tree. Conditional formatting,
+status mappings, hierarchy/grouping and responsive spans are stored in the package.
+
+The initial designer surface can edit metadata, refresh settings, parameters, dataset SQL (with
+appropriate permission), component titles/spans and inspect package revisions. Future drag/drop and
+richer property editors build on the same document model rather than introducing a second format.
+
+See:
+
+- `docs/architecture/ADR-0001-self-contained-designer-first-dynreport.md`
+- `docs/architecture/dynreport-package-schema-2.0.md`
+
+### First converted reference report
+
+`/Reports/TV/Produktion Übersicht TV` is the first report converted to the 2.0 package model.
+Its package contains its Syncos dataset SQL, parameters, business calculations, status colors,
+permissions, layout and responsive production board. It has no runtime dependency on its original
+RDL.
+
 
 Version 0.3 turns the Kundencockpit pilot into a **generic reporting portal**.
 
-### 0.5.0 manually optimized report packages
+### 0.5.0 manually optimized report packages (superseded prototype)
 
-The automatic RDL view remains available as a fallback, but production reports can now be
-manually analysed and shipped as portable `.dynreport` presentation files.
+The 0.5 prototype introduced manual report optimization but still depended on the RDL and a report-specific renderer. This approach is superseded by the 0.6 self-contained package architecture.
 
 - a `.dynreport` targets an existing migrated SSRS report by ID/path
 - the original RDL remains the source for SQL, parameters, data sources and permissions
@@ -103,7 +147,7 @@ Imported RDL reports are parsed at runtime. DynReport extracts and executes thei
 - searchable/sortable tables with a filter input on every column
 - CSV and chart-image export
 
-RDL remains the trusted migration/data-logic source. DynReport deliberately does **not** attempt a pixel-perfect SSRS layout clone.
+For legacy, not-yet-converted reports, the imported RDL remains the migration/runtime source. Once a report is converted to a 2.0 `.dynreport` package, the RDL is no longer part of its runtime dependency chain.
 
 ## Kundencockpit
 
@@ -134,7 +178,7 @@ If an imported SQL data source has no explicit configuration, DynReport can use 
 
 ## Installation / update
 
-GitHub Actions builds DynReportSystem-Server-Setup-0.5.0-win-x64.exe.
+GitHub Actions builds DynReportSystem-Server-Setup-0.6.0-win-x64.exe.
 
 For an SSRS migration, keep the setup EXE, MigrationBundle.zip and the optimized Kundencockpit.rdl (when updating it) next to each other. The setup performs an in-place update and preserves the existing production appsettings, local DynReport permissions and IIS/HTTPS bindings.
 
