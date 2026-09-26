@@ -15,11 +15,22 @@ public sealed partial class DynamicRdlService(ImportedPortalCatalog portal)
     public DynamicReportDefinition GetDefinition(string reportId)
     {
         var report = portal.GetReport(reportId);
+        var sourceReport = report;
 
-        if (string.IsNullOrWhiteSpace(report.RdlPath))
+        if (string.IsNullOrWhiteSpace(sourceReport.RdlPath)
+            && !string.IsNullOrWhiteSpace(report.SourcePath))
+        {
+            sourceReport = portal.Catalog.Reports.FirstOrDefault(x =>
+                ImportedPortalCatalog.NormalizePath(x.Path).Equals(
+                    ImportedPortalCatalog.NormalizePath(report.SourcePath),
+                    StringComparison.OrdinalIgnoreCase))
+                ?? report;
+        }
+
+        if (string.IsNullOrWhiteSpace(sourceReport.RdlPath))
             throw new FileNotFoundException($"Für '{report.Path}' wurde keine RDL importiert.");
 
-        var fullPath = portal.ResolveContentPath(report.RdlPath);
+        var fullPath = portal.ResolveContentPath(sourceReport.RdlPath);
         if (!File.Exists(fullPath))
             throw new FileNotFoundException("Importierte RDL fehlt.", fullPath);
 
