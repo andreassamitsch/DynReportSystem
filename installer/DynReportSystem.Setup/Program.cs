@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Win32;
 
 const string ProductName = "DynReport System";
@@ -107,6 +108,16 @@ void Install()
     }
 
     var setupDir = AppContext.BaseDirectory;
+
+    var migrationBundle = Path.Combine(setupDir, "MigrationBundle.zip");
+    if (File.Exists(migrationBundle))
+    {
+        Console.WriteLine("SSRS-Migrationspaket wird installiert …");
+        ZipFile.ExtractToDirectory(migrationBundle, installDir, true);
+        EnsureMigrationAdministrator(installDir);
+        Console.WriteLine("SSRS-Katalog, RDLs und Berechtigungen wurden übernommen.");
+    }
+
     var installedRdl = 0;
 
     foreach (var rdl in Directory.EnumerateFiles(setupDir, "*.rdl", SearchOption.TopDirectoryOnly))
@@ -213,6 +224,60 @@ if (Test-Path 'IIS:\AppPools\{AppPool}') {{
 
     // Give w3wp/ANCM a short moment to release mapped files.
     Thread.Sleep(1200);
+}
+
+void EnsureMigrationAdministrator(string installDir)
+{
+    var path = Path.Combine(installDir, "migration", "permissions.json");
+    if (!File.Exists(path))
+        return;
+
+    var installerUser = WindowsIdentity.GetCurrent().Name;
+    var node = JsonNode.Parse(File.ReadAllText(path)) as JsonObject;
+    var folders = node?["Folders"] as JsonArray;
+
+    if (folders is null)
+        return;
+
+    foreach (var folderNode in folders)
+    {
+        if (folderNode is not JsonObject folder)
+            continue;
+
+        if (folder["ParentId"] is not null)
+            continue;
+
+        var grants = folder["Grants"] as JsonArray;
+        if (grants is null)
+        {
+            grants = new JsonArray();
+            folder["Grants"] = grants;
+        }
+
+        var exists = grants
+            .OfType<JsonObject>()
+            .Any(g => string.Equals(
+                g["Principal"]?.GetValue<string>(),
+                installerUser,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (exists)
+            continue;
+
+        grants.Add(new JsonObject
+        {
+            ["PrincipalType"] = "User",
+            ["Principal"] = installerUser,
+            ["Permissions"] = new JsonArray("View", "Run", "Edit", "Publish", "Manage")
+        });
+    }
+
+    File.WriteAllText(
+        path,
+        node!.ToJsonString(new JsonSerializerOptions { WriteIndented = true }),
+        new UTF8Encoding(false));
+
+    Console.WriteLine($"Migrationsadministrator: {installerUser}");
 }
 
 void ConfigureIis(string installDir)
