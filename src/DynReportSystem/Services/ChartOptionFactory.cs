@@ -499,7 +499,158 @@ public sealed class ChartOptionFactory(RdlStyleCatalog styles)
         }
     };
 
-    private static IReadOnlyList<ChartDefinition> RevenueDetail(QueryResult result)
+    public ChartDefinition? BuildOpenOrderBusinessArea(QueryResult openOrders, QueryResult frameworkOrders)
+    {
+        var values = new Dictionary<string, BusinessAreaOpenValue>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in openOrders.Rows)
+        {
+            var label = Text(row, "GeschäftsbereichBezeichnung");
+            if (string.IsNullOrWhiteSpace(label)) label = Text(row, "Geschäftsbereich");
+            if (string.IsNullOrWhiteSpace(label)) label = "Ohne Zuordnung";
+
+            var colorKey = Text(row, "Geschäftsbereich");
+            if (!values.TryGetValue(label, out var value))
+                value = new BusinessAreaOpenValue(colorKey);
+
+            value.OpenOrders += Decimal(row, "BestellwertInklZuAbschlag") ?? 0m;
+            if (string.IsNullOrWhiteSpace(value.ColorKey) && !string.IsNullOrWhiteSpace(colorKey))
+                value.ColorKey = colorKey;
+
+            values[label] = value;
+        }
+
+        foreach (var row in frameworkOrders.Rows)
+        {
+            var label = Text(row, "GeschäftsbereichBezeichnung");
+            if (string.IsNullOrWhiteSpace(label)) label = Text(row, "Geschäftsbereich");
+            if (string.IsNullOrWhiteSpace(label)) label = "Ohne Zuordnung";
+
+            var colorKey = Text(row, "Geschäftsbereich");
+            if (!values.TryGetValue(label, out var value))
+                value = new BusinessAreaOpenValue(colorKey);
+
+            value.Framework += Decimal(row, "OffenerAbrufwertRA") ?? 0m;
+            if (string.IsNullOrWhiteSpace(value.ColorKey) && !string.IsNullOrWhiteSpace(colorKey))
+                value.ColorKey = colorKey;
+
+            values[label] = value;
+        }
+
+        if (values.Count == 0)
+            return null;
+
+        var ordered = values
+            .OrderBy(x => x.Key, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
+        var openData = ordered.Select(x =>
+        {
+            var color = styles.BusinessAreaColor(x.Value.ColorKey);
+            return (object)new Dictionary<string, object?>
+            {
+                ["value"] = x.Value.OpenOrders,
+                ["categoryLabel"] = x.Key,
+                ["groupLabel"] = x.Key,
+                ["itemStyle"] = new Dictionary<string, object?> { ["color"] = color }
+            };
+        }).ToArray();
+
+        var frameworkData = ordered.Select(x =>
+        {
+            var color = styles.MixWithWhite(styles.BusinessAreaColor(x.Value.ColorKey), 58);
+            return (object)new Dictionary<string, object?>
+            {
+                ["value"] = x.Value.Framework,
+                ["categoryLabel"] = x.Key,
+                ["groupLabel"] = x.Key,
+                ["itemStyle"] = new Dictionary<string, object?> { ["color"] = color }
+            };
+        }).ToArray();
+
+        var option = BaseOption();
+        option["__dynSeriesFormats"] = new Dictionary<string, string>
+        {
+            ["Offene AB"] = "currency",
+            ["Rahmen"] = "currency"
+        };
+        option["__dynResponsive"] = "horizontal-stack";
+        option["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "axis", ["axisPointer"] = new Dictionary<string, object?> { ["type"] = "shadow" } };
+        option["legend"] = new Dictionary<string, object?> { ["top"] = 0, ["left"] = 0 };
+        option["grid"] = new Dictionary<string, object?> { ["left"] = 155, ["right"] = 28, ["top"] = 45, ["bottom"] = 35, ["containLabel"] = true };
+        option["xAxis"] = new Dictionary<string, object?> { ["type"] = "value", ["__dynFormat"] = "currency", ["splitLine"] = new Dictionary<string, object?> { ["lineStyle"] = new Dictionary<string, object?> { ["color"] = "#edf2f3" } } };
+        option["yAxis"] = new Dictionary<string, object?> { ["type"] = "category", ["data"] = ordered.Select(x => x.Key).ToArray(), ["axisTick"] = new Dictionary<string, object?> { ["show"] = false } };
+        option["toolbox"] = Toolbox();
+        option["series"] = new object[]
+        {
+            new Dictionary<string, object?>
+            {
+                ["name"] = "Offene AB",
+                ["type"] = "bar",
+                ["stack"] = "open-orders",
+                ["barMaxWidth"] = 32,
+                ["data"] = openData
+            },
+            new Dictionary<string, object?>
+            {
+                ["name"] = "Rahmen",
+                ["type"] = "bar",
+                ["stack"] = "open-orders",
+                ["barMaxWidth"] = 32,
+                ["data"] = frameworkData
+            }
+        };
+
+        return new ChartDefinition(
+            "open-orders-business-stack",
+            "Offene AB & Rahmen nach Geschäftsbereich",
+            "Gestapelte Werte · Farben aus der RDL",
+            option,
+            "390px");
+    }
+
+    private ChartDefinition? BuildBusinessAreaTimeStack(
+        QueryResult result,
+        string key,
+        string title,
+        string subtitle,
+        string dateField,
+        string valueField,
+        string groupField,
+        string groupColorField,
+        string chartType,
+        bool area,
+        string height)
+    {
+        if (result.Rows.Count == 0)
+            return null;
+
+        var widget = new DashboardWidget
+        {
+            Id = key,
+            Type = "echarts-grouped-stack",
+            CategoryField = dateField,
+            GroupField = groupField,
+            GroupColorField = groupColorField,
+            TimeBucket = "month"
+        };
+
+        var template = new DashboardSeries
+        {
+            Name = title,
+            Field = valueField,
+            Type = chartType,
+            Aggregate = "sum",
+            Format = "currency",
+            Stack = "business-area",
+            Area = area
+        };
+
+        var option = GroupedStack(widget, result, template);
+        return new ChartDefinition(key, title, subtitle, option, height);
+    }
+
+    private IReadOnlyList<ChartDefinition> RevenueDetail(QueryResult result)
     {
         var country = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         var area = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
@@ -518,6 +669,22 @@ public sealed class ChartOptionFactory(RdlStyleCatalog styles)
         }
 
         var charts = new List<ChartDefinition>();
+
+        var businessAreaTrend = BuildBusinessAreaTimeStack(
+            result,
+            key: "revenue-business-area-month",
+            title: "Umsatz nach Geschäftsbereich",
+            subtitle: "Gestapelte Monatsentwicklung · GB-Farben aus der RDL",
+            dateField: "Belegdatum",
+            valueField: "Betrag",
+            groupField: "Geschäftsbereich",
+            groupColorField: "Geschäftsbereich_Nr",
+            chartType: "line",
+            area: true,
+            height: "400px");
+
+        if (businessAreaTrend is not null)
+            charts.Add(businessAreaTrend);
 
         if (country.Count > 0)
         {
@@ -711,7 +878,7 @@ public sealed class ChartOptionFactory(RdlStyleCatalog styles)
         return charts;
     }
 
-    private static IReadOnlyList<ChartDefinition> OpenOrdersDetail(QueryResult result, bool framework)
+    private IReadOnlyList<ChartDefinition> OpenOrdersDetail(QueryResult result, bool framework)
     {
         var field = framework ? "OffenerAbrufwertRA" : "BestellwertInklZuAbschlag";
         var values = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
@@ -733,45 +900,45 @@ public sealed class ChartOptionFactory(RdlStyleCatalog styles)
                 "360px")];
     }
 
-    private static IReadOnlyList<ChartDefinition> OrderIntakeDetail(QueryResult result)
+    private IReadOnlyList<ChartDefinition> OrderIntakeDetail(QueryResult result)
     {
-        var month = new SortedDictionary<DateTime, decimal>();
-        var business = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        var charts = new List<ChartDefinition>();
 
+        var stack = BuildBusinessAreaTimeStack(
+            result,
+            key: "order-intake-business-month",
+            title: "Bestelleingang nach Geschäftsbereich",
+            subtitle: "Gestapelte Monatswerte · GB-Farben aus der RDL",
+            dateField: "Datum",
+            valueField: "BestellwertInklZuAbschlag",
+            groupField: "Geschäftsbereich",
+            groupColorField: "Geschäftsbereich_Nr",
+            chartType: "bar",
+            area: false,
+            height: "390px");
+
+        if (stack is not null)
+            charts.Add(stack);
+
+        var month = new SortedDictionary<DateTime, decimal>();
         foreach (var row in result.Rows)
         {
             var value = Decimal(row, "BestellwertInklZuAbschlag") ?? 0m;
             var date = ToDate(QueryResult.Get(row, "Monatsdatum")) ?? ToDate(QueryResult.Get(row, "Datum"));
-            if (date.HasValue)
-            {
-                var m = new DateTime(date.Value.Year, date.Value.Month, 1);
-                month[m] = month.GetValueOrDefault(m) + value;
-            }
+            if (!date.HasValue) continue;
 
-            var b = Text(row, "GeschäftsbereichBezeichnung");
-            if (string.IsNullOrWhiteSpace(b)) b = Text(row, "Geschäftsbereich");
-            if (!string.IsNullOrWhiteSpace(b))
-                business[b] = business.GetValueOrDefault(b) + value;
+            var m = new DateTime(date.Value.Year, date.Value.Month, 1);
+            month[m] = month.GetValueOrDefault(m) + value;
         }
 
-        var charts = new List<ChartDefinition>();
         if (month.Count > 0)
         {
             charts.Add(new ChartDefinition(
-                "order-intake-month",
-                "Bestelleingang im Verlauf",
-                "Auftragseingang je Monat",
+                "order-intake-total",
+                "Bestelleingang gesamt",
+                "Gesamtwert je Monat",
                 DictionaryTimeLine(month, "Bestelleingang", "currency", true),
-                "360px"));
-        }
-
-        if (business.Count > 0)
-        {
-            charts.Add(new ChartDefinition(
-                "order-intake-business",
-                "Bestelleingang nach Geschäftsbereich",
-                "Verteilung des Bestellwerts",
-                DictionaryDonut(business, "Bestelleingang", "currency")));
+                "310px"));
         }
 
         return charts;
@@ -976,6 +1143,13 @@ public sealed class ChartOptionFactory(RdlStyleCatalog styles)
             var current = Values.GetValueOrDefault(name);
             Values[name] = new Accumulator(current.Sum + value, current.Count + 1);
         }
+    }
+
+    private sealed class BusinessAreaOpenValue(string colorKey)
+    {
+        public string ColorKey { get; set; } = colorKey;
+        public decimal OpenOrders { get; set; }
+        public decimal Framework { get; set; }
     }
 
     private sealed class DynamicGroup(string label, string colorKey, string color)
