@@ -1,0 +1,280 @@
+@inject ProductionTvReportService Production
+
+@if (dashboard is null)
+{
+    <div class="panel empty">Keine Produktionsdaten verfügbar.</div>
+}
+else
+{
+    <section class="production-tv-hero">
+        <div>
+            <p class="eyebrow">PRODUKTION · LIVE</p>
+            <h2>Produktion Übersicht <span>@ShiftLabel</span></h2>
+            <p>
+                Maschinenzustand, Auftrag, Personal und Taktabweichungen auf einen Blick.
+                Fachlogik aus dem ursprünglichen SSRS-Bericht wurde gezielt für DynReport aufbereitet.
+            </p>
+        </div>
+
+        <div class="production-tv-live">
+            <span class="live-dot"></span>
+            <div>
+                <strong>Aktualisiert @LastUpdated.ToString("HH:mm:ss")</strong>
+                <small>
+                    @if (Definition.AutoRefreshSeconds > 0)
+                    {
+                        <text>Auto-Refresh @Definition.AutoRefreshSeconds s</text>
+                    }
+                    else
+                    {
+                        <text>manuelle Aktualisierung</text>
+                    }
+                </small>
+            </div>
+            <button class="ghost-btn" @onclick="RefreshRequested">↻ Aktualisieren</button>
+        </div>
+    </section>
+
+    <section class="production-tv-kpis">
+        <div class="production-kpi">
+            <span>Maschinen</span>
+            <strong>@dashboard.MachineCount</strong>
+            <small>im Ergebnis</small>
+        </div>
+        <div class="production-kpi good">
+            <span>Produktion</span>
+            <strong>@dashboard.ProductionCount</strong>
+            <small>aktueller Zustand</small>
+        </div>
+        <div class="production-kpi setup">
+            <span>Rüsten</span>
+            <strong>@dashboard.SetupCount</strong>
+            <small>aktueller Zustand</small>
+        </div>
+        <div class="production-kpi @(dashboard.WarningCount > 0 ? "bad" : "good")">
+            <span>Warnungen</span>
+            <strong>@dashboard.WarningCount</strong>
+            <small>Takt / Rüsten / Behälter / EM</small>
+        </div>
+        <div class="production-kpi">
+            <span>ungepl. Stillstand</span>
+            <strong>@dashboard.UnplannedDowntimeHours.ToString("N1", DeAt) h</strong>
+            <small>über angezeigte Arbeitsgänge</small>
+        </div>
+    </section>
+
+    <div class="production-tv-legend">
+        @foreach (var entry in Definition.ProductionTv!.StatusColors
+            .Where(x => !string.IsNullOrWhiteSpace(x.Key))
+            .Take(12))
+        {
+            <span>
+                <i style="@($"background:{entry.Value}")"></i>
+                @entry.Key
+            </span>
+        }
+    </div>
+
+    @foreach (var department in dashboard.Departments)
+    {
+        <section class="production-tv-department">
+            <div class="production-tv-department-head">
+                <div>
+                    <p class="eyebrow">BEREICH</p>
+                    <h3>@department.Name</h3>
+                </div>
+                <span>@department.Cards.Count Arbeitsgang@(department.Cards.Count == 1 ? "" : "e")</span>
+            </div>
+
+            <div class="production-tv-board">
+                <div class="production-tv-board-head">
+                    <span>Maschine</span>
+                    <span>Auftrag / Artikel</span>
+                    <span>Status</span>
+                    <span>Personal</span>
+                    <span>EM</span>
+                    <span>Rüstzeit<br />Ist / Soll</span>
+                    <span>Takt Schicht<br />Ist / Soll</span>
+                    <span>Stk Schicht<br />Ist / Soll</span>
+                    <span>Takt Gesamt<br />Ist / Soll</span>
+                    <span>Behältertakt<br />Ist / Soll</span>
+                    <span>Letzte Meldung</span>
+                    <span>Stillstand</span>
+                </div>
+
+                @foreach (var card in department.Cards)
+                {
+                    <article class="production-tv-row @(card.Warnings.Count > 0 ? "has-warning" : "")">
+                        <div class="production-machine">
+                            <div class="operation-state @OperationStateClass(card.OperationStatus)">
+                                @card.OperationStatusIcon
+                            </div>
+                            <div>
+                                <strong>@card.Machine</strong>
+                                <small>AG @card.OperationNumber · @Trim(card.Operation, 26)</small>
+                            </div>
+                        </div>
+
+                        <div class="production-order">
+                            <strong>@card.Order</strong>
+                            <span>@Trim(card.Article, 34)</span>
+                            <small>
+                                @if (!string.IsNullOrWhiteSpace(card.ArticleNumber))
+                                {
+                                    <text>@card.ArticleNumber</text>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(card.Customer))
+                                {
+                                    <text> · @Trim(card.Customer, 22)</text>
+                                }
+                            </small>
+                        </div>
+
+                        <div class="production-status">
+                            <span class="status-pill"
+                                  style="@($"background:{card.StatusColor};color:{card.StatusTextColor}")">
+                                @card.Status
+                            </span>
+                            <small>
+                                @if (card.StatusSince.HasValue)
+                                {
+                                    <text>seit @card.StatusSince.Value.ToString("HH:mm")</text>
+                                }
+                                @if (card.PlannedEnd.HasValue)
+                                {
+                                    <text> · NLZ @card.PlannedEnd.Value.ToString("dd.MM HH:mm")</text>
+                                }
+                            </small>
+                        </div>
+
+                        <div class="production-person">
+                            <strong>@(string.IsNullOrWhiteSpace(card.Operators) ? "–" : card.Operators)</strong>
+                            @if (card.Warnings.Count > 0)
+                            {
+                                <div class="production-warning-list" title="@string.Join(", ", card.Warnings)">
+                                    ⚠ @card.Warnings.Count
+                                </div>
+                            }
+                        </div>
+
+                        <div class="production-inspection @card.InspectionClass">
+                            <strong>@(string.IsNullOrWhiteSpace(card.Inspection) ? "–" : card.Inspection)</strong>
+                            <small>@InspectionLabel(card.InspectionState)</small>
+                        </div>
+
+                        @MetricCell(card.Setup)
+                        @MetricCell(card.ShiftCycle)
+                        @MetricCell(card.ShiftQuantity)
+                        @MetricCell(card.TotalCycle)
+                        @MetricCell(card.ContainerCycle, card.ContainerOverdue)
+
+                        <div class="production-last-container @(card.ContainerOverdue ? "bad" : "")">
+                            @if (card.LastContainerAt.HasValue)
+                            {
+                                <strong>@card.LastContainerAt.Value.ToString("HH:mm")</strong>
+                                <span>
+                                    @if (card.LastContainerQuantity.HasValue)
+                                    {
+                                        <text>@card.LastContainerQuantity.Value.ToString("N0", DeAt) Stk</text>
+                                    }
+                                </span>
+                                <small>@Trim(card.LastContainerReporter, 18)</small>
+                            }
+                            else
+                            {
+                                <strong>–</strong>
+                                <small>keine Meldung</small>
+                            }
+                        </div>
+
+                        <div class="production-downtime @(card.UnplannedDowntimeHours > 0 ? "warn" : "neutral")">
+                            <strong>@card.UnplannedDowntimeHours.ToString("N2", DeAt) h</strong>
+                            <small>ungeplant</small>
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public CustomReportDefinition Definition { get; set; } = null!;
+    [Parameter, EditorRequired] public DynamicReportRun Run { get; set; } = null!;
+    [Parameter] public DateTime LastUpdated { get; set; } = DateTime.Now;
+    [Parameter] public EventCallback RefreshRequested { get; set; }
+
+    private static readonly CultureInfo DeAt = CultureInfo.GetCultureInfo("de-AT");
+    private ProductionTvDashboard? dashboard;
+
+    protected override void OnParametersSet()
+    {
+        dashboard = null;
+
+        if (Definition.ProductionTv is null)
+            return;
+
+        if (!Run.Results.TryGetValue(Definition.PrimaryDataset, out var result))
+            return;
+
+        dashboard = Production.Build(result, Definition.ProductionTv);
+    }
+
+    private static string ShiftLabel
+    {
+        get
+        {
+            var hour = DateTime.Now.Hour;
+            return hour >= 22 || hour < 6
+                ? "22:00–06:00"
+                : hour >= 14
+                    ? "14:00–22:00"
+                    : "06:00–14:00";
+        }
+    }
+
+    private static RenderFragment MetricCell(
+        ProductionTvMetric metric,
+        bool forceBad = false) => builder =>
+    {
+        var seq = 0;
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", $"production-metric {(forceBad ? "bad" : metric.Health)}");
+
+        builder.OpenElement(seq++, "strong");
+        builder.AddContent(seq++, metric.ActualText);
+        builder.CloseElement();
+
+        builder.OpenElement(seq++, "span");
+        builder.AddContent(seq++, "/ " + metric.TargetText);
+        builder.CloseElement();
+
+        builder.OpenElement(seq++, "small");
+        builder.AddContent(seq++, metric.Unit);
+        builder.CloseElement();
+
+        builder.CloseElement();
+    };
+
+    private static string OperationStateClass(int status) => status switch
+    {
+        3 => "running",
+        5 => "paused",
+        7 => "done",
+        _ => "neutral"
+    };
+
+    private static string InspectionLabel(int state) => state switch
+    {
+        1 => "OK",
+        2 => "offen",
+        3 => "NOK",
+        _ => "–"
+    };
+
+    private static string Trim(string? value, int length)
+    {
+        var text = value?.Trim() ?? "";
+        return text.Length <= length ? text : text[..Math.Max(1, length - 1)] + "…";
+    }
+}
