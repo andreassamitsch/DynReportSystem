@@ -72,7 +72,7 @@ public sealed class ImportedPortalCatalog(IWebHostEnvironment host)
         if (string.IsNullOrWhiteSpace(path))
             return "";
 
-        var value = path.Trim().Replace('\', '/');
+        var value = path.Trim().Replace('\\', '/');
         if (!value.StartsWith('/'))
             value = "/" + value;
         return value.TrimEnd('/');
