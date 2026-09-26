@@ -978,6 +978,14 @@ public sealed class ChartOptionFactory(RdlStyleCatalog styles)
         }
     }
 
+    private sealed class DynamicGroup(string label, string colorKey, string color)
+    {
+        public string Label { get; } = label;
+        public string ColorKey { get; } = colorKey;
+        public string Color { get; } = color;
+        public Dictionary<string, decimal> Values { get; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
     private readonly record struct Accumulator(decimal Sum, int Count);
     private sealed record GroupPoint(string Key, string Label, DateTime? Date, Dictionary<string, decimal> Values);
 }
