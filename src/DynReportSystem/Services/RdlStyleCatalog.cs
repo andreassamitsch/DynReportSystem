@@ -87,7 +87,7 @@ public sealed partial class RdlStyleCatalog(RdlCatalog rdl)
     [GeneratedRegex(@"<Code>(?<code>.*?)</Code>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
     private static partial Regex CodeBlockRegex();
 
-    [GeneratedRegex(@"Case\s+&quot;(?<key>.*?)&quot;\s+ColorCode\s*=\s*&quot;(?<color>#[0-9A-Fa-f]{6})&quot;", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"Case\s+""(?<key>.*?)""\s+ColorCode\s*=\s+""(?<color>#[0-9A-Fa-f]{6})""", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
     private static partial Regex BusinessAreaCaseRegex();
 
     [GeneratedRegex(@"^#[0-9A-Fa-f]{6}$")]
