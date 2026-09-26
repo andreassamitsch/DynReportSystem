@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using DynReportSystem.Models;
 
 namespace DynReportSystem.Services;
@@ -6,6 +7,237 @@ namespace DynReportSystem.Services;
 public sealed class RdlPresentationRenderer
 {
     private static readonly CultureInfo DeAt = CultureInfo.GetCultureInfo("de-AT");
+
+    public QueryResult ApplyFilters(
+        RdlPresentationItem item,
+        QueryResult result,
+        IReadOnlyDictionary<string, DynamicParameterValue>? parameters = null)
+    {
+        if (item.Filters.Count == 0 || result.Rows.Count == 0)
+            return result;
+
+        var rows = result.Rows
+            .Where(row => item.Filters.All(filter => MatchesFilter(row, result, filter, parameters)))
+            .ToArray();
+
+        return new QueryResult
+        {
+            Dataset = result.Dataset,
+            Columns = result.Columns,
+            Rows = rows,
+            Truncated = result.Truncated
+        };
+    }
+
+    private static bool MatchesFilter(
+        IReadOnlyDictionary<string, object?> row,
+        QueryResult result,
+        RdlFilterPresentation filter,
+        IReadOnlyDictionary<string, DynamicParameterValue>? parameters)
+    {
+        var column = ResolveColumn(result, filter.Field);
+        if (column is null)
+            return true;
+
+        var left = QueryResult.Get(row, column);
+        var right = filter.Values
+            .SelectMany(value => EvaluateFilterValue(value, parameters))
+            .ToArray();
+
+        if (right.Length == 0)
+            return true;
+
+        var op = filter.Operator.Trim();
+
+        if (op.Equals("In", StringComparison.OrdinalIgnoreCase))
+            return right.Any(value => Compare(left, value) == 0);
+
+        if (op.Equals("Equal", StringComparison.OrdinalIgnoreCase))
+            return Compare(left, right[0]) == 0;
+
+        if (op.Equals("NotEqual", StringComparison.OrdinalIgnoreCase))
+            return Compare(left, right[0]) != 0;
+
+        if (op.Equals("LessThan", StringComparison.OrdinalIgnoreCase))
+            return Compare(left, right[0]) < 0;
+
+        if (op.Equals("LessThanOrEqual", StringComparison.OrdinalIgnoreCase))
+            return Compare(left, right[0]) <= 0;
+
+        if (op.Equals("GreaterThan", StringComparison.OrdinalIgnoreCase))
+            return Compare(left, right[0]) > 0;
+
+        if (op.Equals("GreaterThanOrEqual", StringComparison.OrdinalIgnoreCase))
+            return Compare(left, right[0]) >= 0;
+
+        if (op.Equals("Between", StringComparison.OrdinalIgnoreCase) && right.Length >= 2)
+            return Compare(left, right[0]) >= 0 && Compare(left, right[1]) <= 0;
+
+        return true;
+    }
+
+    private static IEnumerable<object?> EvaluateFilterValue(
+        string expression,
+        IReadOnlyDictionary<string, DynamicParameterValue>? parameters)
+    {
+        var value = expression.Trim();
+
+        var split = Regex.Match(
+            value,
+            @"^=CStr\(""(?<values>.*?)""\)\.Split\("".*?""\)$",
+            RegexOptions.IgnoreCase);
+
+        if (split.Success)
+            return split.Groups["values"].Value
+                .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Cast<object?>()
+                .ToArray();
+
+        var parameter = Regex.Match(
+            value,
+            @"^=Parameters!(?<name>[^.]+)\.Value(?:\((?<index>\d+)\))?$",
+            RegexOptions.IgnoreCase);
+
+        if (parameter.Success && parameters is not null
+            && parameters.TryGetValue(parameter.Groups["name"].Value, out var state))
+        {
+            if (parameter.Groups["index"].Success
+                && int.TryParse(parameter.Groups["index"].Value, out var index))
+                return index >= 0 && index < state.Values.Count
+                    ? new object?[] { ParseScalar(state.Values[index]) }
+                    : [];
+
+            return state.Values.Select(ParseScalar).ToArray();
+        }
+
+        // Common capacity-planning RDL expression: end of/start of the selected
+        // number of weeks relative to Today. It is used heavily by the machine
+        // utilization reports. Preserve its practical filtering intent.
+        if (value.Contains("DateAdd", StringComparison.OrdinalIgnoreCase)
+            && value.Contains("DateInterval.WeekDay", StringComparison.OrdinalIgnoreCase))
+        {
+            var parameterName = Regex.Match(value, @"Parameters!(?<name>[^.]+)\.Value", RegexOptions.IgnoreCase);
+            var weeks = 0;
+
+            if (parameterName.Success && parameters is not null
+                && parameters.TryGetValue(parameterName.Groups["name"].Value, out var weekState))
+                int.TryParse(weekState.Values.FirstOrDefault(), NumberStyles.Integer, CultureInfo.InvariantCulture, out weeks);
+
+            var target = DateTime.Today.AddDays(weeks * 7d);
+            var sunday = target.Date.AddDays(-(int)target.DayOfWeek);
+            return new object?[] { sunday };
+        }
+
+        if (value.Equals("=Today()", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("=Today", StringComparison.OrdinalIgnoreCase))
+            return new object?[] { DateTime.Today };
+
+        if (value.Equals("=Now()", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("=Now", StringComparison.OrdinalIgnoreCase))
+            return new object?[] { DateTime.Now };
+
+        var conversion = Regex.Match(
+            value,
+            @"^=C(?:Dec|Dbl|Int|Lng|Str)\((?<inner>.*)\)$",
+            RegexOptions.IgnoreCase);
+
+        if (conversion.Success)
+            return new object?[] { ParseScalar(Unquote(conversion.Groups["inner"].Value)) };
+
+        if (value.StartsWith("=", StringComparison.Ordinal))
+            value = value[1..].Trim();
+
+        return new object?[] { ParseScalar(Unquote(value)) };
+    }
+
+    private static object? ParseScalar(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return value;
+
+        var text = value.Trim();
+
+        if (decimal.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out var invariantNumber))
+            return invariantNumber;
+
+        if (decimal.TryParse(text, NumberStyles.Any, DeAt, out var localNumber))
+            return localNumber;
+
+        if (DateTime.TryParse(text, DeAt, DateTimeStyles.AllowWhiteSpaces, out var date))
+            return date;
+
+        if (bool.TryParse(text, out var boolean))
+            return boolean;
+
+        return text;
+    }
+
+    private static string Unquote(string value)
+    {
+        var text = value.Trim();
+        if (text.Length >= 2
+            && ((text[0] == '"' && text[^1] == '"')
+                || (text[0] == '\'' && text[^1] == '\'')))
+            return text[1..^1];
+
+        return text;
+    }
+
+    private static int Compare(object? left, object? right)
+    {
+        if (ReferenceEquals(left, right))
+            return 0;
+        if (left is null)
+            return -1;
+        if (right is null)
+            return 1;
+
+        if (TryDecimal(left, out var leftNumber) && TryDecimal(right, out var rightNumber))
+            return leftNumber.CompareTo(rightNumber);
+
+        if (TryDate(left, out var leftDate) && TryDate(right, out var rightDate))
+            return leftDate.CompareTo(rightDate);
+
+        return string.Compare(
+            Convert.ToString(left, DeAt)?.Trim(),
+            Convert.ToString(right, DeAt)?.Trim(),
+            StringComparison.CurrentCultureIgnoreCase);
+    }
+
+    private static bool TryDecimal(object value, out decimal number)
+    {
+        try
+        {
+            number = Convert.ToDecimal(value, CultureInfo.InvariantCulture);
+            return true;
+        }
+        catch
+        {
+            var text = Convert.ToString(value, DeAt);
+            return decimal.TryParse(text, NumberStyles.Any, DeAt, out number);
+        }
+    }
+
+    private static bool TryDate(object value, out DateTime date)
+    {
+        if (value is DateTime direct)
+        {
+            date = direct;
+            return true;
+        }
+
+        if (value is DateTimeOffset offset)
+        {
+            date = offset.DateTime;
+            return true;
+        }
+
+        return DateTime.TryParse(
+            Convert.ToString(value, DeAt),
+            DeAt,
+            DateTimeStyles.AllowWhiteSpaces,
+            out date);
+    }
 
     public RdlRenderedVisual? Render(
         RdlPresentationItem item,
