@@ -1,0 +1,137 @@
+@inject RdlPresentationRenderer Renderer
+
+@if (!Presentation.HasMeaningfulLayout)
+{
+    <div class="notice info">
+        Für diesen Bericht enthält die RDL keine auswertbare visuelle Struktur.
+        Die Dataset-Ansicht bleibt vollständig verfügbar.
+    </div>
+}
+else
+{
+    <div class="rdl-presentation-grid">
+        @foreach (var item in Presentation.Items)
+        {
+            @if (item.Kind == "Heading")
+            {
+                <section class="rdl-heading" style="grid-column:1/-1">
+                    <h2>@item.Title</h2>
+                </section>
+                continue;
+            }
+
+            @if (string.IsNullOrWhiteSpace(item.DataSetName)
+                 || !Run.Results.TryGetValue(item.DataSetName, out var result))
+            {
+                continue;
+            }
+
+            if (item.Kind == "Tablix" && item.Table is not null)
+            {
+                var columns = item.Table.Columns
+                    .Select(x => x.Field)
+                    .Where(field => result.Columns.Contains(field, StringComparer.OrdinalIgnoreCase))
+                    .ToArray();
+
+                <section class="panel rdl-visual-card rdl-table-card"
+                         style="@GridStyle(item)">
+                    <div class="panel-head rdl-visual-head">
+                        <div>
+                            <p class="eyebrow">TABELLE · ORIGINAL-RDL</p>
+                            <h2>@item.Title</h2>
+                            @if (!string.IsNullOrWhiteSpace(item.Subtitle))
+                            {
+                                <p>@item.Subtitle</p>
+                            }
+                        </div>
+
+                        @if (item.Table.GroupFields.Count > 0)
+                        {
+                            <div class="rdl-group-chips">
+                                @foreach (var group in item.Table.GroupFields.Take(4))
+                                {
+                                    <span>@group</span>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <DynamicResultTable @key="@($"{ReportId}-{item.Id}")"
+                                        Result="@result"
+                                        Columns="@columns"
+                                        ExportName="@($"{ReportTitle}_{item.Title}")" />
+                </section>
+
+                continue;
+            }
+
+            if (item.Kind is "Chart" or "Gauge")
+            {
+                var visual = Renderer.Render(item, result, Presentation.ColorMap);
+                if (visual is null)
+                    continue;
+
+                <section class="panel rdl-visual-card"
+                         style="@GridStyle(item)">
+                    <div class="panel-head rdl-visual-head">
+                        <div>
+                            <p class="eyebrow">@(item.Kind == "Gauge" ? "KENNZAHL · ORIGINAL-RDL" : "DIAGRAMM · ORIGINAL-RDL")</p>
+                            <h2>@visual.Title</h2>
+                            @if (!string.IsNullOrWhiteSpace(visual.Subtitle))
+                            {
+                                <p>@visual.Subtitle</p>
+                            }
+                        </div>
+
+                        @if (item.Chart?.Series.Count > 0)
+                        {
+                            <span class="rdl-semantic-badge">
+                                @RdlChartLabel(item.Chart)
+                            </span>
+                        }
+                    </div>
+
+                    @if (visual.Options is not null)
+                    {
+                        <EChart @key="@($"{ReportId}-{item.Id}")"
+                                ChartKey="@($"rdl-{item.Id}")"
+                                Options="@visual.Options"
+                                Height="@ChartHeight(item)" />
+                    }
+                </section>
+            }
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public string ReportId { get; set; } = "";
+    [Parameter, EditorRequired] public string ReportTitle { get; set; } = "";
+    [Parameter, EditorRequired] public RdlPresentationDefinition Presentation { get; set; } = null!;
+    [Parameter, EditorRequired] public DynamicReportRun Run { get; set; } = null!;
+
+    private static string GridStyle(RdlPresentationItem item) =>
+        $"grid-column:span {Math.Clamp(item.ColumnSpan, 3, 12)};";
+
+    private static string ChartHeight(RdlPresentationItem item)
+    {
+        var height = Math.Clamp((int)Math.Round(item.HeightPt * 1.15), 250, 540);
+        return $"{height}px";
+    }
+
+    private static string RdlChartLabel(RdlChartPresentation chart)
+    {
+        var first = chart.Series.FirstOrDefault();
+        if (first is null)
+            return "SSRS";
+
+        var type = first.Type;
+        if (first.Subtype?.Contains("Stacked", StringComparison.OrdinalIgnoreCase) == true)
+            type += " · gestapelt";
+
+        if (!string.IsNullOrWhiteSpace(chart.SeriesGroupField))
+            type += $" · {chart.SeriesGroupField}";
+
+        return type;
+    }
+}
