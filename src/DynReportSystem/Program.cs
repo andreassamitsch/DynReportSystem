@@ -27,7 +27,11 @@ builder.Services.AddSingleton<RdlCatalog>();
 builder.Services.AddSingleton<RdlStyleCatalog>();
 builder.Services.AddSingleton<DashboardCatalog>();
 builder.Services.AddSingleton<ChartOptionFactory>();
+builder.Services.AddSingleton<ImportedPortalCatalog>();
+builder.Services.AddSingleton<DynamicRdlService>();
+builder.Services.AddSingleton<DynamicVisualizationService>();
 builder.Services.AddScoped<ReportService>();
+builder.Services.AddScoped<DynamicReportExecutionService>();
 
 var app = builder.Build();
 
