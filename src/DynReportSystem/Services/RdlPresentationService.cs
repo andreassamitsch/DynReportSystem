@@ -176,6 +176,7 @@ public sealed partial class RdlPresentationService(ImportedPortalCatalog portal)
                     ColumnSpan = Span(width, bodyWidth, minimum: 6),
                     Order = order++,
                     Table = table,
+                    Filters = ParseFilters(item, ns),
                     BackgroundColor = StyleValue(item, ns, "BackgroundColor")
                 });
                 continue;
@@ -202,6 +203,7 @@ public sealed partial class RdlPresentationService(ImportedPortalCatalog portal)
                     ColumnSpan = Span(width, bodyWidth, minimum: 4),
                     Order = order++,
                     Chart = chart,
+                    Filters = ParseFilters(item, ns),
                     BackgroundColor = StyleValue(item, ns, "BackgroundColor")
                 });
                 continue;
@@ -227,6 +229,7 @@ public sealed partial class RdlPresentationService(ImportedPortalCatalog portal)
                     ColumnSpan = Span(width, bodyWidth, minimum: 3),
                     Order = order++,
                     Gauge = gauge,
+                    Filters = ParseFilters(item, ns),
                     BackgroundColor = StyleValue(item, ns, "BackgroundColor")
                 });
             }
@@ -428,6 +431,30 @@ public sealed partial class RdlPresentationService(ImportedPortalCatalog portal)
             Minimum = ParseScaleValue("MinimumValue"),
             Maximum = ParseScaleValue("MaximumValue")
         };
+    }
+
+    private static IReadOnlyList<RdlFilterPresentation> ParseFilters(XElement item, XNamespace ns)
+    {
+        var filters = new List<RdlFilterPresentation>();
+
+        foreach (var filter in item.Element(ns + "Filters")?.Elements(ns + "Filter") ?? [])
+        {
+            var expression = Text(filter, ns + "FilterExpression") ?? "";
+            var field = FieldFromExpression(expression);
+            if (string.IsNullOrWhiteSpace(field))
+                continue;
+
+            var op = Text(filter, ns + "Operator") ?? "Equal";
+            var values = filter.Element(ns + "FilterValues")?
+                .Elements(ns + "FilterValue")
+                .Select(x => x.Value.Trim())
+                .Where(x => x.Length > 0)
+                .ToArray() ?? [];
+
+            filters.Add(new RdlFilterPresentation(field, op, values));
+        }
+
+        return filters;
     }
 
     private static IReadOnlyDictionary<string, string> ParseCodeColors(string code)
