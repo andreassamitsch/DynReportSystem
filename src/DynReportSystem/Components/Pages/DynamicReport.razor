@@ -450,11 +450,13 @@ else
                 return;
 
             definition = Rdl.GetDefinition(ReportId);
-            presentation = Presentations.GetPresentation(ReportId);
             customReport = CustomReports.GetForReport(ReportId);
+            presentation = customReport is null
+                ? Presentations.GetPresentation(ReportId)
+                : null;
             viewMode = customReport is not null
                 ? "Custom"
-                : presentation.HasMeaningfulLayout
+                : presentation?.HasMeaningfulLayout == true
                     ? "Report"
                     : "Data";
 
