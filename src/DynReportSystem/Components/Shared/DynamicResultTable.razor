@@ -42,7 +42,7 @@
         <table class="data-table">
             <thead>
                 <tr class="table-sort-row">
-                    @foreach (var column in Result.Columns)
+                    @foreach (var column in DisplayColumns)
                     {
                         <th>
                             <button class="column-sort" @onclick="() => Sort(column)">
@@ -55,7 +55,7 @@
                     }
                 </tr>
                 <tr class="table-filter-row">
-                    @foreach (var column in Result.Columns)
+                    @foreach (var column in DisplayColumns)
                     {
                         <th>
                             <input class="column-filter"
@@ -71,7 +71,7 @@
                 @foreach (var row in VisibleRows)
                 {
                     <tr>
-                        @foreach (var column in Result.Columns)
+                        @foreach (var column in DisplayColumns)
                         {
                             <td title="@Cell(row, column)">@Cell(row, column)</td>
                         }
@@ -93,6 +93,18 @@
 @code {
     [Parameter, EditorRequired] public QueryResult Result { get; set; } = null!;
     [Parameter] public string ExportName { get; set; } = "DynReport";
+    [Parameter] public IReadOnlyList<string>? Columns { get; set; }
+
+    private IReadOnlyList<string> DisplayColumns =>
+        Columns is null || Columns.Count == 0
+            ? Result.Columns
+            : Columns
+                .Select(requested => Result.Columns.FirstOrDefault(column =>
+                    column.Equals(requested, StringComparison.OrdinalIgnoreCase)))
+                .Where(column => !string.IsNullOrWhiteSpace(column))
+                .Cast<string>()
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
 
     private static readonly CultureInfo DeAt = CultureInfo.GetCultureInfo("de-AT");
     private readonly Dictionary<string, string> filters = new(StringComparer.OrdinalIgnoreCase);
@@ -191,7 +203,7 @@
         if (!string.IsNullOrWhiteSpace(search))
         {
             rows = rows.Where(row =>
-                Result.Columns.Any(column =>
+                DisplayColumns.Any(column =>
                     Cell(row, column).Contains(search, StringComparison.CurrentCultureIgnoreCase)));
         }
 
@@ -262,14 +274,14 @@
     private async Task ExportAsync()
     {
         var rows = FilteredRows
-            .Select(row => Result.Columns.ToDictionary(column => column, column => (object?)Cell(row, column)))
+            .Select(row => DisplayColumns.ToDictionary(column => column, column => (object?)Cell(row, column)))
             .ToArray();
 
         var safe = string.Concat(ExportName.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
         await JS.InvokeVoidAsync(
             "DynReportCharts.downloadCsv",
             $"{safe}_{DateTime.Now:yyyyMMdd_HHmm}.csv",
-            Result.Columns,
+            DisplayColumns,
             rows);
     }
 
