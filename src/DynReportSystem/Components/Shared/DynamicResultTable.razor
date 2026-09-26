@@ -1,0 +1,324 @@
+@inject IJSRuntime JS
+
+<div class="dynamic-table-wrap">
+    <div class="table-toolbar">
+        <label class="table-search">
+            <span>Suche</span>
+            <input type="search"
+                   placeholder="Alle Spalten durchsuchen …"
+                   value="@search"
+                   @oninput="OnSearch" />
+        </label>
+
+        <div class="table-filter-summary">
+            @if (ActiveFilterCount > 0)
+            {
+                <span>@ActiveFilterCount Spaltenfilter</span>
+                <button class="text-btn" @onclick="ClearFilters">Filter löschen</button>
+            }
+        </div>
+
+        <label class="page-size">
+            <span>Zeilen</span>
+            <select @bind="PageSize">
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="250">250</option>
+                <option value="500">500</option>
+            </select>
+        </label>
+
+        <button class="ghost-btn" @onclick="ExportAsync">CSV</button>
+    </div>
+
+    @if (Result.Truncated)
+    {
+        <div class="notice warn compact-notice">
+            Ergebnis wurde serverseitig begrenzt.
+        </div>
+    }
+
+    <div class="table-scroll">
+        <table class="data-table">
+            <thead>
+                <tr class="table-sort-row">
+                    @foreach (var column in Result.Columns)
+                    {
+                        <th>
+                            <button class="column-sort" @onclick="() => Sort(column)">
+                                <span>@column</span>
+                                <span class="sort-indicator">
+                                    @(sortColumn == column ? (ascending ? "▲" : "▼") : "↕")
+                                </span>
+                            </button>
+                        </th>
+                    }
+                </tr>
+                <tr class="table-filter-row">
+                    @foreach (var column in Result.Columns)
+                    {
+                        <th>
+                            <input class="column-filter"
+                                   value="@Filter(column)"
+                                   @oninput="e => SetFilter(column, e.Value?.ToString())"
+                                   placeholder="Filtern …"
+                                   title="Text oder =, !=, >, >=, <, <=" />
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in VisibleRows)
+                {
+                    <tr>
+                        @foreach (var column in Result.Columns)
+                        {
+                            <td title="@Cell(row, column)">@Cell(row, column)</td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination">
+        <span>@FilteredRows.Count.ToString("N0", DeAt) Zeilen · Seite @(page + 1) / @PageCount</span>
+        <div>
+            <button disabled="@(page == 0)" @onclick="Previous">←</button>
+            <button disabled="@(page + 1 >= PageCount)" @onclick="Next">→</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public QueryResult Result { get; set; } = null!;
+    [Parameter] public string ExportName { get; set; } = "DynReport";
+
+    private static readonly CultureInfo DeAt = CultureInfo.GetCultureInfo("de-AT");
+    private readonly Dictionary<string, string> filters = new(StringComparer.OrdinalIgnoreCase);
+    private string search = "";
+    private string? sortColumn;
+    private bool ascending = true;
+    private int page;
+    private int pageSize = 100;
+    private List<Dictionary<string, object?>> filtered = [];
+
+    private int PageSize
+    {
+        get => pageSize;
+        set
+        {
+            pageSize = value;
+            page = 0;
+        }
+    }
+
+    private int ActiveFilterCount => filters.Values.Count(x => !string.IsNullOrWhiteSpace(x));
+
+    private List<Dictionary<string, object?>> FilteredRows
+    {
+        get
+        {
+            Rebuild();
+            return filtered;
+        }
+    }
+
+    private IEnumerable<Dictionary<string, object?>> VisibleRows =>
+        FilteredRows.Skip(page * pageSize).Take(pageSize);
+
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(FilteredRows.Count / (double)pageSize));
+
+    protected override void OnParametersSet()
+    {
+        page = 0;
+        search = "";
+        sortColumn = null;
+        filters.Clear();
+        filtered = [];
+    }
+
+    private void OnSearch(ChangeEventArgs e)
+    {
+        search = e.Value?.ToString() ?? "";
+        page = 0;
+        Rebuild(force: true);
+    }
+
+    private string Filter(string column) =>
+        filters.TryGetValue(column, out var value) ? value : "";
+
+    private void SetFilter(string column, string? value)
+    {
+        var text = value?.Trim() ?? "";
+        if (text.Length == 0)
+            filters.Remove(column);
+        else
+            filters[column] = text;
+
+        page = 0;
+        Rebuild(force: true);
+    }
+
+    private void ClearFilters()
+    {
+        filters.Clear();
+        page = 0;
+        Rebuild(force: true);
+    }
+
+    private void Sort(string column)
+    {
+        if (sortColumn == column)
+            ascending = !ascending;
+        else
+        {
+            sortColumn = column;
+            ascending = true;
+        }
+
+        page = 0;
+        Rebuild(force: true);
+    }
+
+    private void Rebuild(bool force = false)
+    {
+        if (!force && filtered.Count > 0)
+            return;
+
+        IEnumerable<Dictionary<string, object?>> rows = Result.Rows;
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            rows = rows.Where(row =>
+                Result.Columns.Any(column =>
+                    Cell(row, column).Contains(search, StringComparison.CurrentCultureIgnoreCase)));
+        }
+
+        foreach (var filter in filters)
+        {
+            rows = rows.Where(row => Matches(QueryResult.Get(row, filter.Key), Cell(row, filter.Key), filter.Value));
+        }
+
+        if (!string.IsNullOrWhiteSpace(sortColumn))
+        {
+            rows = ascending
+                ? rows.OrderBy(row => QueryResult.Get(row, sortColumn), ObjectComparer.Instance)
+                : rows.OrderByDescending(row => QueryResult.Get(row, sortColumn), ObjectComparer.Instance);
+        }
+
+        filtered = rows.ToList();
+    }
+
+    private static bool Matches(object? raw, string formatted, string expression)
+    {
+        var term = expression.Trim();
+
+        if (term.StartsWith("!=", StringComparison.Ordinal))
+            return !formatted.Equals(term[2..].Trim(), StringComparison.CurrentCultureIgnoreCase);
+
+        if (term.StartsWith("=", StringComparison.Ordinal))
+            return formatted.Equals(term[1..].Trim(), StringComparison.CurrentCultureIgnoreCase);
+
+        foreach (var op in new[] { ">=", "<=", ">", "<" })
+        {
+            if (!term.StartsWith(op, StringComparison.Ordinal))
+                continue;
+
+            var compare = Compare(raw, term[op.Length..].Trim());
+            if (compare is null) return false;
+
+            return op switch
+            {
+                ">=" => compare >= 0,
+                "<=" => compare <= 0,
+                ">" => compare > 0,
+                "<" => compare < 0,
+                _ => false
+            };
+        }
+
+        return formatted.Contains(term, StringComparison.CurrentCultureIgnoreCase);
+    }
+
+    private static int? Compare(object? raw, string right)
+    {
+        if (raw is null) return null;
+
+        if (decimal.TryParse(Convert.ToString(raw, DeAt), NumberStyles.Any, DeAt, out var leftNumber)
+            && decimal.TryParse(right, NumberStyles.Any, DeAt, out var rightNumber))
+            return leftNumber.CompareTo(rightNumber);
+
+        if (raw is DateTime leftDate
+            && DateTime.TryParse(right, DeAt, DateTimeStyles.AllowWhiteSpaces, out var rightDate))
+            return leftDate.CompareTo(rightDate);
+
+        return string.Compare(
+            Convert.ToString(raw, DeAt),
+            right,
+            StringComparison.CurrentCultureIgnoreCase);
+    }
+
+    private async Task ExportAsync()
+    {
+        var rows = FilteredRows
+            .Select(row => Result.Columns.ToDictionary(column => column, column => (object?)Cell(row, column)))
+            .ToArray();
+
+        var safe = string.Concat(ExportName.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
+        await JS.InvokeVoidAsync(
+            "DynReportCharts.downloadCsv",
+            $"{safe}_{DateTime.Now:yyyyMMdd_HHmm}.csv",
+            Result.Columns,
+            rows);
+    }
+
+    private void Previous()
+    {
+        if (page > 0) page--;
+    }
+
+    private void Next()
+    {
+        if (page + 1 < PageCount) page++;
+    }
+
+    private static string Cell(IReadOnlyDictionary<string, object?> row, string key)
+    {
+        var value = QueryResult.Get(row, key);
+        if (value is null) return "";
+
+        return value switch
+        {
+            DateTime date => date.ToString("dd.MM.yyyy HH:mm", DeAt),
+            DateTimeOffset dto => dto.ToString("dd.MM.yyyy HH:mm", DeAt),
+            decimal number => number.ToString("N2", DeAt),
+            double number => number.ToString("N2", DeAt),
+            float number => number.ToString("N2", DeAt),
+            _ => (Convert.ToString(value, DeAt) ?? "")
+                .Replace("\r\n", " · ")
+                .Replace("\n", " · ")
+                .Replace("\r", " · ")
+        };
+    }
+
+    private sealed class ObjectComparer : IComparer<object?>
+    {
+        public static ObjectComparer Instance { get; } = new();
+
+        public int Compare(object? x, object? y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (x is null) return -1;
+            if (y is null) return 1;
+
+            if (x is IComparable comparable && x.GetType() == y.GetType())
+                return comparable.CompareTo(y);
+
+            return string.Compare(
+                Convert.ToString(x, DeAt),
+                Convert.ToString(y, DeAt),
+                StringComparison.CurrentCultureIgnoreCase);
+        }
+    }
+}
