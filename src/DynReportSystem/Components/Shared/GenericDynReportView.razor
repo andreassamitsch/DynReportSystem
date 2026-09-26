@@ -1,0 +1,524 @@
+@inject DynExpressionEngine Expressions
+@inject DynamicVisualizationService Visuals
+
+@if (Package.Document.Pages.Count == 0)
+{
+    <div class="panel empty">Der Bericht enthält keine Seite.</div>
+}
+else
+{
+    @foreach (var page in Package.Document.Pages)
+    {
+        <section class="dyn2-page" style="@($"--dyn-columns:{Math.Clamp(page.Columns, 1, 24)}")">
+            @if (!string.IsNullOrWhiteSpace(page.Title))
+            {
+                <div class="dyn2-page-title">
+                    <h2>@page.Title</h2>
+                </div>
+            }
+
+            <div class="dyn2-layout-grid">
+                @foreach (var visual in page.Components)
+                {
+                    @RenderVisual(visual)
+                }
+            </div>
+        </section>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public LoadedDynReportPackage Package { get; set; } = null!;
+    [Parameter, EditorRequired] public DynReportRun Run { get; set; } = null!;
+    [Parameter] public IReadOnlyDictionary<string, DynReportParameterValue>? ParameterValues { get; set; }
+
+    private RenderFragment RenderVisual(DynVisual visual) => builder =>
+    {
+        var sequence = 0;
+        var style = $"grid-column:span {Math.Clamp(visual.Span, 1, 24)};--dyn-mobile-span:{Math.Clamp(visual.MobileSpan, 1, 24)}";
+
+        builder.OpenElement(sequence++, "section");
+        builder.AddAttribute(sequence++, "class", $"dyn2-visual {visual.CssClass}".Trim());
+        builder.AddAttribute(sequence++, "style", style);
+
+        if (visual.Type.Equals("heading", StringComparison.OrdinalIgnoreCase)
+            || visual.Type.Equals("text", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.OpenElement(sequence++, "div");
+            builder.AddAttribute(sequence++, "class", "dyn2-heading-block");
+
+            if (!string.IsNullOrWhiteSpace(visual.Title))
+            {
+                builder.OpenElement(sequence++, visual.Type.Equals("heading", StringComparison.OrdinalIgnoreCase) ? "h2" : "strong");
+                builder.AddContent(sequence++, visual.Title);
+                builder.CloseElement();
+            }
+
+            if (visual.Value is not null)
+            {
+                var rows = Rows(visual.Dataset);
+                var value = Expressions.Evaluate(visual.Value, Package.Document, rows, ParameterValues);
+                builder.OpenElement(sequence++, "span");
+                builder.AddContent(sequence++, Expressions.FormatValue(value, visual.Format, visual.Unit));
+                builder.CloseElement();
+            }
+
+            if (!string.IsNullOrWhiteSpace(visual.Subtitle))
+            {
+                builder.OpenElement(sequence++, "p");
+                builder.AddContent(sequence++, visual.Subtitle);
+                builder.CloseElement();
+            }
+
+            builder.CloseElement();
+            builder.CloseElement();
+            return;
+        }
+
+        if (visual.Type.Equals("metric-strip", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.AddContent(sequence++, MetricStrip(visual));
+            builder.CloseElement();
+            return;
+        }
+
+        if (visual.Type.Equals("grouped-board", StringComparison.OrdinalIgnoreCase)
+            && visual.Board is not null)
+        {
+            builder.AddContent(sequence++, GroupedBoard(visual));
+            builder.CloseElement();
+            return;
+        }
+
+        if (visual.Type.Equals("table", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Run.Results.TryGetValue(visual.Dataset, out var table))
+            {
+                builder.OpenComponent<DynamicResultTable>(sequence++);
+                builder.AddAttribute(sequence++, "Result", table);
+                builder.AddAttribute(sequence++, "ExportName", Package.Manifest.Title);
+                builder.CloseComponent();
+            }
+
+            builder.CloseElement();
+            return;
+        }
+
+        if (visual.Type.Equals("chart", StringComparison.OrdinalIgnoreCase)
+            && Run.Results.TryGetValue(visual.Dataset, out var chartResult))
+        {
+            var chart = Visuals.Build(chartResult, "Auto");
+            if (chart is not null)
+            {
+                builder.OpenComponent<EChart>(sequence++);
+                builder.AddAttribute(sequence++, "ChartKey", $"pkg-{Package.Manifest.ReportId}-{visual.Id}");
+                builder.AddAttribute(sequence++, "Options", chart.Options);
+                builder.AddAttribute(sequence++, "Height", "360px");
+                builder.CloseComponent();
+            }
+
+            builder.CloseElement();
+            return;
+        }
+
+        builder.OpenElement(sequence++, "div");
+        builder.AddAttribute(sequence++, "class", "notice warn");
+        builder.AddContent(sequence++, $"Visual '{visual.Type}' wird nicht dargestellt.");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private RenderFragment MetricStrip(DynVisual visual) => builder =>
+    {
+        var rows = Rows(visual.Dataset);
+        var seq = 0;
+
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "dyn2-metric-strip");
+
+        foreach (var metric in visual.Metrics)
+        {
+            var value = Expressions.Evaluate(metric.Value, Package.Document, rows, ParameterValues);
+            var tone = Tone(metric.Rules, rows);
+
+            builder.OpenElement(seq++, "article");
+            builder.AddAttribute(seq++, "class", $"dyn2-metric {tone}");
+
+            builder.OpenElement(seq++, "span");
+            builder.AddContent(seq++, metric.Label);
+            builder.CloseElement();
+
+            builder.OpenElement(seq++, "strong");
+            builder.AddContent(seq++, Expressions.FormatValue(value, metric.Format, metric.Unit));
+            builder.CloseElement();
+
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+    };
+
+    private RenderFragment GroupedBoard(DynVisual visual) => builder =>
+    {
+        var board = visual.Board!;
+        var sourceRows = Rows(visual.Dataset);
+        var sections = BuildGroups(sourceRows, board.SectionGroupBy);
+        var seq = 0;
+
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "dyn2-board-root");
+
+        if (board.Legend.Count > 0)
+        {
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", "dyn2-legend");
+
+            foreach (var item in board.Legend)
+            {
+                builder.OpenElement(seq++, "span");
+                builder.OpenElement(seq++, "i");
+                builder.AddAttribute(seq++, "style", $"background:{item.Color}");
+                builder.CloseElement();
+                builder.AddContent(seq++, item.Label);
+                builder.CloseElement();
+            }
+
+            builder.CloseElement();
+        }
+
+        foreach (var section in sections)
+        {
+            builder.OpenElement(seq++, "section");
+            builder.AddAttribute(seq++, "class", "dyn2-board-section");
+
+            if (board.SectionGroupBy.Count > 0)
+            {
+                builder.OpenElement(seq++, "div");
+                builder.AddAttribute(seq++, "class", "dyn2-board-section-head");
+                builder.OpenElement(seq++, "div");
+                builder.OpenElement(seq++, "span");
+                builder.AddAttribute(seq++, "class", "eyebrow");
+                builder.AddContent(seq++, "BEREICH");
+                builder.CloseElement();
+                builder.OpenElement(seq++, "h3");
+                builder.AddContent(seq++, SectionTitle(section.Rows, board.SectionGroupBy));
+                builder.CloseElement();
+                builder.CloseElement();
+
+                var rowCount = BuildGroups(section.Rows, board.RowGroupBy).Count;
+                builder.OpenElement(seq++, "small");
+                builder.AddContent(seq++, $"{rowCount} Einträge");
+                builder.CloseElement();
+                builder.CloseElement();
+            }
+
+            var template = string.Join(" ", board.Columns.Select(x =>
+                string.IsNullOrWhiteSpace(x.Width) ? "1fr" : x.Width));
+
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", "dyn2-board");
+            builder.AddAttribute(seq++, "style", $"--dyn-board-template:{template}");
+
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", "dyn2-board-header");
+            foreach (var column in board.Columns)
+            {
+                builder.OpenElement(seq++, "span");
+                builder.AddContent(seq++, column.Header);
+                builder.CloseElement();
+            }
+            builder.CloseElement();
+
+            var rows = BuildGroups(section.Rows, board.RowGroupBy);
+            rows = SortGroups(rows, board.RowSort);
+
+            foreach (var rowGroup in rows)
+            {
+                var warnings = board.Warnings
+                    .Where(w => Expressions.EvaluateBool(
+                        w.When,
+                        Package.Document,
+                        rowGroup.Rows,
+                        ParameterValues))
+                    .Select(w => w.Text)
+                    .ToArray();
+
+                builder.OpenElement(seq++, "article");
+                builder.AddAttribute(seq++, "class", $"dyn2-board-row {(warnings.Length > 0 ? "has-warning" : "")}");
+                if (warnings.Length > 0)
+                    builder.AddAttribute(seq++, "title", string.Join(" · ", warnings));
+
+                foreach (var column in board.Columns)
+                    builder.AddContent(seq++, BoardCell(column, rowGroup.Rows, warnings));
+
+                builder.CloseElement();
+            }
+
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+    };
+
+    private RenderFragment BoardCell(
+        DynBoardColumn column,
+        IReadOnlyList<Dictionary<string, object?>> rows,
+        IReadOnlyList<string> warnings) => builder =>
+    {
+        var seq = 0;
+        var value = Expressions.Evaluate(column.Value, Package.Document, rows, ParameterValues);
+        var secondary = Expressions.Evaluate(column.Secondary, Package.Document, rows, ParameterValues);
+        var tertiary = Expressions.Evaluate(column.Tertiary, Package.Document, rows, ParameterValues);
+        var target = Expressions.Evaluate(column.Target, Package.Document, rows, ParameterValues);
+        var kind = column.Kind.ToLowerInvariant();
+
+        if (kind == "status")
+        {
+            var text = Convert.ToString(value, CultureInfo.GetCultureInfo("de-AT"))?.Trim() ?? "";
+            var color = column.ColorMap.FirstOrDefault(x =>
+                x.Key.Equals(text, StringComparison.OrdinalIgnoreCase)).Value;
+            if (string.IsNullOrWhiteSpace(color))
+                color = "#eef3f4";
+
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", "dyn2-cell dyn2-status-cell");
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "dyn2-status-pill");
+            builder.AddAttribute(seq++, "style", $"background:{color};color:{Contrast(color)}");
+            builder.AddContent(seq++, string.IsNullOrWhiteSpace(text) ? "–" : text);
+            builder.CloseElement();
+            if (!IsEmpty(secondary))
+            {
+                builder.OpenElement(seq++, "small");
+                builder.AddContent(seq++, Expressions.FormatValue(secondary, column.TargetFormat));
+                builder.CloseElement();
+            }
+            builder.CloseElement();
+            return;
+        }
+
+        if (kind == "state")
+        {
+            var key = Convert.ToString(value, CultureInfo.InvariantCulture) ?? "";
+            column.StateMap.TryGetValue(key, out var state);
+            state ??= new DynStatePresentation { Label = key, Tone = "neutral", Icon = "●" };
+
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", $"dyn2-cell dyn2-state {state.Tone}");
+            builder.OpenElement(seq++, "strong");
+            builder.AddContent(seq++, string.Join(" ", new[] { state.Icon, state.Label }.Where(x => !string.IsNullOrWhiteSpace(x))));
+            builder.CloseElement();
+            if (!IsEmpty(secondary))
+            {
+                builder.OpenElement(seq++, "small");
+                builder.AddContent(seq++, Expressions.FormatValue(secondary, column.TargetFormat));
+                builder.CloseElement();
+            }
+            builder.CloseElement();
+            return;
+        }
+
+        if (kind == "metric")
+        {
+            var tone = MetricTone(column, value, target, rows);
+
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", $"dyn2-cell dyn2-board-metric {tone}");
+            builder.OpenElement(seq++, "strong");
+            builder.AddContent(seq++, Expressions.FormatValue(value, column.Format));
+            builder.CloseElement();
+            if (!IsEmpty(target))
+            {
+                builder.OpenElement(seq++, "span");
+                builder.AddContent(seq++, "/ " + Expressions.FormatValue(target, column.TargetFormat));
+                builder.CloseElement();
+            }
+            if (!string.IsNullOrWhiteSpace(column.Unit))
+            {
+                builder.OpenElement(seq++, "small");
+                builder.AddContent(seq++, column.Unit);
+                builder.CloseElement();
+            }
+            builder.CloseElement();
+            return;
+        }
+
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "dyn2-cell dyn2-text-cell");
+        builder.OpenElement(seq++, "strong");
+        builder.AddContent(seq++, Expressions.FormatValue(value, column.Format, column.Unit));
+        builder.CloseElement();
+
+        if (!IsEmpty(secondary))
+        {
+            builder.OpenElement(seq++, "span");
+            builder.AddContent(seq++, Expressions.FormatValue(secondary, column.TargetFormat));
+            builder.CloseElement();
+        }
+
+        if (!IsEmpty(tertiary))
+        {
+            builder.OpenElement(seq++, "small");
+            builder.AddContent(seq++, Expressions.FormatValue(tertiary, ""));
+            builder.CloseElement();
+        }
+
+        if (column.Id.Equals("warnings", StringComparison.OrdinalIgnoreCase)
+            && warnings.Count > 0)
+        {
+            builder.OpenElement(seq++, "small");
+            builder.AddAttribute(seq++, "class", "dyn2-warning-text");
+            builder.AddContent(seq++, "⚠ " + string.Join(" · ", warnings));
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+    };
+
+    private string Tone(
+        IReadOnlyList<DynConditionalRule> rules,
+        IReadOnlyList<Dictionary<string, object?>> rows)
+    {
+        foreach (var rule in rules)
+        {
+            if (Expressions.EvaluateBool(rule.When, Package.Document, rows, ParameterValues))
+                return string.IsNullOrWhiteSpace(rule.Tone) ? "neutral" : rule.Tone;
+        }
+
+        return "neutral";
+    }
+
+    private string MetricTone(
+        DynBoardColumn column,
+        object? actual,
+        object? target,
+        IReadOnlyList<Dictionary<string, object?>> rows)
+    {
+        var ruleTone = Tone(column.Rules, rows);
+        if (!ruleTone.Equals("neutral", StringComparison.OrdinalIgnoreCase))
+            return ruleTone;
+
+        if (!TryDecimal(actual, out var a) || !TryDecimal(target, out var t) || t == 0m)
+            return "neutral";
+
+        var higherIsBetter = column.Direction.Equals("HigherIsBetter", StringComparison.OrdinalIgnoreCase);
+        var ratio = a / t;
+
+        if (higherIsBetter)
+            return ratio >= 1m ? "good" : ratio >= 0.9m ? "warn" : "bad";
+
+        return ratio <= 1m ? "good" : ratio <= 1.1m ? "warn" : "bad";
+    }
+
+    private IReadOnlyList<Dictionary<string, object?>> Rows(string dataset) =>
+        !string.IsNullOrWhiteSpace(dataset)
+        && Run.Results.TryGetValue(dataset, out var result)
+            ? result.Rows
+            : [];
+
+    private static List<RowGroup> BuildGroups(
+        IReadOnlyList<Dictionary<string, object?>> rows,
+        IReadOnlyList<string> fields)
+    {
+        if (fields.Count == 0)
+            return [new RowGroup("", rows.ToList())];
+
+        return rows
+            .GroupBy(row => GroupKey(row, fields), StringComparer.Ordinal)
+            .Select(group => new RowGroup(group.Key, group.ToList()))
+            .ToList();
+    }
+
+    private static List<RowGroup> SortGroups(
+        List<RowGroup> groups,
+        IReadOnlyList<DynSortDefinition> sort)
+    {
+        if (sort.Count == 0)
+            return groups;
+
+        IOrderedEnumerable<RowGroup>? ordered = null;
+
+        foreach (var item in sort)
+        {
+            Func<RowGroup, string> key = group =>
+                Convert.ToString(
+                    QueryResult.Get(group.Rows.FirstOrDefault()
+                        ?? new Dictionary<string, object?>(), item.Field),
+                    CultureInfo.GetCultureInfo("de-AT")) ?? "";
+
+            var desc = item.Direction.Equals("Desc", StringComparison.OrdinalIgnoreCase);
+            ordered = ordered is null
+                ? desc
+                    ? groups.OrderByDescending(key, StringComparer.CurrentCultureIgnoreCase)
+                    : groups.OrderBy(key, StringComparer.CurrentCultureIgnoreCase)
+                : desc
+                    ? ordered.ThenByDescending(key, StringComparer.CurrentCultureIgnoreCase)
+                    : ordered.ThenBy(key, StringComparer.CurrentCultureIgnoreCase);
+        }
+
+        return ordered?.ToList() ?? groups;
+    }
+
+    private static string GroupKey(
+        IReadOnlyDictionary<string, object?> row,
+        IReadOnlyList<string> fields) =>
+        string.Join("", fields.Select(field =>
+            Convert.ToString(QueryResult.Get(row, field), CultureInfo.InvariantCulture) ?? ""));
+
+    private static string SectionTitle(
+        IReadOnlyList<Dictionary<string, object?>> rows,
+        IReadOnlyList<string> fields)
+    {
+        if (rows.Count == 0)
+            return "–";
+
+        return string.Join(" · ", fields.Select(field =>
+            Convert.ToString(QueryResult.Get(rows[0], field), CultureInfo.GetCultureInfo("de-AT")) ?? "–"));
+    }
+
+    private static bool IsEmpty(object? value) =>
+        value is null || string.IsNullOrWhiteSpace(Convert.ToString(value, CultureInfo.GetCultureInfo("de-AT")));
+
+    private static bool TryDecimal(object? value, out decimal result)
+    {
+        try
+        {
+            result = Convert.ToDecimal(value, CultureInfo.InvariantCulture);
+            return true;
+        }
+        catch
+        {
+            return decimal.TryParse(
+                Convert.ToString(value, CultureInfo.GetCultureInfo("de-AT")),
+                NumberStyles.Any,
+                CultureInfo.GetCultureInfo("de-AT"),
+                out result);
+        }
+    }
+
+    private static string Contrast(string color)
+    {
+        if (string.IsNullOrWhiteSpace(color)
+            || color.Length != 7
+            || color[0] != '#')
+            return "#263d45";
+
+        try
+        {
+            var r = Convert.ToInt32(color.Substring(1, 2), 16);
+            var g = Convert.ToInt32(color.Substring(3, 2), 16);
+            var b = Convert.ToInt32(color.Substring(5, 2), 16);
+            var luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255d;
+            return luminance < .55 ? "#fff" : "#263d45";
+        }
+        catch
+        {
+            return "#263d45";
+        }
+    }
+
+    private sealed record RowGroup(
+        string Key,
+        List<Dictionary<string, object?>> Rows);
+}
