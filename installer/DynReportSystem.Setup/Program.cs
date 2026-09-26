@@ -167,6 +167,7 @@ void Install()
     Console.WriteLine($"SQL-Konfiguration: {existingProd}");
     Console.WriteLine($"Berechtigungen: {existingAcl}");
     Console.WriteLine($"Berichte: {reportsDir}");
+    Console.WriteLine($"Optimierte Berichte: {Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "DynReportSystem", "CustomReports")}");
 
     try
     {
@@ -341,6 +342,11 @@ if ($LASTEXITCODE -ne 0) {{ throw 'Anonymous Authentication konnte nicht in Appl
 & $appcmd set config '{SiteName}' /section:system.webServer/security/authentication/windowsAuthentication /enabled:true /commit:apphost | Out-Null
 if ($LASTEXITCODE -ne 0) {{ throw 'Windows Authentication konnte nicht in ApplicationHost.config konfiguriert werden.' }}
 icacls '{escaped}' /grant 'IIS_IUSRS:(OI)(CI)(RX)' /T /C | Out-Null
+
+$customReportDir = Join-Path $env:ProgramData 'DynReportSystem\CustomReports'
+New-Item -ItemType Directory -Force -Path $customReportDir | Out-Null
+icacls $customReportDir /grant 'IIS AppPool\{AppPool}:(OI)(CI)(M)' /T /C | Out-Null
+
 Start-WebAppPool -Name '{AppPool}' -ErrorAction SilentlyContinue
 Start-Website -Name '{SiteName}' -ErrorAction SilentlyContinue
 ");
