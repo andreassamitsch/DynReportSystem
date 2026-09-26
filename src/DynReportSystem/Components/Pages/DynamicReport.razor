@@ -3,6 +3,7 @@
 @inject DynamicRdlService Rdl
 @inject DynamicReportExecutionService Executor
 @inject DynamicVisualizationService Visuals
+@inject RdlPresentationService Presentations
 @inject ImportedPortalCatalog Imported
 @inject FolderAccess Access
 @inject AuthenticationStateProvider Authentication
@@ -55,6 +56,10 @@ else
             <div class="report-meta-chips">
                 <span>@definition.DataSets.Count Dataset(s)</span>
                 <span>@VisibleParameters.Count() Parameter</span>
+                @if (presentation?.HasMeaningfulLayout == true)
+                {
+                    <span>@presentation.Items.Count RDL-Elemente</span>
+                }
                 @if (definition.Report.LegacyType == "LinkedReport")
                 {
                     <span>Verknüpfter Bericht</span>
@@ -188,58 +193,91 @@ else
             }
             else
             {
-                <div class="dataset-tabs">
-                    @foreach (var result in run.Results)
+                <div class="report-view-switch">
+                    @if (presentation?.HasMeaningfulLayout == true)
                     {
-                        <button class="dataset-tab @(activeDataSet == result.Key ? "active" : "")"
-                                @onclick="() => activeDataSet = result.Key">
-                            @result.Key
-                            <span>@result.Value.Rows.Count.ToString("N0", DeAt)</span>
+                        <button class="@(viewMode == "Report" ? "active" : "")"
+                                @onclick='() => viewMode = "Report"'>
+                            Berichtsansicht
+                            <small>aus Original-RDL</small>
                         </button>
                     }
+                    <button class="@(viewMode == "Data" ? "active" : "")"
+                            @onclick='() => viewMode = "Data"'>
+                        Datasets
+                        <small>technische Ansicht</small>
+                    </button>
                 </div>
 
-                @if (CurrentResult is QueryResult current)
+                @if (viewMode == "Report" && presentation?.HasMeaningfulLayout == true)
                 {
-                    var selectedMode = ModeFor(activeDataSet);
-                    var visual = selectedMode == "Table"
-                        ? null
-                        : Visuals.Build(current, selectedMode);
+                    <div class="rdl-view-note">
+                        <strong>Originale Berichtslogik übernommen.</strong>
+                        Tabellen, Spaltenreihenfolge, Gruppierungen, Diagrammtypen, Stapelung,
+                        Serien und RDL-Farben bestimmen die Darstellung. Das Papierlayout wird
+                        responsiv modernisiert, nicht pixelgenau kopiert.
+                    </div>
 
-                    <section class="panel dynamic-result-panel">
-                        <div class="panel-head dynamic-result-head">
-                            <div>
-                                <p class="eyebrow">DATASET</p>
-                                <h2>@activeDataSet</h2>
-                                <p>@current.Rows.Count.ToString("N0", DeAt) Zeilen · @current.Columns.Count Spalten</p>
-                            </div>
-
-                            <label class="visual-mode">
-                                <span>Darstellung</span>
-                                <select value="@ModeLabel(activeDataSet)"
-                                        @onchange="e => ChangeMode(activeDataSet, e.Value?.ToString())">
-                                    @foreach (var mode in Visuals.Modes(current))
-                                    {
-                                        <option value="@mode">@mode</option>
-                                    }
-                                </select>
-                            </label>
-                        </div>
-
-                        @if (visual is not null)
+                    <OriginalReportView ReportId="@ReportId"
+                                        ReportTitle="@definition.Report.Title"
+                                        Presentation="@presentation"
+                                        Run="@run" />
+                }
+                else
+                {
+                    <div class="dataset-tabs">
+                        @foreach (var result in run.Results)
                         {
-                            <div class="dynamic-auto-chart">
-                                <EChart @key="@($"{ReportId}-{activeDataSet}-{selectedMode}")"
-                                        ChartKey="@($"dynamic-{activeDataSet}")"
-                                        Options="@visual.Options"
-                                        Height="360px" />
-                            </div>
+                            <button class="dataset-tab @(activeDataSet == result.Key ? "active" : "")"
+                                    @onclick="() => activeDataSet = result.Key">
+                                @result.Key
+                                <span>@result.Value.Rows.Count.ToString("N0", DeAt)</span>
+                            </button>
                         }
+                    </div>
 
-                        <DynamicResultTable @key="@($"{ReportId}-{activeDataSet}")"
-                                            Result="@current"
-                                            ExportName="@($"{definition.Report.Title}_{activeDataSet}")" />
-                    </section>
+                    @if (CurrentResult is QueryResult current)
+                    {
+                        var selectedMode = ModeFor(activeDataSet);
+                        var visual = selectedMode == "Table"
+                            ? null
+                            : Visuals.Build(current, selectedMode);
+
+                        <section class="panel dynamic-result-panel">
+                            <div class="panel-head dynamic-result-head">
+                                <div>
+                                    <p class="eyebrow">DATASET</p>
+                                    <h2>@activeDataSet</h2>
+                                    <p>@current.Rows.Count.ToString("N0", DeAt) Zeilen · @current.Columns.Count Spalten</p>
+                                </div>
+
+                                <label class="visual-mode">
+                                    <span>Darstellung</span>
+                                    <select value="@ModeLabel(activeDataSet)"
+                                            @onchange="e => ChangeMode(activeDataSet, e.Value?.ToString())">
+                                        @foreach (var mode in Visuals.Modes(current))
+                                        {
+                                            <option value="@mode">@mode</option>
+                                        }
+                                    </select>
+                                </label>
+                            </div>
+
+                            @if (visual is not null)
+                            {
+                                <div class="dynamic-auto-chart">
+                                    <EChart @key="@($"{ReportId}-{activeDataSet}-{selectedMode}")"
+                                            ChartKey="@($"dynamic-{activeDataSet}")"
+                                            Options="@visual.Options"
+                                            Height="360px" />
+                                </div>
+                            }
+
+                            <DynamicResultTable @key="@($"{ReportId}-{activeDataSet}")"
+                                                Result="@current"
+                                                ExportName="@($"{definition.Report.Title}_{activeDataSet}")" />
+                        </section>
+                    }
                 }
             }
         }
@@ -249,10 +287,11 @@ else
                 <div class="intro-card">
                     <span class="intro-icon">▦</span>
                     <div>
-                        <strong>Modernisierte Ausführung</strong>
+                        <strong>Originale SSRS-Semantik wird ausgewertet</strong>
                         <p>
-                            DynReport übernimmt Datasets, SQL und Parameterlogik aus der importierten RDL
-                            und stellt die Ergebnisse responsiv als Tabelle und passende interaktive Grafik dar.
+                            DynReport liest neben SQL und Parametern jetzt auch Tabellenaufbau,
+                            Gruppierungen, Diagrammtypen, Stapelung, Serien, Gauges und Farben
+                            direkt aus der RDL und baut daraus eine responsive Berichtsansicht.
                         </p>
                     </div>
                 </div>
@@ -260,17 +299,18 @@ else
                 <div class="intro-card">
                     <span class="intro-icon">⌁</span>
                     <div>
-                        <strong>Keine starre SSRS-Seite</strong>
+                        <strong>Responsive statt Papierkopie</strong>
                         <p>
-                            Das ursprüngliche Seitenlayout wird bewusst nicht pixelgenau kopiert.
-                            Die Datenlogik bleibt erhalten, die Darstellung ist dynamisch.
+                            Die fachliche Aussage des Originalberichts bleibt erhalten. Größen,
+                            Anordnung und Visualisierungen werden für Browser und Mobilgeräte
+                            modernisiert, ohne die enthaltene Darstellungslogik zu ignorieren.
                         </p>
                     </div>
                 </div>
             </section>
         }
 
-        <footer>DynReport System 0.3.0 · generische SSRS-Migration · Windows SSO</footer>
+        <footer>DynReport System 0.4.0 · generische SSRS-Migration · Windows SSO</footer>
     </main>
 </div>
 }
@@ -285,8 +325,10 @@ else
     private bool busy;
     private string error = "";
     private DynamicReportDefinition? definition;
+    private RdlPresentationDefinition? presentation;
     private DynamicReportRun? run;
     private string activeDataSet = "";
+    private string viewMode = "Report";
     private readonly Dictionary<string, DynamicParameterValue> values =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<DynamicParameterOption>> parameterOptions =
@@ -330,6 +372,8 @@ else
         error = "";
         run = null;
         activeDataSet = "";
+        presentation = null;
+        viewMode = "Report";
         values.Clear();
         parameterOptions.Clear();
         modes.Clear();
@@ -343,6 +387,8 @@ else
                 return;
 
             definition = Rdl.GetDefinition(ReportId);
+            presentation = Presentations.GetPresentation(ReportId);
+            viewMode = presentation.HasMeaningfulLayout ? "Report" : "Data";
 
             foreach (var item in Rdl.CreateInitialValues(definition))
                 values[item.Key] = item.Value;
@@ -473,6 +519,7 @@ else
         {
             run = await Executor.RunAsync(ReportId, values);
             activeDataSet = run.Results.Keys.FirstOrDefault() ?? "";
+            viewMode = presentation?.HasMeaningfulLayout == true ? "Report" : "Data";
         }
         catch (Exception ex)
         {
