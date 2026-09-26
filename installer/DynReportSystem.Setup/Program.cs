@@ -8,7 +8,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Win32;
 
 const string ProductName = "DynReport System";
-const string Version = "0.5.0";
+const string Version = "0.6.0";
 const string SiteName = "DynReportSystem";
 const string AppPool = "DynReportSystem";
 const int DefaultPort = 47131;
@@ -167,7 +167,8 @@ void Install()
     Console.WriteLine($"SQL-Konfiguration: {existingProd}");
     Console.WriteLine($"Berechtigungen: {existingAcl}");
     Console.WriteLine($"Berichte: {reportsDir}");
-    Console.WriteLine($"Optimierte Berichte: {Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "DynReportSystem", "CustomReports")}");
+    Console.WriteLine($"DynReport-Pakete: {Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "DynReportSystem", "Packages")}");
+    Console.WriteLine($"Revisionen: {Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "DynReportSystem", "Revisions")}");
 
     try
     {
@@ -343,9 +344,13 @@ if ($LASTEXITCODE -ne 0) {{ throw 'Anonymous Authentication konnte nicht in Appl
 if ($LASTEXITCODE -ne 0) {{ throw 'Windows Authentication konnte nicht in ApplicationHost.config konfiguriert werden.' }}
 icacls '{escaped}' /grant 'IIS_IUSRS:(OI)(CI)(RX)' /T /C | Out-Null
 
-$customReportDir = Join-Path $env:ProgramData 'DynReportSystem\CustomReports'
-New-Item -ItemType Directory -Force -Path $customReportDir | Out-Null
-icacls $customReportDir /grant 'IIS AppPool\{AppPool}:(OI)(CI)(M)' /T /C | Out-Null
+$dynRoot = Join-Path $env:ProgramData 'DynReportSystem'
+$packageDir = Join-Path $dynRoot 'Packages'
+$revisionDir = Join-Path $dynRoot 'Revisions'
+New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+New-Item -ItemType Directory -Force -Path $revisionDir | Out-Null
+icacls $packageDir /grant 'IIS AppPool\{AppPool}:(OI)(CI)(M)' /T /C | Out-Null
+icacls $revisionDir /grant 'IIS AppPool\{AppPool}:(OI)(CI)(M)' /T /C | Out-Null
 
 Start-WebAppPool -Name '{AppPool}' -ErrorAction SilentlyContinue
 Start-Website -Name '{SiteName}' -ErrorAction SilentlyContinue
