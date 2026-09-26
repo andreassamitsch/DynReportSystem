@@ -61,6 +61,26 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
 
+app.MapGet("/api/packages/{reportId}/download",
+    (string reportId, HttpContext context, DynReportPackageStore packages, FolderAccess access) =>
+    {
+        if (!access.Can(context.User, reportId, "View"))
+            return Results.Forbid();
+
+        var package = packages.Get(reportId);
+        if (package is null || !File.Exists(package.FilePath))
+            return Results.NotFound();
+
+        var safeTitle = string.Concat(package.Manifest.Title.Select(ch =>
+            Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
+
+        return Results.File(
+            package.FilePath,
+            "application/vnd.dynreport+zip",
+            $"{safeTitle}.dynreport");
+    })
+    .RequireAuthorization();
+
 app.MapRazorComponents<App>()
    .AddInteractiveServerRenderMode()
    .RequireAuthorization();
