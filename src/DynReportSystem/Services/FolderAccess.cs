@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace DynReportSystem.Services;
@@ -39,7 +41,9 @@ public sealed class ReportGrant
 /// Explicit allow only. Rights are inherited from ancestor folders.
 /// The local config can be extended by an imported SSRS migration ACL.
 /// </summary>
-public sealed class FolderAccess(IWebHostEnvironment host)
+public sealed class FolderAccess(
+    IWebHostEnvironment host,
+    DynReportPackageStore packageStore)
 {
     private readonly string _path = Path.Combine(host.ContentRootPath, "config", "permissions.json");
     private readonly string _migrationPath = Path.Combine(host.ContentRootPath, "migration", "permissions.json");
@@ -47,6 +51,7 @@ public sealed class FolderAccess(IWebHostEnvironment host)
     private PlatformCatalog? _catalog;
     private DateTime _mtime;
     private DateTime _migrationMtime;
+    private DateTime _packageMtime;
     private readonly ConcurrentDictionary<string, bool> _principalMatchCache =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -62,9 +67,18 @@ public sealed class FolderAccess(IWebHostEnvironment host)
                 ? File.GetLastWriteTimeUtc(_migrationPath)
                 : DateTime.MinValue;
 
+            var packages = packageStore.List();
+            var packageTime = packages
+                .Select(x => x.ModifiedUtc)
+                .DefaultIfEmpty(DateTime.MinValue)
+                .Max();
+
             lock (_lock)
             {
-                if (_catalog is not null && time == _mtime && migrationTime == _migrationMtime)
+                if (_catalog is not null
+                    && time == _mtime
+                    && migrationTime == _migrationMtime
+                    && packageTime == _packageMtime)
                     return _catalog;
 
                 var config = Read(_path);
@@ -72,11 +86,13 @@ public sealed class FolderAccess(IWebHostEnvironment host)
                 if (File.Exists(_migrationPath))
                     Merge(config, Read(_migrationPath));
 
+                MergePackages(config, packages);
                 Validate(config);
 
                 _catalog = config;
                 _mtime = time;
                 _migrationMtime = migrationTime;
+                _packageMtime = packageTime;
                 return config;
             }
         }
@@ -166,6 +182,97 @@ public sealed class FolderAccess(IWebHostEnvironment host)
 
             target.Reports.Add(report);
         }
+    }
+
+    private static void MergePackages(
+        PlatformCatalog target,
+        IReadOnlyList<DynReportSystem.Models.LoadedDynReportPackage> packages)
+    {
+        foreach (var package in packages)
+        {
+            var manifest = package.Manifest;
+            var folderId = EnsureFolderPath(
+                target,
+                string.IsNullOrWhiteSpace(manifest.FolderPath)
+                    ? ParentPath(manifest.Path)
+                    : manifest.FolderPath);
+
+            var grants = manifest.Grants
+                .Select(grant => new ReportGrant
+                {
+                    PrincipalType = grant.PrincipalType,
+                    Principal = grant.Principal,
+                    Permissions = grant.Permissions.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                })
+                .ToList();
+
+            var report = target.Reports.FirstOrDefault(x =>
+                x.Id.Equals(manifest.ReportId, StringComparison.OrdinalIgnoreCase));
+
+            if (report is null)
+            {
+                report = new ReportItem { Id = manifest.ReportId };
+                target.Reports.Add(report);
+            }
+
+            report.FolderId = folderId;
+            report.Title = manifest.Title;
+            report.Url = $"/reports/package/{Uri.EscapeDataString(manifest.ReportId)}";
+            report.Datasets = package.Document.Datasets.Select(x => x.Id).ToList();
+
+            // A self-contained package owns its runtime ACL. This lets a converted
+            // report survive removal of the ReportServer migration database/RDL.
+            if (grants.Count > 0)
+                report.Grants = grants;
+        }
+    }
+
+    private static string EnsureFolderPath(PlatformCatalog target, string path)
+    {
+        var segments = path
+            .Replace('\\', '/')
+            .Split('/', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        string? parentId = null;
+        var accumulated = "";
+
+        foreach (var segment in segments)
+        {
+            accumulated += "/" + segment;
+
+            var existing = target.Folders.FirstOrDefault(folder =>
+                string.Equals(folder.ParentId, parentId, StringComparison.OrdinalIgnoreCase)
+                && folder.Title.Equals(segment, StringComparison.CurrentCultureIgnoreCase));
+
+            if (existing is null)
+            {
+                existing = new ReportFolder
+                {
+                    Id = StableFolderId(accumulated),
+                    ParentId = parentId,
+                    Title = segment,
+                    Grants = []
+                };
+                target.Folders.Add(existing);
+            }
+
+            parentId = existing.Id;
+        }
+
+        return parentId ?? StableFolderId("/");
+    }
+
+    private static string ParentPath(string path)
+    {
+        var normalized = path.Replace('\\', '/').TrimEnd('/');
+        var index = normalized.LastIndexOf('/');
+        return index <= 0 ? "/" : normalized[..index];
+    }
+
+    private static string StableFolderId(string value)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value.ToLowerInvariant()));
+        return "dyn-folder-" + Convert.ToHexString(bytes[..10]).ToLowerInvariant();
     }
 
     private static void Validate(PlatformCatalog config)
