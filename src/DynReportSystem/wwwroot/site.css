@@ -824,7 +824,7 @@ button.filter-chip{cursor:pointer}
   gap:10px;
   align-items:start
 }
-.dyn2-visual{min-width:0}
+.dyn2-visual{min-width:0;grid-column:span var(--dyn-span,12)}
 .dyn2-heading-block{
   padding:15px 18px;border:1px solid #dce8ea;border-radius:15px;background:#fff;
   box-shadow:0 5px 18px rgba(22,79,91,.045)
@@ -960,7 +960,7 @@ button.filter-chip{cursor:pointer}
 
 @media(max-width:900px){
   .dyn2-layout-grid{grid-template-columns:repeat(12,minmax(0,1fr))}
-  .dyn2-visual{grid-column:span 12!important}
+  .dyn2-visual{grid-column:span var(--dyn-mobile-span,12)!important}
   .designer-form-grid{grid-template-columns:1fr}
   .designer-form-grid .wide{grid-column:auto}
 }
