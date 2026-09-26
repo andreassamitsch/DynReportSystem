@@ -37,7 +37,14 @@ else
 
     <div class="app-layout">
         <aside class="sidebar">
-            <a class="nav-btn" href="/">← Berichtsordner</a>
+            @if (selected == OverviewKey)
+            {
+                <a class="nav-btn" href="/">← Berichtsordner</a>
+            }
+            else
+            {
+                <button class="nav-btn nav-back" @onclick="NavigateBackAsync">← Zurück</button>
+            }
 
             <div class="section-label">ANSICHT</div>
             <button class="nav-btn @(selected == OverviewKey ? "active" : "")"
@@ -67,9 +74,9 @@ else
             }
 
             <div class="sidebar-foot">
-                <strong>DynReport 0.2.0</strong><br />
-                RDL = Datenlogik<br />
-                DynReport = Darstellung & Interaktion
+                <strong>DynReport 0.2.1</strong><br />
+                RDL = Datenlogik &amp; GB-Farben<br />
+                DynReport = Darstellung &amp; Interaktion
             </div>
         </aside>
 
@@ -89,49 +96,70 @@ else
                     <span class="data-badge"><span class="live-dot"></span> SQL Live</span>
                     @if (selected != OverviewKey)
                     {
-                        <button class="ghost-btn" @onclick="ShowOverviewAsync">Dashboard</button>
+                        <button class="ghost-btn" @onclick="NavigateBackAsync">← Zurück</button>
                     }
                 </div>
             </div>
 
-            <section class="filterbar" aria-label="Filter">
-                <label>
-                    Von
-                    <input type="date" @bind="start" />
-                </label>
+            <details class="filter-shell">
+                <summary>
+                    <span>Filter</span>
+                    <span>@FilterSummary</span>
+                </summary>
 
-                <label>
-                    Bis
-                    <input type="date" @bind="ende" />
-                </label>
+                <section class="filterbar" aria-label="Filter">
+                    <label>
+                        Von
+                        <input type="date" @bind="start" />
+                    </label>
 
-                <label>
-                    Kunde
-                    <input type="search"
-                           maxlength="100"
-                           placeholder="Kundenname (optional)"
-                           @bind="kunde"
-                           @bind:event="oninput" />
-                </label>
+                    <label>
+                        Bis
+                        <input type="date" @bind="ende" />
+                    </label>
 
-                <label>
-                    Vertriebsmitarbeiter
-                    <select @bind="mitarbeiter">
-                        @foreach (var person in people)
-                        {
-                            <option value="@person.Key">@person.Value</option>
-                        }
-                    </select>
-                </label>
+                    <label class="filter-customer">
+                        Kunde
+                        <input type="search"
+                               maxlength="100"
+                               placeholder="Kundenname (optional)"
+                               @bind="kunde"
+                               @bind:event="oninput" />
+                    </label>
 
-                <button class="primary-btn" disabled="@busy" @onclick="RefreshAsync">
-                    @(busy ? "Lädt …" : "Anwenden")
-                </button>
+                    <label class="filter-sales">
+                        Vertriebsmitarbeiter
+                        <select @bind="mitarbeiter">
+                            @foreach (var person in people)
+                            {
+                                <option value="@person.Key">@person.Value</option>
+                            }
+                        </select>
+                    </label>
 
-                <button class="ghost-btn filter-reset" disabled="@busy" @onclick="ResetFiltersAsync">
-                    Zurücksetzen
-                </button>
-            </section>
+                    <div class="filter-actions">
+                        <button class="primary-btn" disabled="@busy" @onclick="RefreshAsync">
+                            @(busy ? "Lädt …" : "Anwenden")
+                        </button>
+
+                        <button class="ghost-btn filter-reset" disabled="@busy" @onclick="ResetFiltersAsync">
+                            Zurücksetzen
+                        </button>
+                    </div>
+                </section>
+            </details>
+
+            <div class="active-filter-row">
+                <span class="filter-chip">@start.ToString("dd.MM.yy") – @ende.ToString("dd.MM.yy")</span>
+                @if (!string.IsNullOrWhiteSpace(kunde))
+                {
+                    <button class="filter-chip removable" @onclick="ClearCustomerAsync">Kunde: @kunde ×</button>
+                }
+                @if (!string.IsNullOrWhiteSpace(mitarbeiter))
+                {
+                    <button class="filter-chip removable" @onclick="ClearSalespersonAsync">Vertrieb: @SelectedSalespersonLabel ×</button>
+                }
+            </div>
 
             @if (error is not null)
             {
@@ -150,13 +178,50 @@ else
 
             @if (selected == OverviewKey)
             {
-                <section class="dashboard-section">
-                    <div class="section-heading">
+                @if (PrimaryWidget is DashboardWidget primary)
+                {
+                    var primaryResult = ResultFor(primary.Dataset);
+
+                    <section class="dashboard-section primary-analysis-section">
+                        <div class="section-heading">
+                            <div>
+                                <p class="eyebrow">HAUPTÜBERSICHT</p>
+                                <h2>@primary.Title</h2>
+                                <p class="section-subtitle">@primary.Subtitle</p>
+                            </div>
+                            <span class="interactive-badge">Monat anklicken = filtern</span>
+                        </div>
+
+                        <section class="panel dashboard-widget primary-chart-card">
+                            @if (primaryResult is null)
+                            {
+                                <div class="chart-placeholder">
+                                    <div class="loading-ring small"></div>
+                                    <span>Wird geladen …</span>
+                                </div>
+                            }
+                            else if (primaryResult.Rows.Count == 0)
+                            {
+                                <div class="empty">Keine Daten im gewählten Zeitraum.</div>
+                            }
+                            else
+                            {
+                                <EChart @key="@($"{primary.Id}-{start:yyyyMMdd}-{ende:yyyyMMdd}-{kunde}-{mitarbeiter}")"
+                                        ChartKey="@primary.Id"
+                                        Options="@Charts.BuildDashboard(primary, primaryResult)"
+                                        Height="@($"{Math.Max(320, primary.Height)}px")"
+                                        OnPointClick="HandleChartClickAsync" />
+                            }
+                        </section>
+                    </section>
+                }
+
+                <section class="dashboard-section compact-kpi-section">
+                    <div class="section-heading compact-heading">
                         <div>
                             <p class="eyebrow">KENNZAHLEN</p>
-                            <h2>Aktuelle Geschäftslage</h2>
+                            <h2>Geschäftslage</h2>
                         </div>
-                        <span class="section-note">@start.ToString("dd.MM.yyyy") – @ende.ToString("dd.MM.yyyy")</span>
                     </div>
 
                     <div class="kpi-grid">
@@ -176,8 +241,7 @@ else
                                     @if (summary?.TrendPercent is decimal trend)
                                     {
                                         <span class="trend-chip @(trend >= 0 ? "positive" : "negative")">
-                                            @(trend >= 0 ? "▲" : "▼")
-                                            @Math.Abs(trend).ToString("N1", DeAt) %
+                                            @(trend >= 0 ? "▲" : "▼") @Math.Abs(trend).ToString("N1", DeAt) %
                                         </span>
                                     }
                                 </div>
@@ -186,13 +250,15 @@ else
 
                                 @if (result is not null && !string.IsNullOrWhiteSpace(widget.CategoryField))
                                 {
-                                    <EChart ChartKey="@($"spark-{widget.Id}")"
-                                            Options="@Charts.Sparkline(widget, result)"
-                                            Height="52px" />
+                                    <div class="kpi-spark">
+                                        <EChart ChartKey="@($"spark-{widget.Id}")"
+                                                Options="@Charts.Sparkline(widget, result)"
+                                                Height="34px" />
+                                    </div>
                                 }
 
                                 <div class="kpi-foot">
-                                    <span>Details öffnen</span>
+                                    <span>Details</span>
                                     <span>→</span>
                                 </div>
                             </button>
@@ -203,22 +269,21 @@ else
                 @if (overviewResults.Values.Any(x => x.Truncated))
                 {
                     <div class="notice warn">
-                        Mindestens ein Dashboard-Dataset wurde auf die konfigurierte Maximalzeilenzahl begrenzt.
-                        Summen aus diesem Dataset können unvollständig sein.
+                        Mindestens ein Dashboard-Dataset wurde serverseitig begrenzt. Summen aus diesem Dataset können unvollständig sein.
                     </div>
                 }
 
                 <section class="dashboard-section">
                     <div class="section-heading">
                         <div>
-                            <p class="eyebrow">ENTWICKLUNG & STRUKTUR</p>
+                            <p class="eyebrow">GESCHÄFTSBEREICHE &amp; STRUKTUR</p>
                             <h2>Interaktive Analysen</h2>
                         </div>
-                        <span class="section-note">Grafiken sind zoombar und als Bild exportierbar</span>
+                        <span class="section-note">Tippen/Klicken = filtern oder Drilldown · Legenden schalten Serien ein/aus</span>
                     </div>
 
                     <div class="dynamic-dashboard-grid">
-                        @foreach (var widget in ChartWidgets)
+                        @foreach (var widget in SecondaryChartWidgets)
                         {
                             var result = ResultFor(widget.Dataset);
 
@@ -251,7 +316,7 @@ else
                                     <EChart @key="@($"{widget.Id}-{start:yyyyMMdd}-{ende:yyyyMMdd}-{kunde}-{mitarbeiter}")"
                                             ChartKey="@widget.Id"
                                             Options="@Charts.BuildDashboard(widget, result)"
-                                            Height="@($"{Math.Max(260, widget.Height)}px")"
+                                            Height="@($"{Math.Max(250, widget.Height)}px")"
                                             OnPointClick="HandleChartClickAsync" />
                                 }
                             </section>
@@ -269,15 +334,10 @@ else
                         </button>
                     }
                 </section>
-
-                <div class="notice info">
-                    Die RDL wird ausschließlich als Daten- und Geschäftslogikquelle verwendet.
-                    Layout, Kennzahlen, Charts, Karten und Interaktionen stammen aus DynReport.
-                </div>
             }
             else
             {
-                @if (detailCharts.Count > 0)
+                @if (relatedChart is not null || detailCharts.Count > 0)
                 {
                     <section class="dashboard-section">
                         <div class="section-heading">
@@ -287,11 +347,28 @@ else
                             </div>
                             @if (selected == "Umsatz")
                             {
-                                <span class="section-note">Kartendaten: @("@svg-maps/world") · CC BY 4.0</span>
+                                <span class="section-note">GB-Farben aus RDL · Kartendaten @("@svg-maps/world")</span>
                             }
                         </div>
 
                         <div class="detail-visual-grid">
+                            @if (relatedChart is not null)
+                            {
+                                <section class="panel dashboard-widget detail-wide-chart">
+                                    <div class="panel-head">
+                                        <div>
+                                            <h2>@relatedChart.Title</h2>
+                                            <p>@relatedChart.Subtitle</p>
+                                        </div>
+                                        <span class="interactive-badge">RDL-Logik</span>
+                                    </div>
+                                    <EChart @key="@($"{relatedChart.Key}-{start:yyyyMMdd}-{ende:yyyyMMdd}-{kunde}-{mitarbeiter}")"
+                                            ChartKey="@relatedChart.Key"
+                                            Options="@relatedChart.Options"
+                                            Height="@relatedChart.Height" />
+                                </section>
+                            }
+
                             @foreach (var chart in detailCharts)
                             {
                                 <section class="panel dashboard-widget">
@@ -316,13 +393,13 @@ else
                     <div class="panel-head detail-head">
                         <div>
                             <h2>Datensätze</h2>
-                            <p>@LabelFor(selected) · aus der aktuell installierten RDL</p>
+                            <p>@LabelFor(selected) · jede Spalte filter- und sortierbar</p>
                         </div>
 
                         <div class="detail-actions">
                             <span class="muted">
-                                @FilteredDetailRows.Count.ToString("N0", DeAt)
-                                @if (detail is not null && FilteredDetailRows.Count != detail.Rows.Count)
+                                @filteredDetailRows.Count.ToString("N0", DeAt)
+                                @if (detail is not null && filteredDetailRows.Count != detail.Rows.Count)
                                 {
                                     <text> von @detail.Rows.Count.ToString("N0", DeAt)</text>
                                 }
@@ -330,7 +407,7 @@ else
                             </span>
 
                             <button class="ghost-btn" disabled="@(detail is null || detail.Rows.Count == 0)" @onclick="ExportCsvAsync">
-                                CSV exportieren
+                                CSV
                             </button>
                         </div>
                     </div>
@@ -350,16 +427,24 @@ else
                     {
                         <div class="table-toolbar">
                             <label class="table-search">
-                                <span>Suche</span>
+                                <span>Globale Suche</span>
                                 <input type="search"
-                                       placeholder="In allen sichtbaren Feldern suchen …"
-                                       @bind="TableSearch"
-                                       @bind:event="oninput" />
+                                       placeholder="Alle Spalten durchsuchen …"
+                                       value="@tableSearch"
+                                       @oninput="OnGlobalSearch" />
                             </label>
+
+                            <div class="table-filter-summary">
+                                @if (ColumnFilterCount > 0)
+                                {
+                                    <span>@ColumnFilterCount Spaltenfilter aktiv</span>
+                                    <button class="text-btn" @onclick="ClearColumnFilters">Filter löschen</button>
+                                }
+                            </div>
 
                             <label class="page-size">
                                 <span>Zeilen</span>
-                                <select @bind="pageSize">
+                                <select @bind="PageSize">
                                     <option value="50">50</option>
                                     <option value="100">100</option>
                                     <option value="250">250</option>
@@ -371,17 +456,33 @@ else
                         <div class="table-scroll">
                             <table class="data-table">
                                 <thead>
-                                    <tr>
+                                    <tr class="table-sort-row">
                                         @foreach (var column in detail.Columns)
                                         {
                                             <th>
                                                 <button class="column-sort" @onclick="() => SortBy(column)">
-                                                    @column
+                                                    <span>@column</span>
                                                     @if (sortColumn == column)
                                                     {
-                                                        <span>@(sortAscending ? "▲" : "▼")</span>
+                                                        <span class="sort-indicator">@(sortAscending ? "▲" : "▼")</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="sort-indicator muted-sort">↕</span>
                                                     }
                                                 </button>
+                                            </th>
+                                        }
+                                    </tr>
+                                    <tr class="table-filter-row">
+                                        @foreach (var column in detail.Columns)
+                                        {
+                                            <th>
+                                                <input class="column-filter"
+                                                       value="@GetColumnFilter(column)"
+                                                       @oninput="e => SetColumnFilter(column, e.Value?.ToString())"
+                                                       placeholder="Filtern …"
+                                                       title="Textsuche; optional =, !=, >, >=, < oder <= verwenden" />
                                             </th>
                                         }
                                     </tr>
@@ -415,7 +516,7 @@ else
             }
 
             <footer>
-                DynReport System 0.2.0 · Windows SSO · moderne Visualisierung auf bestehender RDL-Datenlogik
+                DynReport System 0.2.1 · Windows SSO · RDL-Datenlogik und RDL-Geschäftsbereichsfarben
             </footer>
         </main>
     </div>
@@ -435,6 +536,8 @@ else
     private string mitarbeiter = "";
     private DateTime start;
     private DateTime ende;
+    private DateTime defaultStart;
+    private DateTime defaultEnd;
     private int page;
     private int pageSize = 100;
     private string tableSearch = "";
@@ -444,28 +547,26 @@ else
     private DashboardDefinition dashboard = new();
     private List<KeyValuePair<string, string>> people = [new("", "Alle")];
     private readonly Dictionary<string, QueryResult> overviewResults = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> columnFilters = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Stack<string> viewHistory = new();
+    private List<Dictionary<string, object?>> filteredDetailRows = [];
     private QueryResult? detail;
     private IReadOnlyList<ChartDefinition> detailCharts = [];
+    private ChartDefinition? relatedChart;
 
-    private string TableSearch
-    {
-        get => tableSearch;
-        set
-        {
-            tableSearch = value ?? "";
-            page = 0;
-        }
-    }
+    private DashboardWidget? PrimaryWidget =>
+        dashboard.Widgets.FirstOrDefault(w => w.Id.Equals("umsatzverlauf", StringComparison.OrdinalIgnoreCase));
 
     private IEnumerable<DashboardWidget> KpiWidgets =>
         dashboard.Widgets
             .Where(w => w.Type.Equals("kpi", StringComparison.OrdinalIgnoreCase))
             .OrderBy(w => w.Order);
 
-    private IEnumerable<DashboardWidget> ChartWidgets =>
+    private IEnumerable<DashboardWidget> SecondaryChartWidgets =>
         dashboard.Widgets
             .Where(w => !w.Type.Equals("kpi", StringComparison.OrdinalIgnoreCase)
-                     && !w.Type.Equals("detail-link", StringComparison.OrdinalIgnoreCase))
+                     && !w.Type.Equals("detail-link", StringComparison.OrdinalIgnoreCase)
+                     && !w.Id.Equals("umsatzverlauf", StringComparison.OrdinalIgnoreCase))
             .OrderBy(w => w.Order);
 
     private IEnumerable<DashboardWidget> DetailWidgets =>
@@ -479,38 +580,38 @@ else
             .Where(x => !dashboard.Widgets.Any(w => w.Dataset.Equals(x, StringComparison.OrdinalIgnoreCase)))
             .OrderBy(LabelFor);
 
-    private List<Dictionary<string, object?>> FilteredDetailRows
+    private IEnumerable<Dictionary<string, object?>> VisibleRows =>
+        filteredDetailRows.Skip(page * pageSize).Take(pageSize);
+
+    private int PageCount =>
+        Math.Max(1, (int)Math.Ceiling(filteredDetailRows.Count / (double)pageSize));
+
+    private int PageSize
     {
-        get
+        get => pageSize;
+        set
         {
-            if (detail is null)
-                return [];
-
-            IEnumerable<Dictionary<string, object?>> rows = detail.Rows;
-
-            if (!string.IsNullOrWhiteSpace(tableSearch))
-            {
-                rows = rows.Where(row =>
-                    detail.Columns.Any(column =>
-                        Cell(row, column).Contains(tableSearch, StringComparison.CurrentCultureIgnoreCase)));
-            }
-
-            if (!string.IsNullOrWhiteSpace(sortColumn))
-            {
-                rows = sortAscending
-                    ? rows.OrderBy(row => SortValue(row, sortColumn), ObjectComparer.Instance)
-                    : rows.OrderByDescending(row => SortValue(row, sortColumn), ObjectComparer.Instance);
-            }
-
-            return rows.ToList();
+            pageSize = value;
+            page = 0;
         }
     }
 
-    private IEnumerable<Dictionary<string, object?>> VisibleRows =>
-        FilteredDetailRows.Skip(page * pageSize).Take(pageSize);
+    private int ColumnFilterCount =>
+        columnFilters.Values.Count(x => !string.IsNullOrWhiteSpace(x));
 
-    private int PageCount =>
-        Math.Max(1, (int)Math.Ceiling(FilteredDetailRows.Count / (double)pageSize));
+    private string SelectedSalespersonLabel =>
+        people.FirstOrDefault(x => x.Key.Equals(mitarbeiter, StringComparison.OrdinalIgnoreCase)).Value
+        ?? mitarbeiter;
+
+    private string FilterSummary
+    {
+        get
+        {
+            var customer = string.IsNullOrWhiteSpace(kunde) ? "alle Kunden" : kunde;
+            var sales = string.IsNullOrWhiteSpace(mitarbeiter) ? "alle Mitarbeiter" : SelectedSalespersonLabel;
+            return $"{start:dd.MM.yy}–{ende:dd.MM.yy} · {customer} · {sales}";
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -539,8 +640,10 @@ else
     private void SetDefaultDates()
     {
         var now = DateTime.Today;
-        start = new DateTime(now.Year - 1, now.Month, 1);
-        ende = new DateTime(now.Year + 1, now.Month, 1).AddDays(-1);
+        defaultStart = new DateTime(now.Year - 1, now.Month, 1);
+        defaultEnd = new DateTime(now.Year + 1, now.Month, 1).AddDays(-1);
+        start = defaultStart;
+        ende = defaultEnd;
     }
 
     private ReportFilters Filters => new(start, ende, kunde ?? "", mitarbeiter ?? "");
@@ -563,25 +666,53 @@ else
         if (list.All(x => x.Key.Length != 0))
             list.Insert(0, new("", "Alle"));
 
-        people = list;
+        people = list
+            .DistinctBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private async Task ShowOverviewAsync()
     {
+        viewHistory.Clear();
         selected = OverviewKey;
-        page = 0;
-        tableSearch = "";
+        ResetTableState();
         await LoadOverviewAsync();
     }
 
     private async Task ShowDatasetAsync(string dataset)
     {
+        if (!selected.Equals(dataset, StringComparison.OrdinalIgnoreCase))
+            viewHistory.Push(selected);
+
         selected = dataset;
-        page = 0;
-        tableSearch = "";
-        sortColumn = null;
-        sortAscending = true;
+        ResetTableState();
         await LoadDetailAsync(dataset);
+    }
+
+    private async Task NavigateBackAsync()
+    {
+        if (viewHistory.TryPop(out var previous))
+        {
+            selected = previous;
+            ResetTableState();
+
+            if (previous == OverviewKey)
+                await LoadOverviewAsync();
+            else
+                await LoadDetailAsync(previous);
+
+            return;
+        }
+
+        if (selected != OverviewKey)
+        {
+            selected = OverviewKey;
+            ResetTableState();
+            await LoadOverviewAsync();
+            return;
+        }
+
+        await JS.InvokeVoidAsync("DynReportCharts.goBack", "/");
     }
 
     private async Task RefreshAsync()
@@ -596,15 +727,25 @@ else
 
     private async Task ResetFiltersAsync()
     {
-        SetDefaultDates();
+        start = defaultStart;
+        ende = defaultEnd;
         kunde = "";
         mitarbeiter = "";
         page = 0;
 
-        if (selected == OverviewKey)
-            await LoadOverviewAsync();
-        else
-            await LoadDetailAsync(selected);
+        await RefreshAsync();
+    }
+
+    private async Task ClearCustomerAsync()
+    {
+        kunde = "";
+        await RefreshAsync();
+    }
+
+    private async Task ClearSalespersonAsync()
+    {
+        mitarbeiter = "";
+        await RefreshAsync();
     }
 
     private async Task LoadOverviewAsync()
@@ -640,17 +781,34 @@ else
     {
         busy = true;
         error = null;
+        relatedChart = null;
 
         try
         {
             detail = await Reports.RunAsync(dataset, Filters);
             detailCharts = Charts.BuildDetail(dataset, detail);
-            page = 0;
+
+            if (dataset.Equals("offeneABs", StringComparison.OrdinalIgnoreCase)
+                && Reports.Datasets.ContainsKey("offeneRAs"))
+            {
+                var framework = await Reports.RunAsync("offeneRAs", Filters);
+                relatedChart = Charts.BuildOpenOrderBusinessArea(detail, framework);
+            }
+            else if (dataset.Equals("offeneRAs", StringComparison.OrdinalIgnoreCase)
+                     && Reports.Datasets.ContainsKey("offeneABs"))
+            {
+                var openOrders = await Reports.RunAsync("offeneABs", Filters);
+                relatedChart = Charts.BuildOpenOrderBusinessArea(openOrders, detail);
+            }
+
+            RebuildFilteredRows();
         }
         catch (Exception ex)
         {
             detail = null;
             detailCharts = [];
+            relatedChart = null;
+            filteredDetailRows = [];
             error = Friendly(ex);
         }
         finally
@@ -665,38 +823,74 @@ else
         if (widget is null || !widget.Interactive)
             return;
 
+        string? categoryKey = null;
+        string? categoryLabel = null;
+        string? groupLabel = null;
+
         if (e.Data.ValueKind == JsonValueKind.Object)
         {
             if (e.Data.TryGetProperty("categoryKey", out var keyElement))
-            {
-                var key = keyElement.GetString();
+                categoryKey = keyElement.GetString();
 
-                if (DateTime.TryParse(key, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
-                    && string.Equals(widget.TimeBucket, "month", StringComparison.OrdinalIgnoreCase))
-                {
-                    start = new DateTime(date.Year, date.Month, 1);
-                    ende = start.AddMonths(1).AddDays(-1);
-                    await LoadOverviewAsync();
-                    return;
-                }
-            }
+            if (e.Data.TryGetProperty("categoryLabel", out var labelElement))
+                categoryLabel = labelElement.GetString();
 
-            if (e.Data.TryGetProperty("categoryLabel", out var labelElement)
-                && widget.Id.Equals("top-kunden", StringComparison.OrdinalIgnoreCase))
-            {
-                var label = labelElement.GetString() ?? "";
-                if (!string.IsNullOrWhiteSpace(label)
-                    && !label.Equals("Übrige Kunden", StringComparison.OrdinalIgnoreCase))
-                {
-                    kunde = label;
-                    await LoadOverviewAsync();
-                    return;
-                }
-            }
+            if (e.Data.TryGetProperty("groupLabel", out var groupElement))
+                groupLabel = groupElement.GetString();
         }
 
-        if (!widget.Type.Equals("kpi", StringComparison.OrdinalIgnoreCase))
-            await ShowDatasetAsync(widget.Dataset);
+        if (widget.Id.Equals("top-kunden", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(categoryLabel)
+            && !categoryLabel.Equals("Übrige Kunden", StringComparison.OrdinalIgnoreCase))
+        {
+            kunde = categoryLabel;
+            await LoadOverviewAsync();
+            return;
+        }
+
+        if (DateTime.TryParse(categoryKey, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+            && string.Equals(widget.TimeBucket, "month", StringComparison.OrdinalIgnoreCase))
+        {
+            start = new DateTime(date.Year, date.Month, 1);
+            ende = start.AddMonths(1).AddDays(-1);
+
+            if (!string.IsNullOrWhiteSpace(groupLabel) && !string.IsNullOrWhiteSpace(widget.GroupField))
+            {
+                await OpenDetailFilteredAsync(widget.Dataset, widget.GroupField, groupLabel);
+                return;
+            }
+
+            await LoadOverviewAsync();
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(groupLabel) && !string.IsNullOrWhiteSpace(widget.GroupField))
+        {
+            await OpenDetailFilteredAsync(widget.Dataset, widget.GroupField, groupLabel);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(categoryLabel)
+            && !string.IsNullOrWhiteSpace(widget.CategoryField)
+            && !widget.CategoryField.Contains("datum", StringComparison.OrdinalIgnoreCase)
+            && !widget.CategoryField.Equals("Monat", StringComparison.OrdinalIgnoreCase))
+        {
+            await OpenDetailFilteredAsync(widget.Dataset, widget.CategoryField, categoryLabel);
+            return;
+        }
+
+        await ShowDatasetAsync(widget.Dataset);
+    }
+
+    private async Task OpenDetailFilteredAsync(string dataset, string column, string value)
+    {
+        await ShowDatasetAsync(dataset);
+
+        if (detail is not null && detail.Columns.Contains(column, StringComparer.OrdinalIgnoreCase))
+        {
+            columnFilters[column] = value;
+            RebuildFilteredRows();
+        }
     }
 
     private QueryResult? ResultFor(string dataset) =>
@@ -717,6 +911,36 @@ else
                 ? value.ToString("N0", DeAt)
                 : value.ToString("N1", DeAt);
 
+    private void OnGlobalSearch(ChangeEventArgs e)
+    {
+        tableSearch = e.Value?.ToString() ?? "";
+        page = 0;
+        RebuildFilteredRows();
+    }
+
+    private string GetColumnFilter(string column) =>
+        columnFilters.TryGetValue(column, out var value) ? value : "";
+
+    private void SetColumnFilter(string column, string? value)
+    {
+        var text = value?.Trim() ?? "";
+
+        if (string.IsNullOrWhiteSpace(text))
+            columnFilters.Remove(column);
+        else
+            columnFilters[column] = text;
+
+        page = 0;
+        RebuildFilteredRows();
+    }
+
+    private void ClearColumnFilters()
+    {
+        columnFilters.Clear();
+        page = 0;
+        RebuildFilteredRows();
+    }
+
     private void SortBy(string column)
     {
         if (sortColumn == column)
@@ -728,6 +952,110 @@ else
         }
 
         page = 0;
+        RebuildFilteredRows();
+    }
+
+    private void RebuildFilteredRows()
+    {
+        if (detail is null)
+        {
+            filteredDetailRows = [];
+            return;
+        }
+
+        IEnumerable<Dictionary<string, object?>> rows = detail.Rows;
+
+        if (!string.IsNullOrWhiteSpace(tableSearch))
+        {
+            rows = rows.Where(row =>
+                detail.Columns.Any(column =>
+                    Cell(row, column).Contains(tableSearch, StringComparison.CurrentCultureIgnoreCase)));
+        }
+
+        foreach (var filter in columnFilters.Where(x => !string.IsNullOrWhiteSpace(x.Value)))
+        {
+            var column = filter.Key;
+            var expression = filter.Value;
+            rows = rows.Where(row => MatchesColumnFilter(row, column, expression));
+        }
+
+        if (!string.IsNullOrWhiteSpace(sortColumn))
+        {
+            rows = sortAscending
+                ? rows.OrderBy(row => SortValue(row, sortColumn), ObjectComparer.Instance)
+                : rows.OrderByDescending(row => SortValue(row, sortColumn), ObjectComparer.Instance);
+        }
+
+        filteredDetailRows = rows.ToList();
+
+        if (page >= PageCount)
+            page = Math.Max(0, PageCount - 1);
+    }
+
+    private static bool MatchesColumnFilter(
+        IReadOnlyDictionary<string, object?> row,
+        string column,
+        string expression)
+    {
+        var raw = QueryResult.Get(row, column);
+        var cell = Cell(row, column);
+        var term = expression.Trim();
+
+        if (term.StartsWith("!=", StringComparison.Ordinal))
+            return !cell.Equals(term[2..].Trim(), StringComparison.CurrentCultureIgnoreCase);
+
+        if (term.StartsWith("=", StringComparison.Ordinal))
+            return cell.Equals(term[1..].Trim(), StringComparison.CurrentCultureIgnoreCase);
+
+        foreach (var op in new[] { ">=", "<=", ">", "<" })
+        {
+            if (!term.StartsWith(op, StringComparison.Ordinal))
+                continue;
+
+            var rhs = term[op.Length..].Trim();
+            var comparison = CompareFilterValues(raw, rhs);
+            if (comparison is null)
+                return false;
+
+            return op switch
+            {
+                ">=" => comparison >= 0,
+                "<=" => comparison <= 0,
+                ">" => comparison > 0,
+                "<" => comparison < 0,
+                _ => false
+            };
+        }
+
+        return cell.Contains(term, StringComparison.CurrentCultureIgnoreCase);
+    }
+
+    private static int? CompareFilterValues(object? raw, string rhs)
+    {
+        if (raw is null)
+            return null;
+
+        if (decimal.TryParse(Convert.ToString(raw, DeAt), NumberStyles.Any, DeAt, out var leftNumber)
+            && decimal.TryParse(rhs, NumberStyles.Any, DeAt, out var rightNumber))
+            return leftNumber.CompareTo(rightNumber);
+
+        var leftDate = raw switch
+        {
+            DateTime dt => dt,
+            DateTimeOffset dto => dto.DateTime,
+            _ => DateTime.TryParse(Convert.ToString(raw, DeAt), DeAt, DateTimeStyles.AllowWhiteSpaces, out var parsed)
+                ? parsed
+                : (DateTime?)null
+        };
+
+        if (leftDate.HasValue
+            && DateTime.TryParse(rhs, DeAt, DateTimeStyles.AllowWhiteSpaces, out var rightDate))
+            return leftDate.Value.CompareTo(rightDate);
+
+        return string.Compare(
+            Convert.ToString(raw, DeAt),
+            rhs,
+            StringComparison.CurrentCultureIgnoreCase);
     }
 
     private static object? SortValue(IReadOnlyDictionary<string, object?> row, string column) =>
@@ -738,7 +1066,7 @@ else
         if (detail is null)
             return;
 
-        var rows = FilteredDetailRows
+        var rows = filteredDetailRows
             .Select(row => detail.Columns.ToDictionary(column => column, column => (object?)Cell(row, column)))
             .ToArray();
 
@@ -760,13 +1088,24 @@ else
             page++;
     }
 
+    private void ResetTableState()
+    {
+        page = 0;
+        tableSearch = "";
+        sortColumn = null;
+        sortAscending = true;
+        columnFilters.Clear();
+        filteredDetailRows = [];
+        relatedChart = null;
+    }
+
     private static string DetailHint(string dataset) => dataset switch
     {
-        "Umsatz" => "Weltkarte, Geschäftsbereichsmix und Buchungsdetails",
-        "Bestelleingang" => "Verlauf, Geschäftsbereiche und Auftragsdetails",
+        "Umsatz" => "GB-Stapel, Weltkarte, Geschäftsbereichsmix und Buchungen",
+        "Bestelleingang" => "GB-Stapel, Verlauf und Auftragsdetails",
         "Angebote" => "Status, Geschäftsbereiche und Angebotspositionen",
-        "offeneABs" => "Offene Aufträge nach Geschäftsbereich",
-        "offeneRAs" => "Rahmenabrufe und offene Werte",
+        "offeneABs" => "Offene AB + Rahmen gestapelt nach Geschäftsbereich",
+        "offeneRAs" => "Rahmen + offene AB gestapelt nach Geschäftsbereich",
         "offenPosten" => "OP-Aging nach Fälligkeit",
         "KundenReklamationen" => "Reklamationstrend und Kosten",
         "LagerndeKundenartikel" => "Lagerstatus und gebundener Lagerwert",
@@ -781,7 +1120,7 @@ else
         "offenPosten" => "Offene Posten",
         "offeneRAs" => "Offene Rahmenaufträge",
         "UmsatzTopKunden" => "Top-Kunden",
-        "KundenUmsatzAuftragMonat" => "Umsatz & Aufträge je Monat",
+        "KundenUmsatzAuftragMonat" => "Umsatz · AB · Rahmen je Monat",
         "Angebote" => "Angebote",
         "AngebotsStatusAnalyse" => "Angebotsstatus",
         "AngebotsAblehnungsgruende" => "Ablehnungsgründe",
