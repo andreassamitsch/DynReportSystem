@@ -35,7 +35,7 @@ else
     private RenderFragment RenderVisual(DynVisual visual) => builder =>
     {
         var sequence = 0;
-        var style = $"grid-column:span {Math.Clamp(visual.Span, 1, 24)};--dyn-mobile-span:{Math.Clamp(visual.MobileSpan, 1, 24)}";
+        var style = $"--dyn-span:{Math.Clamp(visual.Span, 1, 24)};--dyn-mobile-span:{Math.Clamp(visual.MobileSpan, 1, 24)}";
 
         builder.OpenElement(sequence++, "section");
         builder.AddAttribute(sequence++, "class", $"dyn2-visual {visual.CssClass}".Trim());
