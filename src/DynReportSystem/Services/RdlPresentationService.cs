@@ -605,16 +605,16 @@ public sealed partial class RdlPresentationService(ImportedPortalCatalog portal)
         return XDocument.Load(reader);
     }
 
-    [GeneratedRegex(@"Fields!(?<field>[A-Za-z0-9_ÄÖÜäöüß ]+).Value", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"Fields!(?<field>[^.]+)\.Value", RegexOptions.IgnoreCase)]
     private static partial Regex FieldReferenceRegex();
 
-    [GeneratedRegex(@"(?<agg>Sum|Avg|Average|Count|Min|Max|First|Last)s*(s*Fields!(?<field>[A-Za-z0-9_ÄÖÜäöüß ]+).Value", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?<agg>Sum|Avg|Average|Count|Min|Max|First|Last)\s*\(\s*Fields!(?<field>[^.]+)\.Value", RegexOptions.IgnoreCase)]
     private static partial Regex AggregateRegex();
 
-    [GeneratedRegex(@"Cases+""(?<key>[^""]+)""(?:(?!Case).){0,400}?""(?<color>#[0-9A-Fa-f]{6})""", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    [GeneratedRegex(@"Case\s+""(?<key>[^""]+)""(?:(?!\bCase\b).){0,400}?""(?<color>#[0-9A-Fa-f]{6})""", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
     private static partial Regex CodeColorRegex();
 
-    [GeneratedRegex(@"^(?<value>-?[0-9]+(?:.[0-9]+)?)s*(?<unit>in|cm|mm|pt|pc)?$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^(?<value>-?[0-9]+(?:\.[0-9]+)?)\s*(?<unit>in|cm|mm|pt|pc)?$", RegexOptions.IgnoreCase)]
     private static partial Regex UnitRegex();
 
     private sealed record CachedPresentation(DateTime Modified, RdlPresentationDefinition Definition);
