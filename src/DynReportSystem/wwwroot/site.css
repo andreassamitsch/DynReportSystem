@@ -752,3 +752,16 @@ button.filter-chip{cursor:pointer}
   .rdl-group-chips{display:none}
   .rdl-table-card .table-scroll{max-height:68vh}
 }
+
+.rdl-table-group-row td{
+  position:sticky;
+  left:0;
+  background:#eef5f6!important;
+  color:#3f6069;
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:.08px;
+  border-top:1px solid #d8e6e8;
+  border-bottom:1px solid #dfeaec;
+  padding:6px 9px!important;
+}
