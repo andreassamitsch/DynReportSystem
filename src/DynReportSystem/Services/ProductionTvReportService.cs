@@ -68,9 +68,13 @@ public sealed class ProductionTvReportService
             .First();
 
         var status = Text(latest, config.StatusField);
-        var statusColor = config.StatusColors.TryGetValue(status, out var color)
-            ? color
-            : config.FallbackStatusColor;
+        var statusColor = config.StatusColors
+            .FirstOrDefault(entry =>
+                entry.Key.Equals(status, StringComparison.OrdinalIgnoreCase))
+            .Value;
+
+        if (string.IsNullOrWhiteSpace(statusColor))
+            statusColor = config.FallbackStatusColor;
 
         var productionMinutes = rows
             .Where(row => Text(row, config.StatusField)
