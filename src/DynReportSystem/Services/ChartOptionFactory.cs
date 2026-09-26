@@ -216,7 +216,10 @@ public sealed class ChartOptionFactory(RdlStyleCatalog styles)
             {
                 ["value"] = p.Values.GetValueOrDefault(s.Name),
                 ["categoryKey"] = p.Key,
-                ["categoryLabel"] = p.Label
+                ["categoryLabel"] = p.Label,
+                ["stackTotal"] = widget.Id.Equals("umsatzverlauf", StringComparison.OrdinalIgnoreCase)
+                    ? series.Sum(x => p.Values.GetValueOrDefault(x.Name))
+                    : null
             }).ToArray();
 
             var entry = new Dictionary<string, object?>
@@ -297,6 +300,20 @@ public sealed class ChartOptionFactory(RdlStyleCatalog styles)
             : widget.Id.Equals("umsatzverlauf", StringComparison.OrdinalIgnoreCase)
                 ? "primary-stack"
                 : "cartesian";
+
+        if (widget.Id.Equals("umsatzverlauf", StringComparison.OrdinalIgnoreCase) && series.Count > 0)
+        {
+            option["__dynStackTotalSeries"] = series[^1].Name;
+            option["__dynStackTotalFormat"] = "currency";
+            option["grid"] = new Dictionary<string, object?>
+            {
+                ["left"] = 55,
+                ["right"] = 30,
+                ["top"] = 58,
+                ["bottom"] = categories.Length > 14 ? 65 : 45,
+                ["containLabel"] = true
+            };
+        }
 
         if (!horizontal && categories.Length > 18)
         {
