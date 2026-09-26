@@ -3,7 +3,7 @@ using DynReportSystem.Models;
 
 namespace DynReportSystem.Services;
 
-public sealed class ChartOptionFactory
+public sealed class ChartOptionFactory(RdlStyleCatalog styles)
 {
     private static readonly CultureInfo DeAt = CultureInfo.GetCultureInfo("de-AT");
 
@@ -21,6 +21,9 @@ public sealed class ChartOptionFactory
             }];
 
         var points = Aggregate(widget, result, series);
+
+        if (widget.Type.Equals("echarts-grouped-stack", StringComparison.OrdinalIgnoreCase))
+            return GroupedStack(widget, result, series[0]);
 
         return widget.Type.ToLowerInvariant() switch
         {
@@ -226,14 +229,28 @@ public sealed class ChartOptionFactory
                 ["emphasis"] = new Dictionary<string, object?> { ["focus"] = "series" }
             };
 
+            if (!string.IsNullOrWhiteSpace(s.Stack))
+                entry["stack"] = s.Stack;
+
+            var itemStyle = new Dictionary<string, object?>();
+
             if (type.Equals("bar", StringComparison.OrdinalIgnoreCase))
             {
-                entry["barMaxWidth"] = 28;
-                entry["itemStyle"] = new Dictionary<string, object?> { ["borderRadius"] = horizontal ? new[] { 0, 5, 5, 0 } : new[] { 5, 5, 0, 0 } };
+                entry["barMaxWidth"] = 30;
+                itemStyle["borderRadius"] = horizontal ? new[] { 0, 5, 5, 0 } : new[] { 4, 4, 0, 0 };
             }
 
+            if (!string.IsNullOrWhiteSpace(s.Color))
+            {
+                itemStyle["color"] = s.Color;
+                entry["lineStyle"] = new Dictionary<string, object?> { ["color"] = s.Color, ["width"] = 2.5 };
+            }
+
+            if (itemStyle.Count > 0)
+                entry["itemStyle"] = itemStyle;
+
             if (area || s.Area)
-                entry["areaStyle"] = new Dictionary<string, object?> { ["opacity"] = 0.12 };
+                entry["areaStyle"] = new Dictionary<string, object?> { ["opacity"] = 0.15 };
 
             if (s.Axis > 0)
                 entry["yAxisIndex"] = s.Axis;
@@ -275,12 +292,152 @@ public sealed class ChartOptionFactory
         option["yAxis"] = horizontal ? categoryAxis : valueAxis;
         option["series"] = chartSeries;
         option["toolbox"] = Toolbox();
+        option["__dynResponsive"] = horizontal
+            ? "horizontal-bar"
+            : widget.Id.Equals("umsatzverlauf", StringComparison.OrdinalIgnoreCase)
+                ? "primary-stack"
+                : "cartesian";
 
         if (!horizontal && categories.Length > 18)
         {
             option["dataZoom"] = new object[]
             {
                 new Dictionary<string, object?> { ["type"] = "inside", ["start"] = 0, ["end"] = 70 },
+                new Dictionary<string, object?> { ["type"] = "slider", ["height"] = 14, ["bottom"] = 3 }
+            };
+        }
+
+        return option;
+    }
+
+    private object GroupedStack(
+        DashboardWidget widget,
+        QueryResult result,
+        DashboardSeries template)
+    {
+        if (string.IsNullOrWhiteSpace(widget.CategoryField)
+            || string.IsNullOrWhiteSpace(widget.GroupField)
+            || string.IsNullOrWhiteSpace(template.Field))
+            return new Dictionary<string, object?>();
+
+        var groups = new Dictionary<string, DynamicGroup>(StringComparer.OrdinalIgnoreCase);
+        var categories = new Dictionary<string, (string Label, DateTime? Date)>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in result.Rows)
+        {
+            var rawCategory = QueryResult.Get(row, widget.CategoryField);
+            var date = ToDate(rawCategory);
+            var categoryKey = CategoryKey(rawCategory, date, widget.TimeBucket);
+            var categoryLabel = CategoryLabel(rawCategory, date, widget.TimeBucket);
+
+            var groupLabel = Text(row, widget.GroupField);
+            if (string.IsNullOrWhiteSpace(groupLabel))
+                groupLabel = "Ohne Zuordnung";
+
+            var colorKey = string.IsNullOrWhiteSpace(widget.GroupColorField)
+                ? groupLabel
+                : Text(row, widget.GroupColorField);
+
+            if (!groups.TryGetValue(groupLabel, out var group))
+            {
+                group = new DynamicGroup(groupLabel, colorKey, styles.BusinessAreaColor(colorKey));
+                groups[groupLabel] = group;
+            }
+
+            categories[categoryKey] = (categoryLabel, date);
+            group.Values[categoryKey] = group.Values.GetValueOrDefault(categoryKey) + (Decimal(row, template.Field) ?? 0m);
+        }
+
+        var orderedCategories = categories
+            .Select(x => new { Key = x.Key, x.Value.Label, x.Value.Date })
+            .OrderBy(x => x.Date ?? DateTime.MaxValue)
+            .ThenBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
+        var orderedGroups = groups.Values
+            .OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
+        var formatMap = orderedGroups.ToDictionary(x => x.Label, _ => template.Format, StringComparer.OrdinalIgnoreCase);
+
+        var series = orderedGroups.Select(group =>
+        {
+            var type = string.IsNullOrWhiteSpace(template.Type) ? "bar" : template.Type;
+            var entry = new Dictionary<string, object?>
+            {
+                ["name"] = group.Label,
+                ["type"] = type,
+                ["stack"] = string.IsNullOrWhiteSpace(template.Stack) ? "business-area" : template.Stack,
+                ["smooth"] = type.Equals("line", StringComparison.OrdinalIgnoreCase),
+                ["symbol"] = type.Equals("line", StringComparison.OrdinalIgnoreCase) ? "none" : null,
+                ["emphasis"] = new Dictionary<string, object?> { ["focus"] = "series" },
+                ["itemStyle"] = new Dictionary<string, object?> { ["color"] = group.Color },
+                ["lineStyle"] = new Dictionary<string, object?> { ["color"] = group.Color, ["width"] = 2 },
+                ["data"] = orderedCategories.Select(category => (object)new Dictionary<string, object?>
+                {
+                    ["value"] = group.Values.GetValueOrDefault(category.Key),
+                    ["categoryKey"] = category.Key,
+                    ["categoryLabel"] = category.Label,
+                    ["groupLabel"] = group.Label,
+                    ["groupColorKey"] = group.ColorKey
+                }).ToArray()
+            };
+
+            if (template.Area || type.Equals("line", StringComparison.OrdinalIgnoreCase))
+                entry["areaStyle"] = new Dictionary<string, object?> { ["opacity"] = 0.72 };
+
+            if (type.Equals("bar", StringComparison.OrdinalIgnoreCase))
+                entry["barMaxWidth"] = 34;
+
+            return (object)entry;
+        }).ToArray();
+
+        var option = BaseOption();
+        option["__dynSeriesFormats"] = formatMap;
+        option["__dynResponsive"] = "grouped-stack";
+        option["tooltip"] = new Dictionary<string, object?>
+        {
+            ["trigger"] = "axis",
+            ["axisPointer"] = new Dictionary<string, object?> { ["type"] = "shadow" }
+        };
+        option["legend"] = new Dictionary<string, object?>
+        {
+            ["type"] = "scroll",
+            ["top"] = 0,
+            ["left"] = 0,
+            ["right"] = 42,
+            ["textStyle"] = new Dictionary<string, object?> { ["color"] = "#5f747c" }
+        };
+        option["grid"] = new Dictionary<string, object?>
+        {
+            ["left"] = 58,
+            ["right"] = 22,
+            ["top"] = 54,
+            ["bottom"] = orderedCategories.Length > 14 ? 68 : 44,
+            ["containLabel"] = true
+        };
+        option["xAxis"] = new Dictionary<string, object?>
+        {
+            ["type"] = "category",
+            ["data"] = orderedCategories.Select(x => x.Label).ToArray(),
+            ["axisTick"] = new Dictionary<string, object?> { ["show"] = false },
+            ["axisLabel"] = new Dictionary<string, object?> { ["hideOverlap"] = true, ["color"] = "#71848c" }
+        };
+        option["yAxis"] = new Dictionary<string, object?>
+        {
+            ["type"] = "value",
+            ["__dynFormat"] = template.Format,
+            ["splitLine"] = new Dictionary<string, object?> { ["lineStyle"] = new Dictionary<string, object?> { ["color"] = "#edf2f3" } },
+            ["axisLabel"] = new Dictionary<string, object?> { ["color"] = "#71848c" }
+        };
+        option["series"] = series;
+        option["toolbox"] = Toolbox();
+
+        if (orderedCategories.Length > 14)
+        {
+            option["dataZoom"] = new object[]
+            {
+                new Dictionary<string, object?> { ["type"] = "inside", ["start"] = 0, ["end"] = 75 },
                 new Dictionary<string, object?> { ["type"] = "slider", ["height"] = 14, ["bottom"] = 3 }
             };
         }
