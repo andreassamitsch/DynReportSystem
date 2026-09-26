@@ -2,7 +2,7 @@
 @attribute [Authorize]
 @inject FolderAccess Access
 @inject ImportedPortalCatalog Imported
-@inject CustomReportStore CustomReports
+@inject DynReportPackageStore Packages
 @inject AuthenticationStateProvider Authentication
 
 <PageTitle>DynReport System</PageTitle>
@@ -148,15 +148,15 @@
         @if (Imported.Exists)
         {
             <div class="portal-migration-note">
-                <strong>SSRS-Migration aktiv</strong>
+                <strong>SSRS-Migration + selbstständige DynReport-Pakete</strong>
                 <span>
-                    Ordner, Reports, Shared Datasets und ursprüngliche SSRS-Berechtigungen wurden aus dem
-                    ReportServer-Katalog importiert. Die Darstellung erfolgt dynamisch in DynReport.
+                    Noch nicht konvertierte Berichte stammen aus dem SSRS-Migrationskatalog.
+                    Konvertierte Berichte laufen vollständig aus ihrer .dynreport-Datei und benötigen keine RDL mehr.
                 </span>
             </div>
         }
 
-        <footer>DynReport System 0.5.0 · dynamischer Reportkatalog · Windows/AD-Berechtigungen</footer>
+        <footer>DynReport System 0.6.0 · dynamischer Reportkatalog · Windows/AD-Berechtigungen</footer>
     </main>
 </div>
 
@@ -205,10 +205,12 @@
             : AccessibleReports
                 .Where(report =>
                 {
+                    var package = Packages.Get(report.Id);
                     var imported = Imported.Catalog.Reports.FirstOrDefault(x =>
                         x.Id.Equals(report.Id, StringComparison.OrdinalIgnoreCase));
 
                     return report.Title.Contains(search, StringComparison.CurrentCultureIgnoreCase)
+                           || (package?.Manifest.Path?.Contains(search, StringComparison.CurrentCultureIgnoreCase) ?? false)
                            || (imported?.Path?.Contains(search, StringComparison.CurrentCultureIgnoreCase) ?? false);
                 })
                 .Take(120)
@@ -244,8 +246,8 @@
         try
         {
             importedStats = Imported.Catalog.Stats;
-            optimizedReportIds = CustomReports.List()
-                .Select(x => x.TargetReportId)
+            optimizedReportIds = Packages.List()
+                .Select(x => x.Manifest.ReportId)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             // Resolve expensive SSRS/Windows ACL checks exactly once per report
@@ -325,6 +327,7 @@
 
     private RenderFragment ReportCard(ReportItem report) => builder =>
     {
+        var package = Packages.Get(report.Id);
         var imported = Imported.Catalog.Reports.FirstOrDefault(x =>
             x.Id.Equals(report.Id, StringComparison.OrdinalIgnoreCase));
 
@@ -363,17 +366,20 @@
         builder.AddContent(sequence++, report.Title);
         builder.CloseElement();
 
-        if (!string.IsNullOrWhiteSpace(imported?.Path))
+        var displayPath = package?.Manifest.Path ?? imported?.Path;
+        var displayDescription = package?.Manifest.Description ?? imported?.Description;
+
+        if (!string.IsNullOrWhiteSpace(displayPath))
         {
             builder.OpenElement(sequence++, "small");
-            builder.AddContent(sequence++, imported.Path);
+            builder.AddContent(sequence++, displayPath);
             builder.CloseElement();
         }
 
-        if (!string.IsNullOrWhiteSpace(imported?.Description))
+        if (!string.IsNullOrWhiteSpace(displayDescription))
         {
             builder.OpenElement(sequence++, "p");
-            builder.AddContent(sequence++, imported.Description);
+            builder.AddContent(sequence++, displayDescription);
             builder.CloseElement();
         }
 
