@@ -68,8 +68,21 @@
                 </tr>
             </thead>
             <tbody>
+                @{
+                    string? previousGroup = null;
+                }
                 @foreach (var row in VisibleRows)
                 {
+                    var group = GroupLabel(row);
+                    if (!string.IsNullOrWhiteSpace(group)
+                        && !string.Equals(group, previousGroup, StringComparison.Ordinal))
+                    {
+                        <tr class="rdl-table-group-row">
+                            <td colspan="@DisplayColumns.Count">@group</td>
+                        </tr>
+                        previousGroup = group;
+                    }
+
                     <tr>
                         @foreach (var column in DisplayColumns)
                         {
@@ -94,6 +107,8 @@
     [Parameter, EditorRequired] public QueryResult Result { get; set; } = null!;
     [Parameter] public string ExportName { get; set; } = "DynReport";
     [Parameter] public IReadOnlyList<string>? Columns { get; set; }
+    [Parameter] public IReadOnlyList<string>? GroupColumns { get; set; }
+    [Parameter] public IReadOnlyList<string>? InitialSortColumns { get; set; }
 
     private IReadOnlyList<string> DisplayColumns =>
         Columns is null || Columns.Count == 0
@@ -218,6 +233,18 @@
                 ? rows.OrderBy(row => QueryResult.Get(row, sortColumn), ObjectComparer.Instance)
                 : rows.OrderByDescending(row => QueryResult.Get(row, sortColumn), ObjectComparer.Instance);
         }
+        else
+        {
+            var originalSort = (InitialSortColumns ?? GroupColumns ?? [])
+                .Where(column => Result.Columns.Contains(column, StringComparer.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            // Apply from least to most significant. LINQ OrderBy is stable, so
+            // the last pass becomes the primary SSRS sort/group key.
+            foreach (var column in originalSort.Reverse())
+                rows = rows.OrderBy(row => QueryResult.Get(row, column), ObjectComparer.Instance);
+        }
 
         filtered = rows.ToList();
     }
@@ -269,6 +296,20 @@
             Convert.ToString(raw, DeAt),
             right,
             StringComparison.CurrentCultureIgnoreCase);
+    }
+
+    private string GroupLabel(IReadOnlyDictionary<string, object?> row)
+    {
+        var groups = (GroupColumns ?? [])
+            .Where(column => Result.Columns.Contains(column, StringComparer.OrdinalIgnoreCase))
+            .Take(3)
+            .ToArray();
+
+        if (groups.Length == 0)
+            return "";
+
+        return string.Join(" · ", groups.Select(column =>
+            $"{column}: {Cell(row, column)}"));
     }
 
     private async Task ExportAsync()
