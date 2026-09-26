@@ -107,7 +107,7 @@ public sealed class DynExpressionEngine
             "contains" => Contains(expression, context, stack),
             "now" => DateTime.Now,
             "today" => DateTime.Today,
-            "shiftlabel" => ShiftLabel(),
+            "hour" => Hour(expression, context, stack),
             _ => null
         };
     }
@@ -491,14 +491,25 @@ public sealed class DynExpressionEngine
             _ => Convert.ToString(value, DeAt)?.Trim() ?? ""
         };
 
-    private static string ShiftLabel()
+    private object Hour(DynExpr expression, EvalContext context, HashSet<string> stack)
     {
-        var now = DateTime.Now;
-        return now.Hour >= 22 || now.Hour < 6
-            ? "22:00–06:00"
-            : now.Hour >= 14
-                ? "14:00–22:00"
-                : "06:00–14:00";
+        var value = expression.Args.Count > 0
+            ? EvaluateInternal(expression.Args[0], context, stack)
+            : DateTime.Now;
+
+        if (value is DateTime date)
+            return date.Hour;
+
+        if (value is DateTimeOffset offset)
+            return offset.Hour;
+
+        return DateTime.TryParse(
+            Convert.ToString(value, DeAt),
+            DeAt,
+            DateTimeStyles.AllowWhiteSpaces,
+            out var parsed)
+            ? parsed.Hour
+            : 0;
     }
 
     private sealed record EvalContext(
