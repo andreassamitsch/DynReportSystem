@@ -386,3 +386,82 @@ button.filter-chip{cursor:pointer}
 @media(max-width:760px){
   #components-reconnect-modal{max-width:calc(100vw - 24px)!important;margin:auto!important;border-radius:16px!important}
 }
+
+
+/* ============================================================
+   DynReport 0.2.2 - persistent collapsible parameter bar
+   ============================================================ */
+.filter-shell{
+  position:sticky;
+  top:76px;
+  z-index:39;
+  margin:12px 0 7px;
+  border:1px solid #dce8ea;
+  border-radius:12px;
+  background:rgba(255,255,255,.97);
+  box-shadow:0 7px 22px rgba(22,79,91,.055);
+  overflow:hidden;
+}
+.filter-shell>summary{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-height:37px;
+  padding:7px 11px;
+  color:#31515b;
+  cursor:pointer;
+  list-style:none;
+  user-select:none;
+}
+.filter-shell>summary::-webkit-details-marker{display:none}
+.filter-summary-title{font-size:10.5px;font-weight:800;white-space:nowrap}
+.filter-summary-value{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:#7c9198;
+  font-size:9.5px;
+  flex:1;
+}
+.filter-summary-action{
+  color:#006479;
+  font-size:9px;
+  font-weight:750;
+  white-space:nowrap;
+}
+.filter-shell:not([open])>.filterbar{display:none}
+.filter-shell[open]>.filterbar{
+  border:0;
+  border-top:1px solid #e6eff0;
+  border-radius:0;
+  box-shadow:none;
+}
+.filter-shell[open]>summary{
+  background:#f7fbfb;
+}
+
+@media(max-width:760px){
+  .filter-shell{
+    position:sticky;
+    top:66px;
+    margin:8px 0 5px;
+  }
+  .filter-shell>summary{
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr);
+    column-gap:8px;
+    row-gap:2px;
+    padding:8px 10px;
+  }
+  .filter-summary-title{font-size:10px}
+  .filter-summary-value{
+    grid-column:1/-1;
+    max-width:100%;
+    font-size:8.5px;
+  }
+  .filter-summary-action{
+    justify-self:end;
+    font-size:8px;
+  }
+}
