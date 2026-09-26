@@ -59,6 +59,8 @@ else
                     <DynamicResultTable @key="@($"{ReportId}-{item.Id}")"
                                         Result="@result"
                                         Columns="@columns"
+                                        GroupColumns="@item.Table.GroupFields"
+                                        InitialSortColumns="@item.Table.SortFields"
                                         ExportName="@($"{ReportTitle}_{item.Title}")" />
                 </section>
 
