@@ -291,7 +291,7 @@ public sealed partial class RdlPresentationService(ImportedPortalCatalog portal)
                     continue;
                 }
 
-                if (!value.StartsWith('=') && value.Length <= 120)
+                if (field is null && !value.StartsWith('=') && value.Length <= 120)
                     header = value;
             }
 
