@@ -2,7 +2,7 @@
 
 Internal reporting and analytics platform for APP-01. The goal is a modern successor path for selected SSRS reports while retaining Windows SSO, folder/report permissions and existing RDL data/business logic.
 
-## Version 0.2.0
+## Version 0.2.1
 
 - ASP.NET Core / Blazor Interactive Server on .NET 10
 - IIS Windows Authentication (SSO)
@@ -11,11 +11,16 @@ Internal reporting and analytics platform for APP-01. The goal is a modern succe
 - automatic reload when the installed RDL changes
 - independent DynReport dashboard definitions instead of reproducing SSRS layouts
 - Apache ECharts 6.1.0 bundled locally; no chart CDN is required at runtime
-- responsive KPI cards with trend and sparklines
-- interactive combo, line, area, bar, donut and treemap visualizations
+- compact KPI cards with trend and sparklines; the Umsatz/AB/Rahmen chart is the primary dashboard element
+- stacked Umsatz / offene AB / Rahmen monthly chart using the established RDL colors
+- stacked business-area charts whose GB colors are read dynamically from the installed RDL
+- mobile-specific ECharts layouts for rankings, stacked charts, donut charts and long labels
+- interactive combo, line, area, bar, donut, stacked and treemap visualizations
 - world map for revenue by country
 - dataset-specific analytics such as OP aging, complaint trend, stock value/status and business-area analysis
-- interactive table search, column sorting, paging and CSV export
+- interactive table search, sorting and a filter input on every column, paging and CSV export
+- chart-to-table drilldowns and internal back-navigation between dashboard and detail views
+- longer mobile circuit retention and more persistent reconnect attempts for brief WLAN/tab interruptions
 - chart image export
 - PWA shell without caching report data
 - self-contained web application payload; IIS ASP.NET Core Module v2 remains a server prerequisite
@@ -32,14 +37,15 @@ DynReport System does **not** reproduce the SSRS page layout.
 
 The Kundencockpit is the first migrated report. The RDL remains the data source, while the user-facing report is an independent interactive dashboard.
 
-## Kundencockpit 0.2
+## Kundencockpit 0.2.1
 
 The dashboard includes:
 
-- Umsatz, offener Auftragswert, Rahmenwert, Bestelleingang and Angebotsvolumen KPIs
-- Umsatz / Auftragslage / Rahmenwerte as a multi-series monthly chart
-- top customers as an interactive horizontal ranking
-- monthly order intake
+- Umsatz / offene AB / Rahmen as the large primary stacked monthly chart
+- compact Umsatz, offene AB and Rahmen KPIs
+- Umsatz and Bestelleingang as stacked business-area series using RDL GB colors
+- top customers as an interactive, mobile-optimized horizontal ranking
+- business-area drilldown by tapping a stack segment
 - offer-status donut
 - rejection-reason ranking
 - offer lead-time trend
@@ -59,7 +65,7 @@ The installer preserves an existing production configuration, report permissions
 
 ## Build
 
-GitHub Actions builds `DynReportSystem-Server-Setup-0.2.0-win-x64.exe`.
+GitHub Actions builds `DynReportSystem-Server-Setup-0.2.1-win-x64.exe`.
 
 The workflow installs the pinned frontend dependencies, vendors ECharts and the world SVG map into the published application, publishes the self-contained .NET application and creates the server setup executable.
 
