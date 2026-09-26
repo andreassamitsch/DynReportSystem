@@ -119,8 +119,8 @@ public sealed class ChartOptionFactory(RdlStyleCatalog styles)
             "offenPosten" => OpenItemsDetail(result),
             "KundenReklamationen" => ComplaintsDetail(result),
             "LagerndeKundenartikel" => StockDetail(result),
-            "offeneABs" => OpenOrdersDetail(result, false),
-            "offeneRAs" => OpenOrdersDetail(result, true),
+            "offeneABs" => [],
+            "offeneRAs" => [],
             "Bestelleingang" => OrderIntakeDetail(result),
             "Angebote" => OffersDetail(result),
             "AngebotsStatusAnalyse" =>
@@ -459,6 +459,7 @@ public sealed class ChartOptionFactory(RdlStyleCatalog styles)
 
         var option = BaseOption();
         option["__dynItemFormat"] = series.Format;
+        option["__dynResponsive"] = "donut";
         option["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "item" };
         option["legend"] = new Dictionary<string, object?> { ["type"] = "scroll", ["bottom"] = 0, ["textStyle"] = new Dictionary<string, object?> { ["color"] = "#61767e" } };
         option["toolbox"] = Toolbox();
@@ -1018,6 +1019,7 @@ public sealed class ChartOptionFactory(RdlStyleCatalog styles)
         return new Dictionary<string, object?>
         {
             ["__dynItemFormat"] = format,
+            ["__dynResponsive"] = "donut",
             ["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "item" },
             ["legend"] = new Dictionary<string, object?> { ["type"] = "scroll", ["bottom"] = 0 },
             ["toolbox"] = Toolbox(),
@@ -1044,6 +1046,7 @@ public sealed class ChartOptionFactory(RdlStyleCatalog styles)
         return new Dictionary<string, object?>
         {
             ["__dynSeriesFormats"] = new Dictionary<string, string> { [name] = format },
+            ["__dynResponsive"] = "horizontal-bar",
             ["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "axis" },
             ["grid"] = new Dictionary<string, object?> { ["left"] = 135, ["right"] = 30, ["top"] = 25, ["bottom"] = 35, ["containLabel"] = true },
             ["xAxis"] = new Dictionary<string, object?> { ["type"] = "value", ["__dynFormat"] = format, ["splitLine"] = new Dictionary<string, object?> { ["lineStyle"] = new Dictionary<string, object?> { ["color"] = "#edf2f3" } } },
@@ -1069,6 +1072,7 @@ public sealed class ChartOptionFactory(RdlStyleCatalog styles)
         return new Dictionary<string, object?>
         {
             ["__dynSeriesFormats"] = new Dictionary<string, string> { [name] = format },
+            ["__dynResponsive"] = "cartesian",
             ["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "axis" },
             ["grid"] = new Dictionary<string, object?> { ["left"] = 55, ["right"] = 25, ["top"] = 25, ["bottom"] = 45, ["containLabel"] = true },
             ["xAxis"] = new Dictionary<string, object?> { ["type"] = "category", ["data"] = ordered.Select(x => x.Key.ToString("MM/yy", DeAt)).ToArray() },
