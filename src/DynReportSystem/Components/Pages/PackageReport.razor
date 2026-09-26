@@ -277,12 +277,19 @@ else
     private readonly Dictionary<string, IReadOnlyList<DynReportParameterOption>> options =
         new(StringComparer.OrdinalIgnoreCase);
 
-    private IEnumerable<DynReportParameter> VisibleParameters =>
-        package?.Document.Parameters
-            .Where(x => !x.Hidden)
-            .OrderBy(x => x.Order)
-            .ThenBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase)
-        ?? [];
+    private IEnumerable<DynReportParameter> VisibleParameters
+    {
+        get
+        {
+            if (package is null)
+                return Enumerable.Empty<DynReportParameter>();
+
+            return package.Document.Parameters
+                .Where(x => !x.Hidden)
+                .OrderBy(x => x.Order)
+                .ThenBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase);
+        }
+    }
 
     private QueryResult? CurrentResult =>
         run is not null && run.Results.TryGetValue(activeDataSet, out var result)
