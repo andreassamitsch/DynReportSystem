@@ -208,3 +208,181 @@ footer{padding:8px 0 4px}
   .detail-head{flex-direction:column}
   .detail-actions{width:100%;justify-content:space-between}
 }
+
+
+/* ============================================================
+   DynReport 0.2.1 - compact cockpit, mobile charts, table filters
+   ============================================================ */
+.filter-shell{margin:15px 0 7px}
+.filter-shell>summary{display:none}
+.filter-shell:not([open])>.filterbar{display:grid}
+.filterbar{
+  position:static;
+  display:grid;
+  grid-template-columns:140px 140px minmax(190px,1.7fr) minmax(180px,1.2fr) auto;
+  align-items:end;
+  gap:9px;
+  padding:11px 12px;
+  margin:0;
+  border-radius:13px;
+  box-shadow:0 5px 18px rgba(22,79,91,.045);
+  backdrop-filter:none;
+}
+.filterbar label,.filterbar label:nth-child(3),.filterbar label:nth-child(4){
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+  font-size:9.5px;
+  font-weight:750;
+  color:#71868e;
+}
+.filterbar input,.filterbar select{
+  height:34px;
+  border-radius:8px;
+  padding:0 9px;
+  font-size:11px;
+}
+.filter-actions{display:flex;gap:7px;align-items:center}
+.filter-actions .primary-btn,.filter-actions .ghost-btn{height:34px;padding:0 13px;font-size:10.5px}
+.active-filter-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-height:24px;margin:6px 1px 4px}
+.filter-chip{border:0;background:#eaf3f4;color:#607880;border-radius:999px;padding:4px 8px;font-size:9px;line-height:1.25}
+button.filter-chip{cursor:pointer}
+.filter-chip.removable:hover{background:#dcecee;color:#345963}
+
+.primary-analysis-section{margin-top:17px}
+.primary-analysis-section .section-heading{margin-bottom:8px;align-items:center}
+.section-subtitle{margin:4px 0 0;color:#8799a0;font-size:10.5px}
+.primary-chart-card{padding:9px 15px 3px;border-color:#d8e6e8;box-shadow:0 11px 34px rgba(22,79,91,.075)}
+.compact-kpi-section{margin-top:13px}
+.compact-heading{margin-bottom:8px}
+.compact-heading h2{font-size:16px}
+.kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.kpi-card{padding:11px 13px 8px;min-height:112px;border-radius:13px}
+.kpi-label{font-size:10.5px}
+.kpi-subtitle{font-size:8px}
+.kpi-value{font-size:clamp(20px,1.8vw,27px);margin:7px 0 0;letter-spacing:-.7px}
+.kpi-spark{height:34px;margin-top:1px;overflow:hidden}
+.kpi-foot{font-size:9px;margin-top:1px}
+.trend-chip{font-size:8px;padding:3px 6px}
+.dashboard-section{margin-top:18px}
+.section-heading{margin-bottom:10px}
+.section-heading h2{font-size:18px}
+.dashboard-widget{padding:15px 17px 10px}
+.panel-head h2{font-size:14px}
+.panel-head p{font-size:10px}
+.dynamic-dashboard-grid{gap:10px}
+.detail-visual-grid{gap:10px}
+.detail-wide-chart{grid-column:1/-1}
+.quick-links{gap:8px;margin-top:12px}
+.insight-tile{padding:13px;min-height:82px}
+.insight-tile strong{font-size:12px}
+.insight-tile span:last-child{font-size:9px}
+
+.table-filter-summary{display:flex;align-items:center;gap:8px;color:#748990;font-size:9.5px}
+.text-btn{border:0;background:transparent;color:#006479;font-size:9.5px;font-weight:750;padding:4px;cursor:pointer}
+.text-btn:hover{text-decoration:underline}
+.table-scroll{max-height:66vh}
+.data-table thead th{position:sticky}
+.table-sort-row th{top:0;z-index:6}
+.table-filter-row th{top:38px;z-index:5;background:#f7fbfb;border-bottom:1px solid #dfeaec}
+.column-sort{height:38px;justify-content:space-between}
+.sort-indicator{font-size:8px;margin-left:auto;color:#006479}
+.muted-sort{color:#aab8bd}
+.column-filter{
+  width:100%;
+  min-width:86px;
+  height:28px;
+  border:1px solid #d9e5e8;
+  border-radius:6px;
+  background:#fff;
+  color:#334d56;
+  padding:0 7px;
+  font-size:9.5px;
+  outline:none;
+}
+.column-filter:focus{border-color:#7bb9bf;box-shadow:0 0 0 2px rgba(0,100,121,.08)}
+.nav-back{font-weight:750;color:#006479}
+
+@media(max-width:1100px){
+  .filterbar{grid-template-columns:120px 120px minmax(170px,1fr) minmax(160px,1fr);grid-template-areas:"from to customer sales" "actions actions actions actions"}
+  .filter-actions{grid-area:actions;justify-content:flex-end}
+}
+
+@media(max-width:760px){
+  .main-area{padding:14px 11px 20px}
+  .heading-line{gap:8px}
+  .heading-line h1{font-size:25px}
+  .subtitle{font-size:11px}
+  .heading-actions .ghost-btn{display:none}
+  .data-badge{padding:6px 9px}
+  .filter-shell{margin:11px 0 5px;border:1px solid #dce8ea;border-radius:11px;background:#fff;overflow:hidden}
+  .filter-shell>summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 11px;color:#31515b;font-size:10.5px;font-weight:800;cursor:pointer;list-style:none}
+  .filter-shell>summary::-webkit-details-marker{display:none}
+  .filter-shell>summary span:last-child{min-width:0;max-width:72%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#81949b;font-size:9px;font-weight:600}
+  .filter-shell:not([open])>.filterbar{display:none}
+  .filterbar{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    grid-template-areas:
+      "from to"
+      "customer customer"
+      "sales sales"
+      "actions actions";
+    gap:8px;
+    padding:9px;
+    border:0;
+    border-top:1px solid #e7eff0;
+    border-radius:0;
+    box-shadow:none;
+  }
+  .filterbar label:nth-child(1){grid-area:from}
+  .filterbar label:nth-child(2){grid-area:to}
+  .filter-customer{grid-area:customer}
+  .filter-sales{grid-area:sales}
+  .filter-actions{grid-area:actions;display:grid;grid-template-columns:1fr auto}
+  .filter-actions .primary-btn{width:100%}
+  .filter-actions .ghost-btn{width:auto}
+  .active-filter-row{overflow-x:auto;flex-wrap:nowrap;margin:5px 0 2px;padding-bottom:2px}
+  .filter-chip{white-space:nowrap}
+  .primary-analysis-section{margin-top:12px}
+  .primary-analysis-section .section-heading{align-items:flex-start}
+  .primary-analysis-section .section-heading .interactive-badge{align-self:flex-start}
+  .primary-chart-card{padding:6px 5px 0}
+  .section-heading h2{font-size:17px}
+  .section-subtitle{font-size:9.5px}
+  .compact-kpi-section{margin-top:10px}
+  .kpi-grid{grid-template-columns:1fr 1fr;gap:7px}
+  .kpi-card{min-height:96px;padding:10px 11px 7px}
+  .kpi-grid>.kpi-card:nth-child(3){grid-column:1/-1}
+  .kpi-value{font-size:20px;margin-top:8px}
+  .kpi-spark{display:none}
+  .kpi-foot{margin-top:8px}
+  .trend-chip{font-size:7.5px}
+  .dynamic-dashboard-grid,.detail-visual-grid{gap:8px}
+  .dashboard-widget{padding:13px 10px 7px;border-radius:14px}
+  .panel-head{align-items:flex-start}
+  .panel-head h2{font-size:14px}
+  .panel-head p{font-size:9.5px;max-width:260px}
+  .interactive-badge{font-size:8px;padding:4px 6px}
+  .quick-links{grid-template-columns:1fr 1fr;gap:7px}
+  .insight-tile{min-height:78px;padding:10px}
+  .insight-tile strong{font-size:11px}
+  .insight-tile span:last-child{display:none}
+  .detail-panel{padding:12px;margin-top:10px}
+  .table-toolbar{gap:8px}
+  .table-filter-summary{width:100%;justify-content:space-between}
+  .table-search input,.page-size select{height:34px}
+  .table-scroll{max-height:70vh;border-radius:8px}
+  .data-table{font-size:10px}
+  .data-table td{padding:8px 9px;max-width:240px}
+  .column-sort{height:34px;padding:0 8px;font-size:9px}
+  .table-filter-row th{top:34px}
+  .column-filter{height:27px;font-size:9px;padding:0 6px}
+  .pagination{position:sticky;bottom:0;background:var(--dr-bg);padding:8px 0 2px;z-index:8}
+}
+
+/* Keep the default Blazor reconnect UI readable but less dominant on phones. */
+@media(max-width:760px){
+  #components-reconnect-modal{max-width:calc(100vw - 24px)!important;margin:auto!important;border-radius:16px!important}
+}
