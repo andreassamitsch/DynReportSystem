@@ -19,6 +19,8 @@ public sealed class DashboardWidget
     public string? ValueField { get; set; }
     public string? CategoryField { get; set; }
     public string? SecondaryValueField { get; set; }
+    public string? GroupField { get; set; }
+    public string? GroupColorField { get; set; }
     public string? Format { get; set; }
     public string? TimeBucket { get; set; }
     public string Sort { get; set; } = "";
@@ -40,6 +42,8 @@ public sealed class DashboardSeries
     public string Type { get; set; } = "bar";
     public string Aggregate { get; set; } = "sum";
     public string Format { get; set; } = "number";
+    public string? Color { get; set; }
+    public string? Stack { get; set; }
     public int Axis { get; set; }
     public bool Area { get; set; }
 }
