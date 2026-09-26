@@ -493,7 +493,7 @@ public sealed class RdlExpressionEvaluator
         if (text.Length < 2 || text[0] != '"' || text[^1] != '"')
             return false;
 
-        value = text[1..^1].Replace("""", """);
+        value = text[1..^1].Replace("\"\"", "\"");
         return true;
     }
 
