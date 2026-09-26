@@ -1,18 +1,18 @@
 @page "/reports/import"
 @attribute [Authorize]
-@inject CustomReportStore CustomReports
+@inject DynReportPackageStore Packages
 @inject FolderAccess Access
 @inject AuthenticationStateProvider Authentication
 @inject NavigationManager Navigation
 
-<PageTitle>Berichtsdatei importieren · DynReport</PageTitle>
+<PageTitle>DynReport-Paket importieren</PageTitle>
 
 <div class="shell">
     <header class="topbar">
         <div class="brand-mark">D</div>
         <div class="brand-text">
-            <strong>Berichtsdatei importieren</strong>
-            <span>DynReport · manuell optimierte Berichte</span>
+            <strong>DynReport-Paket importieren</strong>
+            <span>selbstständige Berichtsdateien · Schema 2.0</span>
         </div>
         <div class="topbar-tag"><span class="live-dot"></span> APP-01</div>
     </header>
@@ -20,11 +20,12 @@
     <main class="main-area report-import-page">
         <div class="heading-line">
             <div>
-                <p class="eyebrow">DYNREPORT IMPORT</p>
-                <h1>Optimierten Bericht installieren</h1>
+                <p class="eyebrow">DYNREPORT 2.0</p>
+                <h1>Berichtsdatei installieren</h1>
                 <p class="subtitle">
-                    Eine <code>.dynreport</code>-Datei ersetzt nur die Darstellung des Zielberichts.
-                    SQL, Parameter, Datenquellen und Berechtigungen bleiben aus dem migrierten SSRS-Bericht erhalten.
+                    Eine <code>.dynreport</code>-Datei enthält Datenlogik, Parameter,
+                    Berechnungen und Layout vollständig. RDL/RSD/RDS werden für einen
+                    konvertierten Bericht nicht mehr benötigt.
                 </p>
             </div>
             <a class="ghost-btn" href="/">← Reporting</a>
@@ -35,11 +36,14 @@
                 <div class="import-icon">⇧</div>
                 <div>
                     <strong>.dynreport auswählen</strong>
-                    <p>Maximal 2 MB · JSON-basiert · Zielbericht und Renderer werden vor dem Speichern geprüft.</p>
+                    <p>
+                        ZIP-basiertes DynReport-Paket · maximal 25 MB ·
+                        manifest.json + report.json + Dataset-SQL werden geprüft.
+                    </p>
                 </div>
 
                 <InputFile OnChange="ImportAsync"
-                           accept=".dynreport,application/json"
+                           accept=".dynreport,application/zip"
                            disabled="@busy" />
             </div>
 
@@ -57,9 +61,9 @@
             {
                 <div class="import-result">
                     <div>
-                        <span class="eyebrow">INSTALLIERT</span>
-                        <strong>@imported.Title</strong>
-                        <small>@imported.TargetPath</small>
+                        <span class="eyebrow">INSTALLIERT · RDL-UNABHÄNGIG</span>
+                        <strong>@imported.Manifest.Title</strong>
+                        <small>@imported.Manifest.Path · v@imported.Manifest.Version</small>
                     </div>
                     <button class="primary-btn" @onclick="OpenImported">Bericht öffnen →</button>
                 </div>
@@ -69,8 +73,8 @@
         <section class="dashboard-section">
             <div class="section-heading">
                 <div>
-                    <p class="eyebrow">INSTALLIERTE DATEIEN</p>
-                    <h2>Manuell optimierte Berichte</h2>
+                    <p class="eyebrow">PAKETE</p>
+                    <h2>Selbstständige DynReport-Berichte</h2>
                 </div>
                 <span class="section-note">@Installed.Count aktiv</span>
             </div>
@@ -78,7 +82,7 @@
             @if (Installed.Count == 0)
             {
                 <div class="panel empty">
-                    Noch keine manuell optimierte Berichtsdatei installiert.
+                    Noch kein DynReport-2.0-Paket installiert.
                 </div>
             }
             else
@@ -88,17 +92,35 @@
                     {
                         <article class="panel custom-report-item">
                             <div>
-                                <span class="custom-report-renderer">@item.Renderer</span>
-                                <strong>@item.Title</strong>
-                                <small>@item.TargetPath</small>
-                                <small>Geändert @item.ModifiedUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</small>
+                                <span class="custom-report-renderer">DYNREPORT 2.0 · v@item.Manifest.Version</span>
+                                <strong>@item.Manifest.Title</strong>
+                                <small>@item.Manifest.Path</small>
+                                <small>
+                                    @item.Document.Datasets.Count Dataset(s) ·
+                                    @item.Document.Parameters.Count Parameter ·
+                                    geändert @item.Manifest.ModifiedUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+                                </small>
                             </div>
+
                             <div class="custom-report-actions">
-                                <a class="ghost-btn" href="@($"/reports/dynamic/{item.TargetReportId}")">Öffnen</a>
-                                @if (CanManage(item.TargetReportId))
+                                <a class="ghost-btn"
+                                   href="@($"/reports/package/{item.Manifest.ReportId}")">
+                                    Öffnen
+                                </a>
+
+                                @if (CanDesign(item.Manifest.ReportId))
                                 {
-                                    <button class="ghost-btn danger" @onclick="() => Remove(item.TargetReportId)">
-                                        Optimierung entfernen
+                                    <a class="ghost-btn"
+                                       href="@($"/designer/{item.Manifest.ReportId}")">
+                                        Designer
+                                    </a>
+                                }
+
+                                @if (CanPublish(item.Manifest.ReportId))
+                                {
+                                    <button class="ghost-btn danger"
+                                            @onclick="() => Remove(item.Manifest.ReportId)">
+                                        Paket entfernen
                                     </button>
                                 }
                             </div>
@@ -108,7 +130,10 @@
             }
         </section>
 
-        <footer>DynReport System · Importierte Optimierungen bleiben bei Systemupdates erhalten</footer>
+        <footer>
+            DynReport System 0.6.0 · Paketimporte werden versioniert ·
+            Zugangsdaten bleiben zentral auf dem Server
+        </footer>
     </main>
 </div>
 
@@ -117,20 +142,25 @@
     private bool busy;
     private bool success;
     private string message = "";
-    private CustomReportDefinition? imported;
+    private LoadedDynReportPackage? imported;
 
-    private IReadOnlyList<InstalledCustomReport> Installed => CustomReports.List();
+    private IReadOnlyList<LoadedDynReportPackage> Installed => Packages.List();
 
     protected override async Task OnInitializedAsync()
     {
         user = (await Authentication.GetAuthenticationStateAsync()).User;
     }
 
-    private bool CanManage(string reportId) =>
+    private bool CanPublish(string reportId) =>
         user is not null
-        && (Access.Can(user, reportId, "Manage")
-            || Access.Can(user, reportId, "Publish")
-            || Access.Can(user, reportId, "Edit"));
+        && (Access.Can(user, reportId, "Publish")
+            || Access.Can(user, reportId, "Manage"));
+
+    private bool CanDesign(string reportId) =>
+        user is not null
+        && (Access.Can(user, reportId, "EditLayout")
+            || Access.Can(user, reportId, "Edit")
+            || CanPublish(reportId));
 
     private async Task ImportAsync(InputFileChangeEventArgs e)
     {
@@ -142,28 +172,43 @@
         try
         {
             var file = e.File;
-            if (!file.Name.EndsWith(".dynreport", StringComparison.OrdinalIgnoreCase)
-                && !file.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
-            {
+            if (!file.Name.EndsWith(".dynreport", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Bitte eine .dynreport-Datei auswählen.");
-            }
 
-            await using var source = file.OpenReadStream(2 * 1024 * 1024);
+            await using var source = file.OpenReadStream(25 * 1024 * 1024);
             using var memory = new MemoryStream();
             await source.CopyToAsync(memory);
 
-            var preview = CustomReports.ParseAndValidate(memory.ToArray());
+            memory.Position = 0;
+            var preview = Packages.Validate(memory);
 
-            if (!CanManage(preview.TargetReportId))
+            // Importing a package can replace SQL and therefore requires the
+            // stronger Publish/Manage right of the existing target report.
+            var existing = Access.Catalog.Reports.Any(x =>
+                x.Id.Equals(preview.Manifest.ReportId, StringComparison.OrdinalIgnoreCase));
+
+            if (!existing)
             {
                 throw new UnauthorizedAccessException(
-                    "Für den Zielbericht fehlt die Berechtigung Edit/Publish/Manage.");
+                    "Neue Berichte werden künftig über den Designer angelegt. " +
+                    "Der Dateiimport darf aktuell nur einen bestehenden Bericht ersetzen.");
+            }
+
+            if (!CanPublish(preview.Manifest.ReportId))
+            {
+                throw new UnauthorizedAccessException(
+                    "Für den Zielbericht ist Publish oder Manage erforderlich.");
             }
 
             memory.Position = 0;
-            imported = await CustomReports.ImportAsync(memory);
+            imported = await Packages.ImportAsync(
+                memory,
+                user?.Identity?.Name);
+
             success = true;
-            message = $"'{imported.Title}' wurde für {imported.TargetPath} installiert.";
+            message =
+                $"'{imported.Manifest.Title}' v{imported.Manifest.Version} wurde installiert. " +
+                "Die vorherige Version wurde als Revision gesichert.";
         }
         catch (Exception ex)
         {
@@ -181,21 +226,23 @@
         if (imported is null)
             return;
 
-        Navigation.NavigateTo($"/reports/dynamic/{imported.TargetReportId}");
+        Navigation.NavigateTo($"/reports/package/{imported.Manifest.ReportId}");
     }
 
     private void Remove(string reportId)
     {
-        if (!CanManage(reportId))
+        if (!CanPublish(reportId))
         {
-            message = "Berechtigung zum Entfernen fehlt.";
             success = false;
+            message = "Publish/Manage-Berechtigung zum Entfernen fehlt.";
             return;
         }
 
-        CustomReports.Remove(reportId);
+        Packages.Remove(reportId);
         imported = null;
         success = true;
-        message = "Optimierte Darstellung entfernt. Der Bericht verwendet wieder die generische RDL-Ansicht.";
+        message =
+            "Das selbstständige DynReport-Paket wurde entfernt. " +
+            "Falls noch ein migrierter SSRS-Bericht existiert, wird dieser wieder verwendet.";
     }
 }
