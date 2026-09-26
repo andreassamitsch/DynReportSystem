@@ -139,6 +139,30 @@ Die neue Version behandelt den Bericht bewusst als Shopfloor-Board:
 - Warnungen pro Arbeitsgang gebündelt
 - technische Dataset-Ansicht bleibt als Fallback verfügbar
 
-Die Datenabfrage, Parameter und SSRS-Berechtigungen werden **nicht** in der
-`.dynreport`-Datei dupliziert. Die Datei definiert ausschließlich die optimierte
-Darstellung auf Basis des vorhandenen migrierten SSRS-Berichts.
+## DynReport-2.0-Paket
+
+Die produktive Version ist jetzt ein **vollständig selbstständiges `.dynreport`-Paket**.
+
+Im Paket liegen:
+
+- die vollständige SQL-Abfrage von `HoldupReasonHistory`
+- die Referenz auf das zentrale Datenquellenprofil `SyncosPRD`
+- alle SQL-Parameterbindungen
+- die vier Berichtsparameter und ihre Standardwerte
+- die für den Bericht benötigten Berechnungen als deklarative Ausdrucksbäume
+- Statusfarben und Zustandsdarstellung
+- KPI-Definitionen
+- Bereichs-/Maschinen-/Auftrags-/Arbeitsgang-Gruppierung
+- Board-Spalten und bedingte Formatierung
+- Auto-Run und 60-Sekunden-Refresh
+- die aus SSRS übernommenen effektiven Zugriffsrechte
+
+**Die ursprüngliche RDL ist für die Ausführung dieses konvertierten Berichts nicht mehr erforderlich.**
+
+Zugangsdaten sind bewusst nicht im Paket enthalten. Das Paket referenziert nur das
+serverseitig konfigurierte Datenquellenprofil `SyncosPRD`.
+
+Die Umsetzung enthält keinen berichtsspezifischen Razor-Renderer und keinen
+berichtsspezifischen C#-Service. Sie wird ausschließlich von der generischen
+DynReport-2.0-Runtime interpretiert und kann deshalb vom zukünftigen visuellen
+Designer mit demselben Dokumentmodell bearbeitet werden.
