@@ -26,6 +26,124 @@
         return number.format(numeric);
     }
 
+    function responsiveOptions(mode, seriesFormats, itemFormat, baseSeries) {
+        if (!mode) return [];
+
+        const hideToolbox = { show: false };
+        const compactLegend = {
+            type: "scroll",
+            left: 0,
+            right: 0,
+            top: 0,
+            itemWidth: 12,
+            itemHeight: 8,
+            textStyle: { fontSize: 10, color: "#61767e" }
+        };
+
+        if (mode === "horizontal-bar") {
+            return [{
+                query: { maxWidth: 520 },
+                option: {
+                    legend: { show: false },
+                    toolbox: hideToolbox,
+                    grid: { left: 4, right: 62, top: 8, bottom: 10, containLabel: true },
+                    xAxis: { axisLabel: { show: false }, splitNumber: 3 },
+                    yAxis: { axisLabel: { width: 128, overflow: "truncate", fontSize: 10 } },
+                    series: (baseSeries || []).map(s => ({
+                        barMaxWidth: 22,
+                        label: {
+                            show: true,
+                            position: "right",
+                            distance: 4,
+                            fontSize: 9,
+                            color: "#667b83",
+                            formatter: p => formatValue(
+                                Array.isArray(p.value) ? p.value[p.value.length - 1] : p.value,
+                                seriesFormats[s.name] || itemFormat)
+                        }
+                    }))
+                }
+            }];
+        }
+
+        if (mode === "horizontal-stack") {
+            return [{
+                query: { maxWidth: 520 },
+                option: {
+                    legend: compactLegend,
+                    toolbox: hideToolbox,
+                    grid: { left: 4, right: 8, top: 48, bottom: 10, containLabel: true },
+                    xAxis: { axisLabel: { show: false }, splitNumber: 3 },
+                    yAxis: { axisLabel: { width: 138, overflow: "truncate", fontSize: 10 } },
+                    series: (baseSeries || []).map(() => ({ barMaxWidth: 22 }))
+                }
+            }];
+        }
+
+        if (mode === "primary-stack") {
+            return [{
+                query: { maxWidth: 520 },
+                option: {
+                    legend: compactLegend,
+                    toolbox: hideToolbox,
+                    grid: { left: 4, right: 6, top: 56, bottom: 46, containLabel: true },
+                    xAxis: { axisLabel: { rotate: 42, fontSize: 9, interval: "auto" } },
+                    yAxis: { axisLabel: { fontSize: 9 }, splitNumber: 4 },
+                    dataZoom: [{ type: "inside", start: 0, end: 100 }],
+                    series: (baseSeries || []).map(() => ({ barMaxWidth: 24 }))
+                }
+            }];
+        }
+
+        if (mode === "grouped-stack") {
+            return [{
+                query: { maxWidth: 520 },
+                option: {
+                    legend: compactLegend,
+                    toolbox: hideToolbox,
+                    grid: { left: 4, right: 6, top: 56, bottom: 46, containLabel: true },
+                    xAxis: { axisLabel: { rotate: 40, fontSize: 9, interval: "auto" } },
+                    yAxis: { axisLabel: { fontSize: 9 }, splitNumber: 4 },
+                    dataZoom: [{ type: "inside", start: 0, end: 100 }],
+                    series: (baseSeries || []).map(s => ({
+                        barMaxWidth: s.type === "bar" ? 24 : undefined,
+                        symbolSize: s.type === "line" ? 4 : undefined
+                    }))
+                }
+            }];
+        }
+
+        if (mode === "donut") {
+            return [{
+                query: { maxWidth: 520 },
+                option: {
+                    toolbox: hideToolbox,
+                    legend: {
+                        type: "scroll",
+                        left: 8,
+                        right: 8,
+                        bottom: 0,
+                        itemWidth: 12,
+                        itemHeight: 8,
+                        textStyle: { fontSize: 10, color: "#61767e" }
+                    },
+                    series: [{ radius: ["43%", "68%"], center: ["50%", "42%"] }]
+                }
+            }];
+        }
+
+        return [{
+            query: { maxWidth: 520 },
+            option: {
+                legend: compactLegend,
+                toolbox: hideToolbox,
+                grid: { left: 4, right: 6, top: 52, bottom: 42, containLabel: true },
+                xAxis: { axisLabel: { fontSize: 9, hideOverlap: true } },
+                yAxis: { axisLabel: { fontSize: 9 } }
+            }
+        }];
+    }
+
     async function ensureWorldMap() {
         if (window.echarts?.getMap("dyn-world")) return;
         if (!worldMapPromise) {
@@ -42,10 +160,12 @@
     function decorate(option) {
         const seriesFormats = option.__dynSeriesFormats || {};
         const itemFormat = option.__dynItemFormat || null;
+        const responsiveMode = option.__dynResponsive || null;
 
         if (option.__dynMap === "world") delete option.__dynMap;
         delete option.__dynSeriesFormats;
         delete option.__dynItemFormat;
+        delete option.__dynResponsive;
 
         const axes = [];
         if (Array.isArray(option.yAxis)) axes.push(...option.yAxis);
@@ -83,6 +203,9 @@
                 return p.marker + "<b>" + (p.name || "") + "</b><br/>" + formatValue(raw, format) + pct;
             };
         }
+
+        const responsive = responsiveOptions(responsiveMode, seriesFormats, itemFormat, option.series);
+        if (responsive.length) option.media = responsive;
 
         return option;
     }
@@ -154,9 +277,17 @@
         URL.revokeObjectURL(url);
     }
 
+    function goBack(fallbackUrl) {
+        if (window.history.length > 1) {
+            window.history.back();
+            return;
+        }
+        if (fallbackUrl) window.location.href = fallbackUrl;
+    }
+
     window.addEventListener("resize", () => {
         for (const chart of charts.values()) chart.resize();
     });
 
-    window.DynReportCharts = { render, dispose, downloadCsv };
+    window.DynReportCharts = { render, dispose, downloadCsv, goBack };
 })();
