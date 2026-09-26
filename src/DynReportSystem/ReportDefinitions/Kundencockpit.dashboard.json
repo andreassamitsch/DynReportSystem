@@ -5,78 +5,16 @@
   "DataSourceRdl": "Reports/Kundencockpit.rdl",
   "Widgets": [
     {
-      "Id": "umsatz",
-      "Type": "kpi",
-      "Title": "Umsatz",
-      "Subtitle": "Ausgewählter Zeitraum",
-      "Dataset": "KundenUmsatzAuftragMonat",
-      "ValueField": "Umsatz",
-      "CategoryField": "Monat",
-      "TimeBucket": "month",
-      "Format": "currency",
-      "TrendMode": "last-vs-prev",
-      "Order": 10
-    },
-    {
-      "Id": "offene-auftraege",
-      "Type": "kpi",
-      "Title": "Offener Auftragswert",
-      "Subtitle": "Ausgewählter Zeitraum",
-      "Dataset": "KundenUmsatzAuftragMonat",
-      "ValueField": "OffenerAuftragswert",
-      "CategoryField": "Monat",
-      "TimeBucket": "month",
-      "Format": "currency",
-      "TrendMode": "last-vs-prev",
-      "Order": 20
-    },
-    {
-      "Id": "rahmenwert",
-      "Type": "kpi",
-      "Title": "Rahmenwert",
-      "Subtitle": "Ausgewählter Zeitraum",
-      "Dataset": "KundenUmsatzAuftragMonat",
-      "ValueField": "Rahmenwert",
-      "CategoryField": "Monat",
-      "TimeBucket": "month",
-      "Format": "currency",
-      "TrendMode": "last-vs-prev",
-      "Order": 30
-    },
-    {
-      "Id": "bestelleingang-kpi",
-      "Type": "kpi",
-      "Title": "Bestelleingang",
-      "Subtitle": "inkl. Zu-/Abschläge",
-      "Dataset": "Bestelleingang",
-      "ValueField": "BestellwertInklZuAbschlag",
-      "CategoryField": "Monatsdatum",
-      "TimeBucket": "month",
-      "Format": "currency",
-      "TrendMode": "last-vs-prev",
-      "Order": 40
-    },
-    {
-      "Id": "angebotsvolumen-kpi",
-      "Type": "kpi",
-      "Title": "Angebotsvolumen",
-      "Subtitle": "Summe der Statusanalyse",
-      "Dataset": "AngebotsStatusAnalyse",
-      "ValueField": "Angebotswert",
-      "Format": "currency",
-      "Order": 50
-    },
-    {
       "Id": "umsatzverlauf",
       "Type": "echarts-combo",
-      "Title": "Umsatz & Auftragslage",
-      "Subtitle": "Umsatz, offene Aufträge und Rahmenwerte je Monat",
+      "Title": "Umsatz · offene AB · Rahmen",
+      "Subtitle": "Gestapelte Monatsentwicklung wie im RDL · Klick auf einen Monat filtert den Zeitraum",
       "Dataset": "KundenUmsatzAuftragMonat",
       "CategoryField": "Monat",
       "TimeBucket": "month",
-      "Order": 100,
-      "ColSpan": 2,
-      "Height": 390,
+      "Order": 10,
+      "ColSpan": 3,
+      "Height": 430,
       "Interactive": true,
       "Series": [
         {
@@ -84,21 +22,92 @@
           "Field": "Umsatz",
           "Type": "bar",
           "Aggregate": "sum",
-          "Format": "currency"
+          "Format": "currency",
+          "Color": "#aaaaaa",
+          "Stack": "sales-order-frame"
         },
         {
           "Name": "Offener Auftragswert",
           "Field": "OffenerAuftragswert",
           "Type": "bar",
           "Aggregate": "sum",
-          "Format": "currency"
+          "Format": "currency",
+          "Color": "#cedf74",
+          "Stack": "sales-order-frame"
         },
         {
           "Name": "Rahmenwert",
           "Field": "Rahmenwert",
+          "Type": "bar",
+          "Aggregate": "sum",
+          "Format": "currency",
+          "Color": "#f0dccb",
+          "Stack": "sales-order-frame"
+        }
+      ]
+    },
+    {
+      "Id": "umsatz",
+      "Type": "kpi",
+      "Title": "Umsatz",
+      "Subtitle": "Zeitraum",
+      "Dataset": "KundenUmsatzAuftragMonat",
+      "ValueField": "Umsatz",
+      "CategoryField": "Monat",
+      "TimeBucket": "month",
+      "Format": "currency",
+      "TrendMode": "last-vs-prev",
+      "Order": 20
+    },
+    {
+      "Id": "offene-auftraege",
+      "Type": "kpi",
+      "Title": "Offene AB",
+      "Subtitle": "Zeitraum",
+      "Dataset": "KundenUmsatzAuftragMonat",
+      "ValueField": "OffenerAuftragswert",
+      "CategoryField": "Monat",
+      "TimeBucket": "month",
+      "Format": "currency",
+      "TrendMode": "last-vs-prev",
+      "Order": 30
+    },
+    {
+      "Id": "rahmenwert",
+      "Type": "kpi",
+      "Title": "Rahmen",
+      "Subtitle": "Zeitraum",
+      "Dataset": "KundenUmsatzAuftragMonat",
+      "ValueField": "Rahmenwert",
+      "CategoryField": "Monat",
+      "TimeBucket": "month",
+      "Format": "currency",
+      "TrendMode": "last-vs-prev",
+      "Order": 40
+    },
+    {
+      "Id": "umsatz-gb",
+      "Type": "echarts-grouped-stack",
+      "Title": "Umsatz nach Geschäftsbereich",
+      "Subtitle": "Gestapelte Monatswerte · GB-Farben werden direkt aus der RDL übernommen",
+      "Dataset": "Umsatz",
+      "CategoryField": "Belegdatum",
+      "GroupField": "Geschäftsbereich",
+      "GroupColorField": "Geschäftsbereich_Nr",
+      "TimeBucket": "month",
+      "Order": 100,
+      "ColSpan": 2,
+      "Height": 380,
+      "Interactive": true,
+      "Series": [
+        {
+          "Name": "Umsatz",
+          "Field": "Betrag",
           "Type": "line",
           "Aggregate": "sum",
-          "Format": "currency"
+          "Format": "currency",
+          "Stack": "business-area",
+          "Area": true
         }
       ]
     },
@@ -113,7 +122,7 @@
       "Sort": "value-desc",
       "Limit": 10,
       "Order": 110,
-      "Height": 390,
+      "Height": 380,
       "Interactive": true,
       "Series": [
         {
@@ -121,29 +130,33 @@
           "Field": "Umsatz",
           "Type": "bar",
           "Aggregate": "sum",
-          "Format": "currency"
+          "Format": "currency",
+          "Color": "#3398ff"
         }
       ]
     },
     {
-      "Id": "bestelleingang-verlauf",
-      "Type": "echarts-area",
-      "Title": "Bestelleingang",
-      "Subtitle": "Monatlicher Auftragseingang inkl. Zu-/Abschläge",
+      "Id": "bestelleingang-gb",
+      "Type": "echarts-grouped-stack",
+      "Title": "Bestelleingang nach Geschäftsbereich",
+      "Subtitle": "Gestapelte Monatswerte inkl. Zu-/Abschläge · GB-Farben aus der RDL",
       "Dataset": "Bestelleingang",
-      "CategoryField": "Monatsdatum",
+      "CategoryField": "Datum",
+      "GroupField": "Geschäftsbereich",
+      "GroupColorField": "Geschäftsbereich_Nr",
       "TimeBucket": "month",
       "Order": 120,
       "ColSpan": 2,
-      "Height": 340,
+      "Height": 360,
+      "Interactive": true,
       "Series": [
         {
           "Name": "Bestelleingang",
           "Field": "BestellwertInklZuAbschlag",
-          "Type": "line",
+          "Type": "bar",
           "Aggregate": "sum",
           "Format": "currency",
-          "Area": true
+          "Stack": "business-area"
         }
       ]
     },
@@ -156,7 +169,8 @@
       "CategoryField": "Status",
       "Sort": "value-desc",
       "Order": 130,
-      "Height": 340,
+      "Height": 330,
+      "Interactive": true,
       "Series": [
         {
           "Name": "Angebotswert",
@@ -179,13 +193,15 @@
       "Limit": 8,
       "Order": 140,
       "Height": 340,
+      "Interactive": true,
       "Series": [
         {
           "Name": "Angebotswert",
           "Field": "Angebotswert",
           "Type": "bar",
           "Aggregate": "sum",
-          "Format": "currency"
+          "Format": "currency",
+          "Color": "#ff9833"
         }
       ]
     },
@@ -199,14 +215,16 @@
       "TimeBucket": "month",
       "Order": 150,
       "ColSpan": 2,
-      "Height": 330,
+      "Height": 310,
+      "Interactive": true,
       "Series": [
         {
           "Name": "Ø Arbeitstage",
           "Field": "DurchschnittArbeitstage",
           "Type": "line",
           "Aggregate": "average",
-          "Format": "number"
+          "Format": "number",
+          "Color": "#ff9833"
         }
       ]
     },
