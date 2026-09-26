@@ -365,7 +365,8 @@ else
                                     <EChart @key="@($"{relatedChart.Key}-{start:yyyyMMdd}-{ende:yyyyMMdd}-{kunde}-{mitarbeiter}")"
                                             ChartKey="@relatedChart.Key"
                                             Options="@relatedChart.Options"
-                                            Height="@relatedChart.Height" />
+                                            Height="@relatedChart.Height"
+                                            OnPointClick="HandleDetailChartClickAsync" />
                                 </section>
                             }
 
@@ -382,7 +383,8 @@ else
                                     <EChart @key="@($"{chart.Key}-{start:yyyyMMdd}-{ende:yyyyMMdd}-{kunde}-{mitarbeiter}")"
                                             ChartKey="@chart.Key"
                                             Options="@chart.Options"
-                                            Height="@chart.Height" />
+                                            Height="@chart.Height"
+                                            OnPointClick="HandleDetailChartClickAsync" />
                                 </section>
                             }
                         </div>
@@ -880,6 +882,59 @@ else
         }
 
         await ShowDatasetAsync(widget.Dataset);
+    }
+
+    private Task HandleDetailChartClickAsync(ChartPointEvent e)
+    {
+        if (detail is null)
+            return Task.CompletedTask;
+
+        string? categoryLabel = null;
+        string? groupLabel = null;
+
+        if (e.Data.ValueKind == JsonValueKind.Object)
+        {
+            if (e.Data.TryGetProperty("categoryLabel", out var categoryElement))
+                categoryLabel = categoryElement.GetString();
+
+            if (e.Data.TryGetProperty("groupLabel", out var groupElement))
+                groupLabel = groupElement.GetString();
+        }
+
+        if (!string.IsNullOrWhiteSpace(groupLabel))
+        {
+            var businessColumn = detail.Columns.Contains("GeschäftsbereichBezeichnung", StringComparer.OrdinalIgnoreCase)
+                ? "GeschäftsbereichBezeichnung"
+                : detail.Columns.Contains("Geschäftsbereich", StringComparer.OrdinalIgnoreCase)
+                    ? "Geschäftsbereich"
+                    : null;
+
+            if (businessColumn is not null)
+                SetColumnFilter(businessColumn, groupLabel);
+
+            return Task.CompletedTask;
+        }
+
+        var value = categoryLabel ?? e.Name;
+        if (string.IsNullOrWhiteSpace(value))
+            return Task.CompletedTask;
+
+        var preferredColumn = e.ChartKey switch
+        {
+            "revenue-world" => "Land",
+            "revenue-area" => "Geschäftsbereich",
+            "stock-status" => "Status",
+            "stock-customers" => "Kunde",
+            "offers-status-raw" => "Status",
+            "offers-business" => "GeschäftsbereichBezeichnung",
+            _ => null
+        };
+
+        if (preferredColumn is not null
+            && detail.Columns.Contains(preferredColumn, StringComparer.OrdinalIgnoreCase))
+            SetColumnFilter(preferredColumn, value);
+
+        return Task.CompletedTask;
     }
 
     private async Task OpenDetailFilteredAsync(string dataset, string column, string value)
