@@ -34,6 +34,14 @@
             }
         </div>
 
+        @if (!string.IsNullOrWhiteSpace(loadError))
+        {
+            <div class="notice error">
+                <strong>Reporting-Katalog konnte nicht geladen werden.</strong><br />
+                @loadError
+            </div>
+        }
+
         <div class="portal-toolbar">
             <label class="portal-search">
                 <span>Berichte durchsuchen</span>
@@ -143,7 +151,7 @@
             </div>
         }
 
-        <footer>DynReport System 0.3.0 · dynamischer Reportkatalog · Windows/AD-Berechtigungen</footer>
+        <footer>DynReport System 0.3.1 · dynamischer Reportkatalog · Windows/AD-Berechtigungen</footer>
     </main>
 </div>
 
@@ -154,18 +162,16 @@
     private ReportFolder? activeFolder;
     private string search = "";
     private bool showHidden;
+    private string loadError = "";
     private ImportedPortalStats importedStats = new();
+    private List<ReportItem> authorizedReports = [];
 
     private PlatformCatalog Catalog => Access.Catalog;
 
     private List<ReportItem> AccessibleReports =>
-        user is null
-            ? []
-            : Catalog.Reports
-                .Where(r => Access.Can(user, r.Id, "View") && Access.Can(user, r.Id, "Run"))
-                .Where(r => showHidden || (!IsHidden(r.Id) && !HasHiddenAncestor(r.FolderId)))
-                .OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase)
-                .ToList();
+        authorizedReports
+            .Where(r => showHidden || (!IsHidden(r.Id) && !HasHiddenAncestor(r.FolderId)))
+            .ToList();
 
     private List<ReportFolder> VisibleSubFolders
     {
@@ -228,15 +234,31 @@
     {
         user = (await Authentication.GetAuthenticationStateAsync()).User;
         userName = user.Identity?.Name ?? "Unbekannt";
-        importedStats = Imported.Catalog.Stats;
 
-        // If there is only one top-level accessible folder, open it directly.
-        var roots = Catalog.Folders
-            .Where(x => string.IsNullOrWhiteSpace(x.ParentId) && DescendantReportCount(x.Id) > 0)
-            .ToList();
+        try
+        {
+            importedStats = Imported.Catalog.Stats;
 
-        if (roots.Count == 1)
-            OpenFolder(roots[0].Id);
+            // Resolve expensive SSRS/Windows ACL checks exactly once per report
+            // for this portal session. All folder counters/navigation then work
+            // from this in-memory list instead of repeating domain role checks.
+            authorizedReports = Catalog.Reports
+                .Where(r => Access.Can(user, r.Id, "View") && Access.Can(user, r.Id, "Run"))
+                .OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            var roots = Catalog.Folders
+                .Where(x => string.IsNullOrWhiteSpace(x.ParentId) && DescendantReportCount(x.Id) > 0)
+                .ToList();
+
+            if (roots.Count == 1)
+                OpenFolder(roots[0].Id);
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+            authorizedReports = [];
+        }
     }
 
     private void OpenFolder(string? id)
