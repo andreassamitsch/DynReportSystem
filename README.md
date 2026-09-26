@@ -2,7 +2,7 @@
 
 Internal reporting and analytics platform for APP-01. The goal is a modern successor path for selected SSRS reports while retaining Windows SSO, folder/report permissions and existing RDL data/business logic.
 
-## Version 0.2.1
+## Version 0.2.2
 
 - ASP.NET Core / Blazor Interactive Server on .NET 10
 - IIS Windows Authentication (SSO)
@@ -12,7 +12,8 @@ Internal reporting and analytics platform for APP-01. The goal is a modern succe
 - independent DynReport dashboard definitions instead of reproducing SSRS layouts
 - Apache ECharts 6.1.0 bundled locally; no chart CDN is required at runtime
 - compact KPI cards with trend and sparklines; the Umsatz/AB/Rahmen chart is the primary dashboard element
-- stacked Umsatz / offene AB / Rahmen monthly chart using the established RDL colors
+- stacked Umsatz / offene AB / Rahmen monthly chart using the established RDL colors, with a visible monthly total above every stack
+- persistent collapsible parameter/filter bar that stays available while scrolling
 - stacked business-area charts whose GB colors are read dynamically from the installed RDL
 - mobile-specific ECharts layouts for rankings, stacked charts, donut charts and long labels
 - interactive combo, line, area, bar, donut, stacked and treemap visualizations
@@ -37,13 +38,13 @@ DynReport System does **not** reproduce the SSRS page layout.
 
 The Kundencockpit is the first migrated report. The RDL remains the data source, while the user-facing report is an independent interactive dashboard.
 
-## Kundencockpit 0.2.1
+## Kundencockpit 0.2.2
 
 The dashboard includes:
 
 - Umsatz / offene AB / Rahmen as the large primary stacked monthly chart
 - compact Umsatz, offene AB and Rahmen KPIs
-- Umsatz and Bestelleingang as stacked business-area series using RDL GB colors
+- Umsatz and Bestelleingang as stacked business-area series using RDL GB colors; Umsatz now resolves the actual SQL field `Geschäftsbereich Nr` correctly
 - top customers as an interactive, mobile-optimized horizontal ranking
 - business-area drilldown by tapping a stack segment
 - offer-status donut
@@ -65,7 +66,7 @@ The installer preserves an existing production configuration, report permissions
 
 ## Build
 
-GitHub Actions builds `DynReportSystem-Server-Setup-0.2.1-win-x64.exe`.
+GitHub Actions builds `DynReportSystem-Server-Setup-0.2.2-win-x64.exe`.
 
 The workflow installs the pinned frontend dependencies, vendors ECharts and the world SVG map into the published application, publishes the self-contained .NET application and creates the server setup executable.
 
