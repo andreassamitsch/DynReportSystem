@@ -416,6 +416,7 @@ else
         {
             draft.Manifest.Version = BumpPatch(draft.Manifest.Version);
             draft.Manifest.ModifiedUtc = DateTime.UtcNow;
+            draft.Manifest.FolderPath = ParentPath(draft.Manifest.Path);
 
             draft = await Packages.SaveDesignerPackageAsync(
                 draft,
@@ -461,6 +462,13 @@ else
                 source.TextFiles,
                 StringComparer.OrdinalIgnoreCase)
         };
+    }
+
+    private static string ParentPath(string path)
+    {
+        var normalized = (path ?? "").Replace('\\', '/').TrimEnd('/');
+        var index = normalized.LastIndexOf('/');
+        return index <= 0 ? "/" : normalized[..index];
     }
 
     private static string BumpPatch(string version)
