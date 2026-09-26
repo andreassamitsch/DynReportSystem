@@ -83,6 +83,9 @@ public sealed class DynReportParameter
     public int Order { get; set; }
     public List<string> DefaultValues { get; set; } = [];
     public List<DynReportParameterOption> Options { get; set; } = [];
+    public string OptionsDataset { get; set; } = "";
+    public string OptionsValueField { get; set; } = "";
+    public string OptionsLabelField { get; set; } = "";
 }
 
 public sealed record DynReportParameterOption(string Value, string Label);
