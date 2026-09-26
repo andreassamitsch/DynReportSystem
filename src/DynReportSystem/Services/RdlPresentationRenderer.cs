@@ -4,9 +4,124 @@ using DynReportSystem.Models;
 
 namespace DynReportSystem.Services;
 
-public sealed class RdlPresentationRenderer
+public sealed class RdlPresentationRenderer(RdlExpressionEvaluator expressions)
 {
     private static readonly CultureInfo DeAt = CultureInfo.GetCultureInfo("de-AT");
+
+    public RdlProjectedTable BuildTableResult(
+        RdlPresentationItem item,
+        QueryResult source,
+        IReadOnlyDictionary<string, DynamicParameterValue>? parameters = null)
+    {
+        var filtered = ApplyFilters(item, source, parameters);
+        var table = item.Table;
+
+        if (table is null || table.Columns.Count == 0)
+        {
+            return new RdlProjectedTable(
+                filtered,
+                filtered.Columns,
+                [],
+                []);
+        }
+
+        var groupFields = table.GroupFields
+            .Select(field => ResolveColumn(filtered, field))
+            .Where(field => !string.IsNullOrWhiteSpace(field))
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var sortFields = table.SortFields
+            .Select(field => ResolveColumn(filtered, field))
+            .Where(field => !string.IsNullOrWhiteSpace(field))
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var displayColumns = UniqueHeaders(table.Columns);
+        var scopeByKey = new Dictionary<string, IReadOnlyList<Dictionary<string, object?>>>(StringComparer.Ordinal);
+
+        if (groupFields.Length > 0)
+        {
+            foreach (var group in filtered.Rows.GroupBy(row => GroupKey(row, groupFields), StringComparer.Ordinal))
+                scopeByKey[group.Key] = group.ToArray();
+        }
+
+        var outputRows = new List<Dictionary<string, object?>>(filtered.Rows.Count);
+
+        foreach (var row in filtered.Rows)
+        {
+            IReadOnlyList<Dictionary<string, object?>> scope = groupFields.Length == 0
+                ? filtered.Rows
+                : scopeByKey.GetValueOrDefault(GroupKey(row, groupFields), filtered.Rows);
+
+            var projected = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+            for (var i = 0; i < table.Columns.Count; i++)
+            {
+                var column = table.Columns[i];
+                var value = expressions.Evaluate(column.Expression, row, scope, parameters);
+                projected[displayColumns[i]] = expressions.ApplyFormat(value, column.Format);
+            }
+
+            foreach (var field in groupFields.Concat(sortFields).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (!projected.ContainsKey(field))
+                    projected[field] = QueryResult.Get(row, field);
+            }
+
+            outputRows.Add(projected);
+        }
+
+        var allColumns = displayColumns
+            .Concat(groupFields)
+            .Concat(sortFields)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var result = new QueryResult
+        {
+            Dataset = filtered.Dataset,
+            Columns = allColumns,
+            Rows = outputRows,
+            Truncated = filtered.Truncated
+        };
+
+        return new RdlProjectedTable(result, displayColumns, groupFields, sortFields);
+    }
+
+    private static IReadOnlyList<string> UniqueHeaders(IReadOnlyList<RdlTableColumnPresentation> columns)
+    {
+        var used = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<string>(columns.Count);
+
+        foreach (var column in columns)
+        {
+            var baseName = string.IsNullOrWhiteSpace(column.Header)
+                ? column.Field
+                : column.Header.Trim();
+
+            if (!used.TryGetValue(baseName, out var count))
+            {
+                used[baseName] = 1;
+                result.Add(baseName);
+                continue;
+            }
+
+            count++;
+            used[baseName] = count;
+            result.Add($"{baseName} ({count})");
+        }
+
+        return result;
+    }
+
+    private static string GroupKey(
+        IReadOnlyDictionary<string, object?> row,
+        IReadOnlyList<string> fields) =>
+        string.Join("", fields.Select(field =>
+            Convert.ToString(QueryResult.Get(row, field), CultureInfo.InvariantCulture) ?? ""));
 
     public QueryResult ApplyFilters(
         RdlPresentationItem item,
