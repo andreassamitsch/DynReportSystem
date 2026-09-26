@@ -1,9 +1,11 @@
 @page "/reports/dynamic/{ReportId}"
 @attribute [Authorize]
+@implements IAsyncDisposable
 @inject DynamicRdlService Rdl
 @inject DynamicReportExecutionService Executor
 @inject DynamicVisualizationService Visuals
 @inject RdlPresentationService Presentations
+@inject CustomReportStore CustomReports
 @inject ImportedPortalCatalog Imported
 @inject FolderAccess Access
 @inject AuthenticationStateProvider Authentication
@@ -33,7 +35,7 @@ else
         <div class="brand-mark">D</div>
         <div class="brand-text">
             <strong>@definition.Report.Title</strong>
-            <span>DynReport · importierter SSRS-Bericht</span>
+            <span>@(customReport is null ? "DynReport · importierter SSRS-Bericht" : "DynReport · manuell optimierte Berichtsversion")</span>
         </div>
         <div class="topbar-tag"><span class="live-dot"></span> APP-01 · Live</div>
     </header>
@@ -56,6 +58,10 @@ else
             <div class="report-meta-chips">
                 <span>@definition.DataSets.Count Dataset(s)</span>
                 <span>@VisibleParameters.Count() Parameter</span>
+                @if (customReport is not null)
+                {
+                    <span class="custom-report-meta">✓ optimiert</span>
+                }
                 @if (presentation?.HasMeaningfulLayout == true)
                 {
                     <span>@presentation.Items.Count RDL-Elemente</span>
@@ -69,7 +75,7 @@ else
 
         @if (VisibleParameters.Any())
         {
-            <details class="report-parameter-shell" open>
+            <details class="report-parameter-shell" open="@ParameterPanelInitiallyOpen">
                 <summary>
                     <strong>Parameter</strong>
                     <span>@ParameterSummary</span>
@@ -83,7 +89,7 @@ else
                         var state = values[parameter.Name];
 
                         <label class="dynamic-parameter">
-                            <span>@parameter.Prompt</span>
+                            <span>@ParameterLabel(parameter)</span>
 
                             @if (parameter.MultiValue && options.Count > 0)
                             {
@@ -114,8 +120,8 @@ else
                             }
                             else if (parameter.DataType.Equals("DateTime", StringComparison.OrdinalIgnoreCase))
                             {
-                                <input type="date"
-                                       value="@DateValue(state)"
+                                <input type="@ParameterInputMode(parameter)"
+                                       value="@DateValue(parameter, state)"
                                        @onchange="e => SetScalar(parameter, e.Value?.ToString())" />
                             }
                             else if (parameter.DataType.Equals("Boolean", StringComparison.OrdinalIgnoreCase))
@@ -194,7 +200,15 @@ else
             else
             {
                 <div class="report-view-switch">
-                    @if (presentation?.HasMeaningfulLayout == true)
+                    @if (customReport is not null)
+                    {
+                        <button class="@(viewMode == "Custom" ? "active" : "")"
+                                @onclick='() => viewMode = "Custom"'>
+                            Optimierte Ansicht
+                            <small>manuell analysiert</small>
+                        </button>
+                    }
+                    else if (presentation?.HasMeaningfulLayout == true)
                     {
                         <button class="@(viewMode == "Report" ? "active" : "")"
                                 @onclick='() => viewMode = "Report"'>
@@ -209,7 +223,23 @@ else
                     </button>
                 </div>
 
-                @if (viewMode == "Report" && presentation?.HasMeaningfulLayout == true)
+                @if (viewMode == "Custom" && customReport is not null)
+                {
+                    @if (customReport.Renderer.Equals("production-tv-overview", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <ProductionTvOverview Definition="@customReport"
+                                              Run="@run"
+                                              LastUpdated="@lastUpdated"
+                                              RefreshRequested="RunAsync" />
+                    }
+                    else
+                    {
+                        <div class="notice error">
+                            Renderer '@customReport.Renderer' wird von dieser DynReport-Version nicht unterstützt.
+                        </div>
+                    }
+                }
+                else if (viewMode == "Report" && presentation?.HasMeaningfulLayout == true)
                 {
                     <div class="rdl-view-note">
                         <strong>Originale Berichtslogik übernommen.</strong>
@@ -288,11 +318,16 @@ else
                 <div class="intro-card">
                     <span class="intro-icon">▦</span>
                     <div>
-                        <strong>Originale SSRS-Semantik wird ausgewertet</strong>
+                        <strong>@(customReport is null ? "Originale SSRS-Semantik wird ausgewertet" : "Manuell optimierte DynReport-Version installiert")</strong>
                         <p>
-                            DynReport liest neben SQL und Parametern jetzt auch Tabellenaufbau,
-                            Gruppierungen, Diagrammtypen, Stapelung, Serien, Gauges und Farben
-                            direkt aus der RDL und baut daraus eine responsive Berichtsansicht.
+                            @if (customReport is null)
+                            {
+                                <text>DynReport liest SQL, Parameter und Darstellungslogik direkt aus der RDL.</text>
+                            }
+                            else
+                            {
+                                <text>@customReport.Description</text>
+                            }
                         </p>
                     </div>
                 </div>
@@ -311,7 +346,7 @@ else
             </section>
         }
 
-        <footer>DynReport System 0.4.0 · generische SSRS-Migration · Windows SSO</footer>
+        <footer>DynReport System 0.5.0 · generische SSRS-Migration · Windows SSO</footer>
     </main>
 </div>
 }
@@ -327,7 +362,11 @@ else
     private string error = "";
     private DynamicReportDefinition? definition;
     private RdlPresentationDefinition? presentation;
+    private CustomReportDefinition? customReport;
     private DynamicReportRun? run;
+    private DateTime lastUpdated;
+    private CancellationTokenSource? refreshCts;
+    private Task? refreshLoop;
     private string activeDataSet = "";
     private string viewMode = "Report";
     private readonly Dictionary<string, DynamicParameterValue> values =
@@ -337,8 +376,29 @@ else
     private readonly Dictionary<string, string> modes =
         new(StringComparer.OrdinalIgnoreCase);
 
-    private IEnumerable<DynamicReportParameter> VisibleParameters =>
-        definition?.Parameters.Where(x => !x.Hidden) ?? [];
+    private IEnumerable<DynamicReportParameter> VisibleParameters
+    {
+        get
+        {
+            if (definition is null)
+                return [];
+
+            var hints = customReport?.Parameters
+                .ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                ?? new Dictionary<string, CustomParameterPresentation>(StringComparer.OrdinalIgnoreCase);
+
+            return definition.Parameters
+                .Where(parameter =>
+                    !parameter.Hidden
+                    && (!hints.TryGetValue(parameter.Name, out var hint) || hint.Hidden != true))
+                .OrderBy(parameter =>
+                    hints.TryGetValue(parameter.Name, out var hint) ? hint.Order : 1000)
+                .ThenBy(parameter => parameter.Prompt, StringComparer.CurrentCultureIgnoreCase);
+        }
+    }
+
+    private bool ParameterPanelInitiallyOpen =>
+        customReport?.ParametersCollapsedByDefault != true;
 
     private QueryResult? CurrentResult =>
         run is not null && run.Results.TryGetValue(activeDataSet, out var result) ? result : null;
@@ -360,7 +420,7 @@ else
                         : state.MultiValue
                             ? $"{state.Values.Count} Werte"
                             : state.Values[0];
-                    return $"{parameter.Prompt}: {value}";
+                    return $"{ParameterLabel(parameter)}: {value}";
                 });
 
             return string.Join(" · ", parts);
@@ -374,7 +434,9 @@ else
         run = null;
         activeDataSet = "";
         presentation = null;
+        customReport = null;
         viewMode = "Report";
+        CancelAutoRefresh();
         values.Clear();
         parameterOptions.Clear();
         modes.Clear();
@@ -389,13 +451,23 @@ else
 
             definition = Rdl.GetDefinition(ReportId);
             presentation = Presentations.GetPresentation(ReportId);
-            viewMode = presentation.HasMeaningfulLayout ? "Report" : "Data";
+            customReport = CustomReports.GetForReport(ReportId);
+            viewMode = customReport is not null
+                ? "Custom"
+                : presentation.HasMeaningfulLayout
+                    ? "Report"
+                    : "Data";
 
             foreach (var item in Rdl.CreateInitialValues(definition))
                 values[item.Key] = item.Value;
 
             await Executor.ApplyDataSetDefaultsAsync(ReportId, definition, values);
             await ReloadOptionsAsync();
+
+            if (customReport?.AutoRun == true)
+                await RunAsync();
+
+            StartAutoRefresh();
         }
         catch (Exception ex)
         {
@@ -497,15 +569,37 @@ else
             ? string.Join("; ", value.Values)
             : value.Values.FirstOrDefault() ?? "";
 
-    private static string DateValue(DynamicParameterValue value)
+    private string DateValue(DynamicReportParameter parameter, DynamicParameterValue value)
     {
         var raw = value.Values.FirstOrDefault();
         if (string.IsNullOrWhiteSpace(raw))
             return "";
 
+        var mode = ParameterInputMode(parameter);
         return DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var date)
-            ? date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            ? date.ToString(mode == "datetime-local" ? "yyyy-MM-ddTHH:mm" : "yyyy-MM-dd", CultureInfo.InvariantCulture)
             : raw;
+    }
+
+    private string ParameterLabel(DynamicReportParameter parameter)
+    {
+        var hint = customReport?.Parameters.FirstOrDefault(x =>
+            x.Name.Equals(parameter.Name, StringComparison.OrdinalIgnoreCase));
+
+        return string.IsNullOrWhiteSpace(hint?.Label)
+            ? parameter.Prompt
+            : hint.Label!;
+    }
+
+    private string ParameterInputMode(DynamicReportParameter parameter)
+    {
+        var hint = customReport?.Parameters.FirstOrDefault(x =>
+            x.Name.Equals(parameter.Name, StringComparison.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(hint?.InputMode))
+            return hint.InputMode!;
+
+        return "date";
     }
 
     private async Task RunAsync()
@@ -520,7 +614,12 @@ else
         {
             run = await Executor.RunAsync(ReportId, values);
             activeDataSet = run.Results.Keys.FirstOrDefault() ?? "";
-            viewMode = presentation?.HasMeaningfulLayout == true ? "Report" : "Data";
+            lastUpdated = DateTime.Now;
+            viewMode = customReport is not null
+                ? "Custom"
+                : presentation?.HasMeaningfulLayout == true
+                    ? "Report"
+                    : "Data";
         }
         catch (Exception ex)
         {
@@ -544,6 +643,54 @@ else
     private void ChangeMode(string dataSet, string? mode)
     {
         modes[dataSet] = string.IsNullOrWhiteSpace(mode) ? "Auto" : mode;
+    }
+
+    private void StartAutoRefresh()
+    {
+        if (customReport is null || customReport.AutoRefreshSeconds < 30)
+            return;
+
+        CancelAutoRefresh();
+        refreshCts = new CancellationTokenSource();
+        var token = refreshCts.Token;
+        var seconds = customReport.AutoRefreshSeconds;
+
+        refreshLoop = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(seconds));
+
+            try
+            {
+                while (await timer.WaitForNextTickAsync(token))
+                {
+                    await InvokeAsync(async () =>
+                    {
+                        if (!busy)
+                            await RunAsync();
+                    });
+                }
+            }
+            catch (OperationCanceledException) { }
+        }, token);
+    }
+
+    private void CancelAutoRefresh()
+    {
+        try
+        {
+            refreshCts?.Cancel();
+            refreshCts?.Dispose();
+        }
+        catch { }
+
+        refreshCts = null;
+        refreshLoop = null;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        CancelAutoRefresh();
+        return ValueTask.CompletedTask;
     }
 
     private async Task BackAsync()
