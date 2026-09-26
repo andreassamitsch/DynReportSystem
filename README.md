@@ -2,9 +2,15 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
-## Version 0.4.0
+## Version 0.4.1
 
 Version 0.3 turns the Kundencockpit pilot into a **generic reporting portal**.
+
+### 0.4.1 dynamic-report hotfix
+
+- fixes HTTP 500 on `/reports/dynamic/*` by registering the RDL presentation services in dependency injection
+- supports SSRS 2016+ `ReportSections/ReportSection/Body` instead of only legacy top-level `Body`
+- enables the RDL-aware layout engine for reports such as **Auslastung Drehen** that use the modern 2016 report schema
 
 ### 0.4.0 RDL-aware report presentation
 
@@ -95,7 +101,7 @@ If an imported SQL data source has no explicit configuration, DynReport can use 
 
 ## Installation / update
 
-GitHub Actions builds DynReportSystem-Server-Setup-0.4.0-win-x64.exe.
+GitHub Actions builds DynReportSystem-Server-Setup-0.4.1-win-x64.exe.
 
 For an SSRS migration, keep the setup EXE, MigrationBundle.zip and the optimized Kundencockpit.rdl (when updating it) next to each other. The setup performs an in-place update and preserves the existing production appsettings, local DynReport permissions and IIS/HTTPS bindings.
 
