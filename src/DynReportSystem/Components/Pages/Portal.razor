@@ -1,6 +1,7 @@
 @page "/"
 @attribute [Authorize]
 @inject FolderAccess Access
+@inject ImportedPortalCatalog Imported
 @inject AuthenticationStateProvider Authentication
 
 <PageTitle>DynReport System</PageTitle>
@@ -8,64 +9,318 @@
 <div class="shell">
     <header class="topbar">
         <div class="brand-mark">D</div>
-        <div class="brand-text"><strong>DynReport System</strong><span>Fuchshofer · APP-01</span></div>
-        <span class="topbar-tag">Windows SSO</span>
+        <div class="brand-text">
+            <strong>DynReport System</strong>
+            <span>Fuchshofer · dynamisches Reporting</span>
+        </div>
+        <span class="topbar-tag"><span class="live-dot"></span> Windows SSO</span>
     </header>
 
-    <main class="main-area portal">
-        <div class="heading-line">
+    <main class="main-area portal portal-v3">
+        <div class="heading-line portal-heading">
             <div>
                 <p class="eyebrow">BERICHTSPORTAL</p>
-                <h1>Meine Auswertungen</h1>
+                <h1>@(activeFolder is null ? "Reporting" : activeFolder.Title)</h1>
                 <p class="subtitle">Angemeldet als @userName</p>
             </div>
+
+            @if (Imported.Exists)
+            {
+                <div class="portal-stats">
+                    <span><strong>@importedStats.Reports</strong> Berichte</span>
+                    <span><strong>@importedStats.Folders</strong> Ordner</span>
+                    <span><strong>@importedStats.SharedDatasets</strong> Shared Datasets</span>
+                </div>
+            }
         </div>
 
-        @if (folders.Count == 0)
-        {
-            <div class="notice error">Für diesen Windows-Benutzer sind noch keine Berichte freigegeben.</div>
-        }
+        <div class="portal-toolbar">
+            <label class="portal-search">
+                <span>Berichte durchsuchen</span>
+                <input type="search"
+                       placeholder="Name oder Pfad …"
+                       @bind="search"
+                       @bind:event="oninput" />
+            </label>
 
-        @foreach (var folder in folders)
+            <label class="hidden-toggle">
+                <input type="checkbox" @bind="showHidden" />
+                <span>Ausgeblendete anzeigen</span>
+            </label>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(search))
         {
-            <section class="panel folder-card">
-                <div class="panel-head"><h2>📁 @folder.Title</h2></div>
-                <div class="report-links">
-                    @foreach (var report in folder.Reports)
+            <section class="portal-section">
+                <div class="section-heading compact-heading">
+                    <div>
+                        <p class="eyebrow">SUCHE</p>
+                        <h2>@SearchResults.Count Ergebnis(se)</h2>
+                    </div>
+                </div>
+
+                <div class="portal-report-grid">
+                    @foreach (var report in SearchResults)
                     {
-                        <a href="@report.Url" class="report-link">
-                            <strong>@report.Title</strong>
-                            <span>Öffnen →</span>
-                        </a>
+                        @ReportCard(report)
                     }
                 </div>
             </section>
         }
+        else
+        {
+            <nav class="portal-breadcrumb" aria-label="Pfad">
+                <button @onclick="() => OpenFolder(null)">Reporting</button>
+                @foreach (var crumb in Breadcrumb)
+                {
+                    <span>›</span>
+                    <button @onclick="() => OpenFolder(crumb.Id)">@crumb.Title</button>
+                }
+            </nav>
 
-        <footer>DynReport System 0.1.0 · Ordner- und Berichtsrechte aus Windows/AD-Gruppen</footer>
+            @if (VisibleSubFolders.Count > 0)
+            {
+                <section class="portal-section">
+                    <div class="section-heading compact-heading">
+                        <div>
+                            <p class="eyebrow">ORDNER</p>
+                            <h2>@(activeFolder is null ? "Bereiche" : "Unterordner")</h2>
+                        </div>
+                    </div>
+
+                    <div class="portal-folder-grid">
+                        @foreach (var folder in VisibleSubFolders)
+                        {
+                            var count = DescendantReportCount(folder.Id);
+                            <button class="portal-folder-card" @onclick="() => OpenFolder(folder.Id)">
+                                <span class="folder-icon">▰</span>
+                                <span class="folder-copy">
+                                    <strong>@folder.Title</strong>
+                                    <small>@count Bericht@(count == 1 ? "" : "e")</small>
+                                </span>
+                                <span class="folder-arrow">→</span>
+                            </button>
+                        }
+                    </div>
+                </section>
+            }
+
+            @if (DirectReports.Count > 0)
+            {
+                <section class="portal-section">
+                    <div class="section-heading compact-heading">
+                        <div>
+                            <p class="eyebrow">BERICHTE</p>
+                            <h2>@DirectReports.Count verfügbar</h2>
+                        </div>
+                    </div>
+
+                    <div class="portal-report-grid">
+                        @foreach (var report in DirectReports)
+                        {
+                            @ReportCard(report)
+                        }
+                    </div>
+                </section>
+            }
+
+            @if (VisibleSubFolders.Count == 0 && DirectReports.Count == 0)
+            {
+                <div class="notice error">
+                    Für diesen Windows-Benutzer sind in diesem Bereich keine Berichte freigegeben.
+                </div>
+            }
+        }
+
+        @if (Imported.Exists)
+        {
+            <div class="portal-migration-note">
+                <strong>SSRS-Migration aktiv</strong>
+                <span>
+                    Ordner, Reports, Shared Datasets und ursprüngliche SSRS-Berechtigungen wurden aus dem
+                    ReportServer-Katalog importiert. Die Darstellung erfolgt dynamisch in DynReport.
+                </span>
+            </div>
+        }
+
+        <footer>DynReport System 0.3.0 · dynamischer Reportkatalog · Windows/AD-Berechtigungen</footer>
     </main>
 </div>
 
 @code {
     private string userName = "";
-    private List<VisibleFolder> folders = [];
-    private sealed record VisibleFolder(string Title, List<ReportItem> Reports);
+    private ClaimsPrincipal? user;
+    private string? activeFolderId;
+    private ReportFolder? activeFolder;
+    private string search = "";
+    private bool showHidden;
+    private ImportedPortalStats importedStats = new();
+
+    private PlatformCatalog Catalog => Access.Catalog;
+
+    private List<ReportItem> AccessibleReports =>
+        user is null
+            ? []
+            : Catalog.Reports
+                .Where(r => Access.Can(user, r.Id, "View") && Access.Can(user, r.Id, "Run"))
+                .Where(r => showHidden || !IsHidden(r.Id))
+                .OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+    private List<ReportFolder> VisibleSubFolders
+    {
+        get
+        {
+            var parent = activeFolderId;
+            return Catalog.Folders
+                .Where(folder =>
+                    string.Equals(folder.ParentId, parent, StringComparison.OrdinalIgnoreCase)
+                    && DescendantReportCount(folder.Id) > 0)
+                .OrderBy(folder => folder.Title, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+        }
+    }
+
+    private List<ReportItem> DirectReports =>
+        AccessibleReports
+            .Where(r => string.Equals(r.FolderId, activeFolderId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+    private List<ReportItem> SearchResults =>
+        string.IsNullOrWhiteSpace(search)
+            ? []
+            : AccessibleReports
+                .Where(report =>
+                {
+                    var imported = Imported.Catalog.Reports.FirstOrDefault(x =>
+                        x.Id.Equals(report.Id, StringComparison.OrdinalIgnoreCase));
+
+                    return report.Title.Contains(search, StringComparison.CurrentCultureIgnoreCase)
+                           || (imported?.Path?.Contains(search, StringComparison.CurrentCultureIgnoreCase) ?? false);
+                })
+                .Take(120)
+                .ToList();
+
+    private List<ReportFolder> Breadcrumb
+    {
+        get
+        {
+            var result = new List<ReportFolder>();
+            var current = activeFolder;
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            while (current is not null && seen.Add(current.Id))
+            {
+                result.Add(current);
+                current = string.IsNullOrWhiteSpace(current.ParentId)
+                    ? null
+                    : Catalog.Folders.FirstOrDefault(x =>
+                        x.Id.Equals(current.ParentId, StringComparison.OrdinalIgnoreCase));
+            }
+
+            result.Reverse();
+            return result;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
-        var user = (await Authentication.GetAuthenticationStateAsync()).User;
+        user = (await Authentication.GetAuthenticationStateAsync()).User;
         userName = user.Identity?.Name ?? "Unbekannt";
-        var catalog = Access.Catalog;
+        importedStats = Imported.Catalog.Stats;
 
-        folders = catalog.Folders
-            .Select(f => new VisibleFolder(
-                f.Title,
-                catalog.Reports
-                    .Where(r => r.FolderId.Equals(f.Id, StringComparison.OrdinalIgnoreCase)
-                        && Access.Can(user, r.Id, "View")
-                        && Access.Can(user, r.Id, "Run"))
-                    .ToList()))
-            .Where(f => f.Reports.Count != 0)
+        // If there is only one top-level accessible folder, open it directly.
+        var roots = Catalog.Folders
+            .Where(x => string.IsNullOrWhiteSpace(x.ParentId) && DescendantReportCount(x.Id) > 0)
             .ToList();
+
+        if (roots.Count == 1)
+            OpenFolder(roots[0].Id);
     }
+
+    private void OpenFolder(string? id)
+    {
+        activeFolderId = id;
+        activeFolder = string.IsNullOrWhiteSpace(id)
+            ? null
+            : Catalog.Folders.FirstOrDefault(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private int DescendantReportCount(string folderId)
+    {
+        var descendantIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { folderId };
+        var changed = true;
+
+        while (changed)
+        {
+            changed = false;
+            foreach (var folder in Catalog.Folders)
+            {
+                if (!string.IsNullOrWhiteSpace(folder.ParentId)
+                    && descendantIds.Contains(folder.ParentId)
+                    && descendantIds.Add(folder.Id))
+                    changed = true;
+            }
+        }
+
+        return AccessibleReports.Count(report => descendantIds.Contains(report.FolderId));
+    }
+
+    private bool IsHidden(string reportId) =>
+        Imported.Catalog.Reports.FirstOrDefault(x =>
+            x.Id.Equals(reportId, StringComparison.OrdinalIgnoreCase))?.Hidden == true;
+
+    private RenderFragment ReportCard(ReportItem report) => builder =>
+    {
+        var imported = Imported.Catalog.Reports.FirstOrDefault(x =>
+            x.Id.Equals(report.Id, StringComparison.OrdinalIgnoreCase));
+
+        var sequence = 0;
+        builder.OpenElement(sequence++, "a");
+        builder.AddAttribute(sequence++, "href", report.Url);
+        builder.AddAttribute(sequence++, "class", "portal-report-card");
+
+        builder.OpenElement(sequence++, "div");
+        builder.AddAttribute(sequence++, "class", "report-card-top");
+
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", "report-type-icon");
+        builder.AddContent(sequence++, imported?.LegacyType == "LinkedReport" ? "↗" : "▦");
+        builder.CloseElement();
+
+        if (imported?.Hidden == true)
+        {
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "hidden-report-badge");
+            builder.AddContent(sequence++, "ausgeblendet");
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+
+        builder.OpenElement(sequence++, "strong");
+        builder.AddContent(sequence++, report.Title);
+        builder.CloseElement();
+
+        if (!string.IsNullOrWhiteSpace(imported?.Path))
+        {
+            builder.OpenElement(sequence++, "small");
+            builder.AddContent(sequence++, imported.Path);
+            builder.CloseElement();
+        }
+
+        if (!string.IsNullOrWhiteSpace(imported?.Description))
+        {
+            builder.OpenElement(sequence++, "p");
+            builder.AddContent(sequence++, imported.Description);
+            builder.CloseElement();
+        }
+
+        builder.OpenElement(sequence++, "span");
+        builder.AddAttribute(sequence++, "class", "report-open");
+        builder.AddContent(sequence++, "Öffnen →");
+        builder.CloseElement();
+
+        builder.CloseElement();
+    };
 }
