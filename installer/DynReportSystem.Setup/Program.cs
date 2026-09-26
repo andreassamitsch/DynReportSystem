@@ -7,7 +7,7 @@ using System.Text.Json;
 using Microsoft.Win32;
 
 const string ProductName = "DynReport System";
-const string Version = "0.2.1";
+const string Version = "0.2.2";
 const string SiteName = "DynReportSystem";
 const string AppPool = "DynReportSystem";
 const int DefaultPort = 47131;
