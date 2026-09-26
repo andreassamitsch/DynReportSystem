@@ -28,6 +28,7 @@ public sealed class RdlPresentationItem
     public RdlTablePresentation? Table { get; init; }
     public RdlChartPresentation? Chart { get; init; }
     public RdlGaugePresentation? Gauge { get; init; }
+    public IReadOnlyList<RdlFilterPresentation> Filters { get; init; } = [];
     public string? Text { get; init; }
     public string? BackgroundColor { get; init; }
     public string? ForegroundColor { get; init; }
@@ -76,6 +77,11 @@ public sealed class RdlChartSeriesPresentation
     public string? ColorExpression { get; init; }
     public string? Format { get; init; }
 }
+
+public sealed record RdlFilterPresentation(
+    string Field,
+    string Operator,
+    IReadOnlyList<string> Values);
 
 public sealed class RdlGaugePresentation
 {
