@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject FolderAccess Access
 @inject ImportedPortalCatalog Imported
+@inject CustomReportStore CustomReports
 @inject AuthenticationStateProvider Authentication
 
 <PageTitle>DynReport System</PageTitle>
@@ -55,6 +56,10 @@
                 <input type="checkbox" @bind="showHidden" />
                 <span>Ausgeblendete anzeigen</span>
             </label>
+
+            <a class="ghost-btn portal-import-btn" href="/reports/import">
+                + Berichtsdatei importieren
+            </a>
         </div>
 
         @if (!string.IsNullOrWhiteSpace(search))
@@ -151,7 +156,7 @@
             </div>
         }
 
-        <footer>DynReport System 0.3.1 · dynamischer Reportkatalog · Windows/AD-Berechtigungen</footer>
+        <footer>DynReport System 0.5.0 · dynamischer Reportkatalog · Windows/AD-Berechtigungen</footer>
     </main>
 </div>
 
@@ -337,6 +342,14 @@
             builder.OpenElement(sequence++, "span");
             builder.AddAttribute(sequence++, "class", "hidden-report-badge");
             builder.AddContent(sequence++, "ausgeblendet");
+            builder.CloseElement();
+        }
+
+        if (CustomReports.GetForReport(report.Id) is not null)
+        {
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "custom-report-badge");
+            builder.AddContent(sequence++, "optimiert");
             builder.CloseElement();
         }
 
