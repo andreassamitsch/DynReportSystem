@@ -1,82 +1,102 @@
 # DynReport System
 
-Internal reporting and analytics platform for APP-01. The goal is a modern successor path for selected SSRS reports while retaining Windows SSO, folder/report permissions and existing RDL data/business logic.
+DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
-## Version 0.2.2
+## Version 0.3.0
 
-- ASP.NET Core / Blazor Interactive Server on .NET 10
-- IIS Windows Authentication (SSO)
-- explicit folder/report ACLs using Windows users / AD groups
-- runtime parsing of RDL dataset SQL and supported report parameters
-- automatic reload when the installed RDL changes
-- independent DynReport dashboard definitions instead of reproducing SSRS layouts
-- Apache ECharts 6.1.0 bundled locally; no chart CDN is required at runtime
-- compact KPI cards with trend and sparklines; the Umsatz/AB/Rahmen chart is the primary dashboard element
-- stacked Umsatz / offene AB / Rahmen monthly chart using the established RDL colors, with a visible monthly total above every stack
-- persistent collapsible parameter/filter bar that stays available while scrolling
-- stacked business-area charts whose GB colors are read dynamically from the installed RDL
-- mobile-specific ECharts layouts for rankings, stacked charts, donut charts and long labels
-- interactive combo, line, area, bar, donut, stacked and treemap visualizations
-- world map for revenue by country
-- dataset-specific analytics such as OP aging, complaint trend, stock value/status and business-area analysis
-- interactive table search, sorting and a filter input on every column, paging and CSV export
-- chart-to-table drilldowns and internal back-navigation between dashboard and detail views
-- longer mobile circuit retention and more persistent reconnect attempts for brief WLAN/tab interruptions
-- chart image export
-- PWA shell without caching report data
-- self-contained web application payload; IIS ASP.NET Core Module v2 remains a server prerequisite
+Version 0.3 turns the Kundencockpit pilot into a **generic reporting portal**.
 
-## Architecture
+### Dynamic portal
 
-DynReport System does **not** reproduce the SSRS page layout.
+- hierarchical folder navigation
+- Windows SSO and Windows/AD permission inheritance
+- searchable report catalog
+- hidden SSRS items remain hidden by default and can be shown on demand
+- standard reports and linked reports
+- responsive desktop/mobile UI
+- custom modern reports such as Kundencockpit can coexist with generic migrated reports
 
-- **RDL / SQL layer:** existing datasets, parameters and business logic can be reused during migration.
-- **DynReport definition:** modern layout, widget bindings, chart types, aggregation and interaction rules.
-- **Blazor runtime:** renders responsive reports and enforces Windows/AD permissions.
-- **ECharts runtime:** rich local visualization without requiring Internet access on APP-01.
-- **Future designer:** will edit DynReport definitions visually rather than the old RDL page layout.
+### SSRS migration
 
-The Kundencockpit is the first migrated report. The RDL remains the data source, while the user-facing report is an independent interactive dashboard.
+A private MigrationBundle.zip can be placed next to the server setup. The installer imports it into the application without committing production RDLs or internal SQL metadata to this public repository.
 
-## Kundencockpit 0.2.2
+The migration model supports SSRS folders, reports, RDLs, linked reports, shared datasets, shared data sources, Windows principals and item policies. Subscription and schedule definitions are retained as migration metadata.
 
-The dashboard includes:
+Stored SSRS data-source passwords are intentionally not extracted because Reporting Services encrypts them. DynReport resolves imported data sources through server-side application configuration and can reuse the credentials from the existing Cockpit SQL connection where appropriate.
 
-- Umsatz / offene AB / Rahmen as the large primary stacked monthly chart
-- compact Umsatz, offene AB and Rahmen KPIs
-- Umsatz and Bestelleingang as stacked business-area series using RDL GB colors; Umsatz now resolves the actual SQL field `Geschäftsbereich Nr` correctly
-- top customers as an interactive, mobile-optimized horizontal ranking
-- business-area drilldown by tapping a stack segment
-- offer-status donut
-- rejection-reason ranking
-- offer lead-time trend
-- revenue world map and business-area treemap in the revenue detail
-- open-items aging
-- complaint count/cost trend
-- stock status and customer-bound inventory value charts
-- modern searchable/sortable detail tables with CSV export
+### Generic report runtime
+
+Imported RDL reports are parsed at runtime. DynReport extracts and executes their datasets rather than reproducing the old SSRS page layout.
+
+- text SQL and stored procedure datasets
+- embedded and shared datasets/data sources
+- report query parameter bindings
+- String, Integer, Float, Boolean and DateTime parameters
+- single-value and multi-value parameters
+- static and dataset-driven valid values
+- literal, simple date-expression and dataset-driven defaults
+- dataset tabs for reports with several result datasets
+- automatic bar, line, area and donut visualizations
+- searchable/sortable tables with a filter input on every column
+- CSV and chart-image export
+
+RDL remains the trusted migration/data-logic source. DynReport deliberately does **not** attempt a pixel-perfect SSRS layout clone.
+
+## Kundencockpit
+
+The Kundencockpit remains the first hand-optimized DynReport report and demonstrates what migrated reports can become after visual refinement:
+
+- stacked Umsatz / offene AB / Rahmen monthly chart
+- totals above each monthly stack
+- business-area colors read from the installed RDL
+- stacked business-area revenue and order-intake analysis
+- compact parameter/filter bar
+- KPI cards, rankings, donut charts and drilldowns
+- responsive mobile behavior
+- per-column table filters and sorting
+- world map, OP aging, complaints and inventory visualizations
+
+## Configuration
+
+Production credentials belong only in appsettings.Production.json on APP-01. Never commit them.
+
+Optional imported data-source keys:
+
+- DataSources:OxaionPRD:ConnectionString
+- DataSources:SyncosPRD:ConnectionString
+- DataSources:SyncosPRDHephax:ConnectionString
+- DataSources:ReportServerDB:ConnectionString
+
+If an imported SQL data source has no explicit configuration, DynReport can use the imported server/database target together with credentials from the existing Cockpit:ConnectionString. Whether that succeeds depends on that SQL account's permissions.
+
+## Installation / update
+
+GitHub Actions builds DynReportSystem-Server-Setup-0.3.0-win-x64.exe.
+
+For an SSRS migration, keep the setup EXE, MigrationBundle.zip and the optimized Kundencockpit.rdl (when updating it) next to each other. The setup performs an in-place update and preserves the existing production appsettings, local DynReport permissions and IIS/HTTPS bindings.
+
+## Current migration boundaries
+
+The generic runtime covers common SSRS data and parameter behavior. Complex VB expressions, unusual parameter dependencies, proprietary/custom report items, exact print pagination and subscription delivery can require report-specific refinement.
+
+Subscription and schedule definitions are imported as metadata; DynReport 0.3 does not yet execute SSRS subscriptions.
 
 ## Security
 
-Production RDLs are not committed while this repository is public. They can contain internal database schema and business logic. The included setup copies RDL files located next to the installer into `C:\Program Files\DynReportSystem\Reports`.
-
-SQL credentials belong only in `appsettings.Production.json` on APP-01. Never commit them.
-
-The installer preserves an existing production configuration, report permissions and IIS site bindings during an update.
-
-## Build
-
-GitHub Actions builds `DynReportSystem-Server-Setup-0.2.2-win-x64.exe`.
-
-The workflow installs the pinned frontend dependencies, vendors ECharts and the world SVG map into the published application, publishes the self-contained .NET application and creates the server setup executable.
+- Windows Authentication through IIS
+- explicit server-side report/folder permission checks
+- migrated SSRS Windows-principal permissions
+- SQL queries execute only from trusted installed/imported report definitions
+- production RDLs and migration bundles are not committed to the public repository
+- no report-data caching in the PWA service worker
 
 ## Third-party components
 
 - Apache ECharts 6.1.0 — Apache-2.0
 - @svg-maps/world 2.0.0 — CC BY 4.0
 
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+See THIRD_PARTY_NOTICES.md.
 
 ## License
 
-DynReport System itself is proprietary / all rights reserved. See [LICENSE](LICENSE).
+DynReport System itself is proprietary / all rights reserved. See LICENSE.
