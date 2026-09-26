@@ -109,9 +109,6 @@ public sealed class DynReportPackageStore(
         var path = Path.Combine(_root, SafeFileName(package.Manifest.ReportId) + ".dynreport");
         Directory.CreateDirectory(_root);
 
-        if (File.Exists(path))
-            CreateRevision(path, package.Manifest.ReportId);
-
         package.Manifest.ModifiedUtc = DateTime.UtcNow;
 
         var temp = path + ".tmp";
@@ -133,6 +130,13 @@ public sealed class DynReportPackageStore(
                 await WriteTextEntryAsync(archive, item.Key, item.Value, cancellationToken);
             }
         }
+
+        // Validate the complete package before touching the currently published
+        // report. A broken designer save must never replace the last good version.
+        _ = LoadFile(temp);
+
+        if (File.Exists(path))
+            CreateRevision(path, package.Manifest.ReportId);
 
         File.Move(temp, path, true);
         Invalidate();
