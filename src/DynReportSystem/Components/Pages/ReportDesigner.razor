@@ -1,0 +1,487 @@
+@page "/designer/{ReportId}"
+@attribute [Authorize]
+@inject DynReportPackageStore Packages
+@inject FolderAccess Access
+@inject AuthenticationStateProvider Authentication
+@inject NavigationManager Navigation
+
+<PageTitle>Designer · @(draft?.Manifest.Title ?? "DynReport")</PageTitle>
+
+@if (!initialized)
+{
+    <div class="page-loading">
+        <div class="loading-ring"></div>
+        <span>Designer wird geladen …</span>
+    </div>
+}
+else if (draft is null)
+{
+    <div class="notice error">@message</div>
+}
+else if (!canEditLayout)
+{
+    <div class="notice error">Für diesen Bericht fehlt die Designer-Berechtigung.</div>
+}
+else
+{
+<div class="shell">
+    <header class="topbar">
+        <div class="brand-mark">D</div>
+        <div class="brand-text">
+            <strong>DynReport Designer</strong>
+            <span>@draft.Manifest.Title · Schema @draft.Manifest.SchemaVersion</span>
+        </div>
+        <div class="topbar-tag">v@draft.Manifest.Version</div>
+    </header>
+
+    <main class="main-area dyn-designer">
+        <div class="heading-line">
+            <div>
+                <p class="eyebrow">DESIGNER-FIRST</p>
+                <h1>@draft.Manifest.Title</h1>
+                <p class="subtitle">
+                    Dieser Designer bearbeitet dasselbe Dokumentmodell, das die Runtime ausführt.
+                    Es gibt keinen separaten Report-Code.
+                </p>
+            </div>
+
+            <div class="designer-actions">
+                <a class="ghost-btn" href="@($"/reports/package/{ReportId}")">Vorschau</a>
+                <a class="ghost-btn" href="@($"/api/packages/{ReportId}/download")">Exportieren</a>
+                <button class="primary-btn" disabled="@saving" @onclick="SaveAsync">
+                    @(saving ? "Speichert …" : "Speichern")
+                </button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(message))
+        {
+            <div class="notice @(success ? "info" : "error")">@message</div>
+        }
+
+        <nav class="designer-tabs">
+            <button class="@(tab == "report" ? "active" : "")" @onclick='() => tab = "report"'>Bericht</button>
+            <button class="@(tab == "data" ? "active" : "")" @onclick='() => tab = "data"'>Daten</button>
+            <button class="@(tab == "parameters" ? "active" : "")" @onclick='() => tab = "parameters"'>Parameter</button>
+            <button class="@(tab == "layout" ? "active" : "")" @onclick='() => tab = "layout"'>Layout</button>
+            <button class="@(tab == "revisions" ? "active" : "")" @onclick='() => tab = "revisions"'>Versionen</button>
+        </nav>
+
+        @if (tab == "report")
+        {
+            <section class="panel designer-panel">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">METADATEN</p>
+                        <h2>Bericht</h2>
+                    </div>
+                </div>
+
+                <div class="designer-form-grid">
+                    <label>
+                        <span>Titel</span>
+                        <input @bind="draft.Manifest.Title" />
+                    </label>
+                    <label>
+                        <span>Pfad</span>
+                        <input @bind="draft.Manifest.Path" />
+                    </label>
+                    <label class="wide">
+                        <span>Beschreibung</span>
+                        <textarea rows="4" @bind="draft.Manifest.Description"></textarea>
+                    </label>
+                    <label>
+                        <span>Auto-Refresh Sekunden</span>
+                        <input type="number" min="0" step="30"
+                               @bind="draft.Document.Settings.AutoRefreshSeconds" />
+                    </label>
+                    <label class="designer-check">
+                        <input type="checkbox" @bind="draft.Document.Settings.AutoRun" />
+                        <span>Automatisch ausführen</span>
+                    </label>
+                    <label class="designer-check">
+                        <input type="checkbox"
+                               @bind="draft.Document.Settings.ParametersCollapsedByDefault" />
+                        <span>Parameter standardmäßig einklappen</span>
+                    </label>
+                </div>
+            </section>
+        }
+
+        @if (tab == "data")
+        {
+            <section class="panel designer-panel">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">DATENMODELL</p>
+                        <h2>Datasets</h2>
+                    </div>
+                    <span class="section-note">
+                        SQL-Bearbeitung: @(canEditData ? "freigegeben" : "nur lesen")
+                    </span>
+                </div>
+
+                <div class="designer-dataset-tabs">
+                    @foreach (var dataset in draft.Document.Datasets)
+                    {
+                        <button class="@(activeDataset == dataset.Id ? "active" : "")"
+                                @onclick="() => activeDataset = dataset.Id">
+                            @dataset.Id
+                        </button>
+                    }
+                </div>
+
+                @if (CurrentDataset is DynReportDataset dataSet)
+                {
+                    <div class="designer-form-grid">
+                        <label>
+                            <span>Datenquelle</span>
+                            <select @bind="dataSet.DataSourceId" disabled="@(!canEditData)">
+                                @foreach (var source in draft.Document.DataSources)
+                                {
+                                    <option value="@source.Id">@source.Id (@source.ConfigKey)</option>
+                                }
+                            </select>
+                        </label>
+                        <label>
+                            <span>Command Type</span>
+                            <select @bind="dataSet.CommandType" disabled="@(!canEditData)">
+                                <option value="Text">SQL Text</option>
+                                <option value="StoredProcedure">Stored Procedure</option>
+                            </select>
+                        </label>
+                        <label class="wide">
+                            <span>SQL / Command</span>
+                            <textarea class="designer-sql"
+                                      rows="24"
+                                      value="@CurrentSql"
+                                      @onchange="SqlChanged"
+                                      readonly="@(!canEditData)"></textarea>
+                        </label>
+                    </div>
+                }
+            </section>
+        }
+
+        @if (tab == "parameters")
+        {
+            <section class="panel designer-panel">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">EINGABEN</p>
+                        <h2>Parameter</h2>
+                    </div>
+                </div>
+
+                <div class="designer-parameter-list">
+                    @foreach (var parameter in draft.Document.Parameters.OrderBy(x => x.Order))
+                    {
+                        <article class="designer-parameter-card">
+                            <div class="designer-form-grid">
+                                <label>
+                                    <span>Name</span>
+                                    <input value="@parameter.Name" readonly />
+                                </label>
+                                <label>
+                                    <span>Bezeichnung</span>
+                                    <input @bind="parameter.Label" />
+                                </label>
+                                <label>
+                                    <span>Reihenfolge</span>
+                                    <input type="number" @bind="parameter.Order" />
+                                </label>
+                                <label>
+                                    <span>Eingabetyp</span>
+                                    <select @bind="parameter.InputMode">
+                                        <option value="">automatisch</option>
+                                        <option value="date">Datum</option>
+                                        <option value="datetime-local">Datum + Uhrzeit</option>
+                                    </select>
+                                </label>
+                                <label class="wide">
+                                    <span>Standardwerte (; getrennt)</span>
+                                    <input value="@string.Join("; ", parameter.DefaultValues)"
+                                           @onchange="e => SetDefaults(parameter, e.Value?.ToString())" />
+                                </label>
+                                <label class="designer-check">
+                                    <input type="checkbox" @bind="parameter.Hidden" />
+                                    <span>ausblenden</span>
+                                </label>
+                            </div>
+                        </article>
+                    }
+                </div>
+            </section>
+        }
+
+        @if (tab == "layout")
+        {
+            <section class="panel designer-panel">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">LAYOUTMODELL</p>
+                        <h2>Komponenten</h2>
+                    </div>
+                    <span class="section-note">strukturierter Designer-Grundbau</span>
+                </div>
+
+                @foreach (var page in draft.Document.Pages)
+                {
+                    <div class="designer-page-card">
+                        <div class="designer-page-head">
+                            <div>
+                                <strong>@page.Title</strong>
+                                <small>@page.Columns Spalten</small>
+                            </div>
+                        </div>
+
+                        <div class="designer-component-list">
+                            @foreach (var component in page.Components)
+                            {
+                                <article class="designer-component-card">
+                                    <div class="designer-component-icon">@ComponentIcon(component.Type)</div>
+                                    <div class="designer-component-main">
+                                        <strong>@component.Type</strong>
+                                        <label>
+                                            <span>Titel</span>
+                                            <input @bind="component.Title" />
+                                        </label>
+                                        <div class="designer-inline-fields">
+                                            <label>
+                                                <span>Desktop Span</span>
+                                                <input type="number" min="1" max="24" @bind="component.Span" />
+                                            </label>
+                                            <label>
+                                                <span>Mobile Span</span>
+                                                <input type="number" min="1" max="24" @bind="component.MobileSpan" />
+                                            </label>
+                                        </div>
+                                        @if (component.Type.Equals("grouped-board", StringComparison.OrdinalIgnoreCase)
+                                             && component.Board is not null)
+                                        {
+                                            <small>
+                                                Gruppierung:
+                                                @string.Join(" → ", component.Board.SectionGroupBy.Concat(component.Board.RowGroupBy))
+                                                · @component.Board.Columns.Count Spalten
+                                            </small>
+                                        }
+                                        @if (component.Type.Equals("metric-strip", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <small>@component.Metrics.Count Kennzahlen</small>
+                                        }
+                                    </div>
+                                </article>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <div class="notice info">
+                    Die Runtime ist bereits vollständig schema-/designergetrieben.
+                    Drag & Drop und der grafische Eigenschaften-Editor können auf diesem
+                    Komponentenmodell aufbauen, ohne das Dateiformat erneut zu ändern.
+                </div>
+            </section>
+        }
+
+        @if (tab == "revisions")
+        {
+            <section class="panel designer-panel">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">VERSIONIERUNG</p>
+                        <h2>Gesicherte Revisionen</h2>
+                    </div>
+                </div>
+
+                @if (revisions.Count == 0)
+                {
+                    <div class="empty">Noch keine ältere Revision vorhanden.</div>
+                }
+                else
+                {
+                    <div class="designer-revision-list">
+                        @foreach (var revision in revisions)
+                        {
+                            <div>
+                                <strong>v@revision.Version</strong>
+                                <span>@revision.CreatedUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+        }
+
+        <footer>DynReport Designer 0.6.0 · Runtime und Designer verwenden dasselbe Paketmodell</footer>
+    </main>
+</div>
+}
+
+@code {
+    [Parameter] public string ReportId { get; set; } = "";
+
+    private LoadedDynReportPackage? draft;
+    private ClaimsPrincipal? user;
+    private bool initialized;
+    private bool saving;
+    private bool success;
+    private bool canEditLayout;
+    private bool canEditData;
+    private string message = "";
+    private string tab = "report";
+    private string activeDataset = "";
+    private IReadOnlyList<DynReportRevision> revisions = [];
+
+    private DynReportDataset? CurrentDataset =>
+        draft?.Document.Datasets.FirstOrDefault(x =>
+            x.Id.Equals(activeDataset, StringComparison.OrdinalIgnoreCase));
+
+    private string CurrentSql =>
+        CurrentDataset is not null
+        && draft is not null
+        && draft.TextFiles.TryGetValue(CurrentDataset.QueryFile, out var sql)
+            ? sql
+            : "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        initialized = false;
+        message = "";
+
+        try
+        {
+            user = (await Authentication.GetAuthenticationStateAsync()).User;
+
+            var source = Packages.Get(ReportId)
+                ?? throw new FileNotFoundException("DynReport-Paket wurde nicht gefunden.");
+
+            canEditLayout =
+                Access.Can(user, ReportId, "EditLayout")
+                || Access.Can(user, ReportId, "Edit")
+                || Access.Can(user, ReportId, "Publish")
+                || Access.Can(user, ReportId, "Manage");
+
+            canEditData =
+                Access.Can(user, ReportId, "EditData")
+                || Access.Can(user, ReportId, "Publish")
+                || Access.Can(user, ReportId, "Manage");
+
+            if (!canEditLayout)
+                return;
+
+            draft = Clone(source);
+            activeDataset = draft.Document.Datasets.FirstOrDefault()?.Id ?? "";
+            revisions = Packages.Revisions(ReportId);
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+        }
+        finally
+        {
+            initialized = true;
+        }
+    }
+
+    private void SqlChanged(ChangeEventArgs args)
+    {
+        if (!canEditData || draft is null || CurrentDataset is null)
+            return;
+
+        var files = (Dictionary<string, string>)draft.TextFiles;
+        files[CurrentDataset.QueryFile] = args.Value?.ToString() ?? "";
+    }
+
+    private static void SetDefaults(DynReportParameter parameter, string? value)
+    {
+        parameter.DefaultValues = string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(
+                ';',
+                StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .ToList();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (draft is null || user is null)
+            return;
+
+        saving = true;
+        success = false;
+        message = "";
+
+        try
+        {
+            draft.Manifest.Version = BumpPatch(draft.Manifest.Version);
+            draft.Manifest.ModifiedUtc = DateTime.UtcNow;
+
+            draft = await Packages.SaveDesignerPackageAsync(
+                draft,
+                user.Identity?.Name ?? "unknown");
+
+            revisions = Packages.Revisions(ReportId);
+            success = true;
+            message = $"Gespeichert als v{draft.Manifest.Version}. Vorherige Version wurde als Revision gesichert.";
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private static LoadedDynReportPackage Clone(LoadedDynReportPackage source)
+    {
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            WriteIndented = true
+        };
+
+        var manifest = JsonSerializer.Deserialize<DynReportManifest>(
+            JsonSerializer.Serialize(source.Manifest, options),
+            options)!;
+
+        var document = JsonSerializer.Deserialize<DynReportDocument>(
+            JsonSerializer.Serialize(source.Document, options),
+            options)!;
+
+        return new LoadedDynReportPackage
+        {
+            Manifest = manifest,
+            Document = document,
+            FilePath = source.FilePath,
+            ModifiedUtc = source.ModifiedUtc,
+            TextFiles = new Dictionary<string, string>(
+                source.TextFiles,
+                StringComparer.OrdinalIgnoreCase)
+        };
+    }
+
+    private static string BumpPatch(string version)
+    {
+        if (!Version.TryParse(version, out var parsed))
+            return version + ".1";
+
+        return new Version(
+            Math.Max(parsed.Major, 0),
+            Math.Max(parsed.Minor, 0),
+            Math.Max(parsed.Build, 0) + 1)
+            .ToString(3);
+    }
+
+    private static string ComponentIcon(string type) => type.ToLowerInvariant() switch
+    {
+        "metric-strip" => "123",
+        "grouped-board" => "▦",
+        "table" => "☷",
+        "chart" => "⌁",
+        "heading" => "T",
+        _ => "◇"
+    };
+}
