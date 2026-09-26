@@ -2,9 +2,42 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
-## Version 0.4.1
+## Version 0.5.0
 
 Version 0.3 turns the Kundencockpit pilot into a **generic reporting portal**.
+
+### 0.5.0 manually optimized report packages
+
+The automatic RDL view remains available as a fallback, but production reports can now be
+manually analysed and shipped as portable `.dynreport` presentation files.
+
+- a `.dynreport` targets an existing migrated SSRS report by ID/path
+- the original RDL remains the source for SQL, parameters, data sources and permissions
+- the file replaces only the presentation/interaction layer
+- files can be installed from **Reporting → Berichtsdatei importieren**
+- imported files are stored below `C:\ProgramData\DynReportSystem\CustomReports` and survive application updates
+- only users with Edit, Publish or Manage permission on the target report may import/replace a definition
+- the portal marks installed manual optimizations with an **optimiert** badge
+- the first manually analysed report is `/Reports/TV/Produktion Übersicht TV`
+
+#### Produktion Übersicht TV
+
+The original SSRS report was analysed as a live production board rather than a generic table.
+The optimized version preserves and exposes its business intent:
+
+- department → machine → order/article → operation hierarchy
+- current machine/operation status and SSRS status colors
+- active operators and first article inspection state
+- setup actual/target with deviation highlighting
+- shift cycle actual/target
+- current shift quantity actual/target
+- total cycle actual/target
+- container cycle actual/target and overdue warning
+- last container posting time/quantity/person
+- unplanned downtime
+- compact production KPIs and warning count
+- default SSRS parameter logic, with optional exact start/end date-time input
+- automatic execution and 60 second TV refresh
 
 ### 0.4.1 dynamic-report hotfix
 
@@ -101,7 +134,7 @@ If an imported SQL data source has no explicit configuration, DynReport can use 
 
 ## Installation / update
 
-GitHub Actions builds DynReportSystem-Server-Setup-0.4.1-win-x64.exe.
+GitHub Actions builds DynReportSystem-Server-Setup-0.5.0-win-x64.exe.
 
 For an SSRS migration, keep the setup EXE, MigrationBundle.zip and the optimized Kundencockpit.rdl (when updating it) next to each other. The setup performs an in-place update and preserves the existing production appsettings, local DynReport permissions and IIS/HTTPS bindings.
 
