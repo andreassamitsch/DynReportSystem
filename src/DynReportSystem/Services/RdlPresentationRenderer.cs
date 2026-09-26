@@ -410,7 +410,7 @@ public sealed class RdlPresentationRenderer
                 {
                     var value = Aggregate(group, valueField, template.Aggregate);
                     var color = ColorFor(group.Key, template, chart, reportColors, group.Count());
-                    return (group.Key, value, color);
+                    return (Name: group.Key, Value: value, Color: color);
                 })
                 .OrderByDescending(x => Math.Abs(x.Value))
                 .Take(30)
@@ -423,7 +423,7 @@ public sealed class RdlPresentationRenderer
                 {
                     var field = ResolveColumn(result, series.ValueField);
                     var value = field is null ? 0d : Aggregate(result.Rows, field, series.Aggregate);
-                    return (series.Name, value, ColorFor(series.Name, series, chart, reportColors, index));
+                    return (Name: series.Name, Value: value, Color: ColorFor(series.Name, series, chart, reportColors, index));
                 })
                 .ToList();
         }
