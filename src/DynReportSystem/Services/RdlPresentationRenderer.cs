@@ -239,6 +239,93 @@ public sealed class RdlPresentationRenderer
             out date);
     }
 
+    public bool IsVisible(
+        RdlPresentationItem item,
+        QueryResult? result,
+        IReadOnlyDictionary<string, DynamicParameterValue>? parameters = null)
+    {
+        var expression = item.HiddenExpression?.Trim();
+        if (string.IsNullOrWhiteSpace(expression))
+            return true;
+
+        if (expression.Equals("true", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (expression.Equals("false", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!expression.StartsWith("=", StringComparison.Ordinal))
+            return true;
+
+        // Browser rendering is not the Excel renderer.
+        if (expression.Contains("Globals!RenderFormat.Name", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var lenMatch = Regex.Match(
+            expression,
+            @"^=Len\(Trim\(CStr\(Parameters!(?<name>[^.]+)\.Value\)\)\)\s*(?<op>>|=)\s*0$",
+            RegexOptions.IgnoreCase);
+
+        if (lenMatch.Success)
+        {
+            var value = ParameterText(parameters, lenMatch.Groups["name"].Value);
+            var hidden = lenMatch.Groups["op"].Value == ">"
+                ? value.Length > 0
+                : value.Length == 0;
+            return !hidden;
+        }
+
+        var notParameter = Regex.Match(
+            expression,
+            @"^=\s*not\s+Parameters!(?<name>[^.]+)\.Value$",
+            RegexOptions.IgnoreCase);
+
+        if (notParameter.Success)
+        {
+            var boolean = ParameterBool(parameters, notParameter.Groups["name"].Value);
+            return boolean;
+        }
+
+        var parameter = Regex.Match(
+            expression,
+            @"^=Parameters!(?<name>[^.]+)\.Value$",
+            RegexOptions.IgnoreCase);
+
+        if (parameter.Success)
+        {
+            var hidden = ParameterBool(parameters, parameter.Groups["name"].Value);
+            return !hidden;
+        }
+
+        // Field-level visibility normally belongs to repeated SSRS members.
+        // A responsive single visual has no equivalent member instance, so
+        // leave it visible rather than incorrectly hiding the complete region.
+        if (expression.Contains("Fields!", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return true;
+    }
+
+    private static string ParameterText(
+        IReadOnlyDictionary<string, DynamicParameterValue>? parameters,
+        string name)
+    {
+        if (parameters is null || !parameters.TryGetValue(name, out var state))
+            return "";
+
+        return string.Join(",", state.Values).Trim();
+    }
+
+    private static bool ParameterBool(
+        IReadOnlyDictionary<string, DynamicParameterValue>? parameters,
+        string name)
+    {
+        var raw = ParameterText(parameters, name);
+        return bool.TryParse(raw, out var value)
+            ? value
+            : raw is "1" or "J" or "Y" or "T";
+    }
+
     public RdlRenderedVisual? Render(
         RdlPresentationItem item,
         QueryResult result,
