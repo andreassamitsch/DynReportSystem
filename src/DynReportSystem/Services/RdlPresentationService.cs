@@ -177,6 +177,7 @@ public sealed partial class RdlPresentationService(ImportedPortalCatalog portal)
                     Order = order++,
                     Table = table,
                     Filters = ParseFilters(item, ns),
+                    HiddenExpression = ParseHiddenExpression(item, ns),
                     BackgroundColor = StyleValue(item, ns, "BackgroundColor")
                 });
                 continue;
@@ -204,6 +205,7 @@ public sealed partial class RdlPresentationService(ImportedPortalCatalog portal)
                     Order = order++,
                     Chart = chart,
                     Filters = ParseFilters(item, ns),
+                    HiddenExpression = ParseHiddenExpression(item, ns),
                     BackgroundColor = StyleValue(item, ns, "BackgroundColor")
                 });
                 continue;
@@ -230,6 +232,7 @@ public sealed partial class RdlPresentationService(ImportedPortalCatalog portal)
                     Order = order++,
                     Gauge = gauge,
                     Filters = ParseFilters(item, ns),
+                    HiddenExpression = ParseHiddenExpression(item, ns),
                     BackgroundColor = StyleValue(item, ns, "BackgroundColor")
                 });
             }
@@ -431,6 +434,13 @@ public sealed partial class RdlPresentationService(ImportedPortalCatalog portal)
             Minimum = ParseScaleValue("MinimumValue"),
             Maximum = ParseScaleValue("MaximumValue")
         };
+    }
+
+    private static string? ParseHiddenExpression(XElement item, XNamespace ns)
+    {
+        var visibility = item.Element(ns + "Visibility");
+        var hidden = Text(visibility, ns + "Hidden")?.Trim();
+        return string.IsNullOrWhiteSpace(hidden) ? null : hidden;
     }
 
     private static IReadOnlyList<RdlFilterPresentation> ParseFilters(XElement item, XNamespace ns)
