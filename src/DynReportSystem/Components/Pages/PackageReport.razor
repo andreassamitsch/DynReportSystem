@@ -1,0 +1,528 @@
+@page "/reports/package/{ReportId}"
+@attribute [Authorize]
+@implements IAsyncDisposable
+@inject DynReportPackageStore Packages
+@inject DynReportPackageExecutionService Executor
+@inject FolderAccess Access
+@inject AuthenticationStateProvider Authentication
+@inject IJSRuntime JS
+
+<PageTitle>@(package?.Manifest.Title ?? "Bericht") · DynReport</PageTitle>
+
+@if (!initialized)
+{
+    <div class="page-loading">
+        <div class="loading-ring"></div>
+        <span>DynReport-Paket wird geladen …</span>
+    </div>
+}
+else if (!allowed)
+{
+    <div class="notice error">Für diesen Bericht wurde keine Berechtigung vergeben.</div>
+}
+else if (package is null)
+{
+    <div class="notice error">@error</div>
+}
+else
+{
+<div class="shell">
+    <header class="topbar">
+        <div class="brand-mark">D</div>
+        <div class="brand-text">
+            <strong>@package.Manifest.Title</strong>
+            <span>DynReport · selbstständige Berichtsdatei</span>
+        </div>
+        <div class="topbar-tag"><span class="live-dot"></span> Paket v@package.Manifest.Version</div>
+    </header>
+
+    <main class="main-area dyn2-report-page">
+        <div class="dynamic-report-heading">
+            <div class="dynamic-report-titleblock">
+                <button class="ghost-btn" @onclick="BackAsync">← Zurück</button>
+                <div>
+                    <p class="eyebrow">DYNREPORT 2.0</p>
+                    <h1>@package.Manifest.Title</h1>
+                    <p class="report-path">@package.Manifest.Path</p>
+                    @if (!string.IsNullOrWhiteSpace(package.Manifest.Description))
+                    {
+                        <p class="subtitle">@package.Manifest.Description</p>
+                    }
+                </div>
+            </div>
+
+            <div class="report-meta-chips">
+                <span>@package.Document.Datasets.Count Dataset(s)</span>
+                <span>@VisibleParameters.Count() Parameter</span>
+                <span>RDL-unabhängig</span>
+                @if (canDesign)
+                {
+                    <a class="custom-report-meta" href="@($"/designer/{ReportId}")">Designer</a>
+                }
+            </div>
+        </div>
+
+        @if (VisibleParameters.Any())
+        {
+            <details class="report-parameter-shell"
+                     open="@(!package.Document.Settings.ParametersCollapsedByDefault)">
+                <summary>
+                    <strong>Parameter</strong>
+                    <span>@ParameterSummary</span>
+                    <span>ein-/ausblenden</span>
+                </summary>
+
+                <div class="dynamic-parameter-grid">
+                    @foreach (var parameter in VisibleParameters)
+                    {
+                        var options = Options(parameter);
+                        var state = values[parameter.Name];
+
+                        <label class="dynamic-parameter">
+                            <span>@parameter.Label</span>
+
+                            @if (parameter.MultiValue && options.Count > 0)
+                            {
+                                <select multiple
+                                        size="@Math.Min(7, Math.Max(3, options.Count))"
+                                        @onchange="e => OnMultiSelect(parameter, e)">
+                                    @foreach (var option in options)
+                                    {
+                                        <option value="@option.Value"
+                                                selected="@state.Values.Contains(option.Value, StringComparer.OrdinalIgnoreCase)">
+                                            @option.Label
+                                        </option>
+                                    }
+                                </select>
+                            }
+                            else if (!parameter.MultiValue && options.Count > 0)
+                            {
+                                <select value="@state.Values.FirstOrDefault()"
+                                        @onchange="e => SetScalar(parameter, e.Value?.ToString())">
+                                    @if (parameter.Nullable)
+                                    {
+                                        <option value="">–</option>
+                                    }
+                                    @foreach (var option in options)
+                                    {
+                                        <option value="@option.Value">@option.Label</option>
+                                    }
+                                </select>
+                            }
+                            else if (parameter.DataType.Equals("DateTime", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <input type="@DateInputType(parameter)"
+                                       value="@DateValue(parameter, state)"
+                                       @onchange="e => SetScalar(parameter, e.Value?.ToString())" />
+                            }
+                            else if (parameter.DataType.Equals("Boolean", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <select value="@state.Values.FirstOrDefault()"
+                                        @onchange="e => SetScalar(parameter, e.Value?.ToString())">
+                                    <option value="false">Nein</option>
+                                    <option value="true">Ja</option>
+                                </select>
+                            }
+                            else if (parameter.DataType.Equals("Integer", StringComparison.OrdinalIgnoreCase)
+                                     || parameter.DataType.Equals("Float", StringComparison.OrdinalIgnoreCase)
+                                     || parameter.DataType.Equals("Decimal", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <input type="number"
+                                       step="@(parameter.DataType.Equals("Integer", StringComparison.OrdinalIgnoreCase) ? "1" : "any")"
+                                       value="@state.Values.FirstOrDefault()"
+                                       @onchange="e => SetScalar(parameter, e.Value?.ToString())" />
+                            }
+                            else
+                            {
+                                <input type="text"
+                                       value="@DisplayValue(state)"
+                                       @onchange="e => SetText(parameter, e.Value?.ToString())" />
+                            }
+                        </label>
+                    }
+
+                    <div class="dynamic-parameter-actions">
+                        <button class="ghost-btn" disabled="@busy" @onclick="ReloadOptionsAsync">
+                            Auswahllisten aktualisieren
+                        </button>
+                        <button class="primary-btn" disabled="@busy" @onclick="RunAsync">
+                            @(busy ? "Wird ausgeführt …" : "Bericht ausführen")
+                        </button>
+                    </div>
+                </div>
+            </details>
+        }
+        else
+        {
+            <div class="no-parameter-run">
+                <button class="primary-btn" disabled="@busy" @onclick="RunAsync">
+                    @(busy ? "Wird ausgeführt …" : "Bericht ausführen")
+                </button>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(error))
+        {
+            <div class="notice error">@error</div>
+        }
+
+        @if (busy)
+        {
+            <div class="loading-strip"><span></span></div>
+        }
+
+        @if (run is not null)
+        {
+            @if (run.Errors.Count > 0)
+            {
+                <div class="notice warn">
+                    <strong>Einzelne Datasets konnten nicht geladen werden.</strong>
+                    @foreach (var message in run.Errors)
+                    {
+                        <div>@message</div>
+                    }
+                </div>
+            }
+
+            <div class="dyn2-run-meta">
+                <span>Aktualisiert @lastUpdated.ToString("dd.MM.yyyy HH:mm:ss")</span>
+                @if (package.Document.Settings.AutoRefreshSeconds >= 30)
+                {
+                    <span>Auto-Refresh @package.Document.Settings.AutoRefreshSeconds s</span>
+                }
+                <button class="ghost-btn" disabled="@busy" @onclick="RunAsync">↻ Aktualisieren</button>
+            </div>
+
+            <div class="report-view-switch">
+                <button class="@(viewMode == "Report" ? "active" : "")"
+                        @onclick='() => viewMode = "Report"'>
+                    Bericht
+                    <small>aus .dynreport</small>
+                </button>
+                <button class="@(viewMode == "Data" ? "active" : "")"
+                        @onclick='() => viewMode = "Data"'>
+                    Datasets
+                    <small>technische Kontrolle</small>
+                </button>
+            </div>
+
+            @if (viewMode == "Report")
+            {
+                <GenericDynReportView Package="@package"
+                                      Run="@run"
+                                      ParameterValues="@values" />
+            }
+            else
+            {
+                <div class="dataset-tabs">
+                    @foreach (var result in run.Results)
+                    {
+                        <button class="dataset-tab @(activeDataSet == result.Key ? "active" : "")"
+                                @onclick="() => activeDataSet = result.Key">
+                            @result.Key
+                            <span>@result.Value.Rows.Count.ToString("N0", CultureInfo.GetCultureInfo("de-AT"))</span>
+                        </button>
+                    }
+                </div>
+
+                @if (CurrentResult is QueryResult current)
+                {
+                    <section class="panel dynamic-result-panel">
+                        <div class="panel-head dynamic-result-head">
+                            <div>
+                                <p class="eyebrow">DATASET</p>
+                                <h2>@activeDataSet</h2>
+                                <p>@current.Rows.Count.ToString("N0", CultureInfo.GetCultureInfo("de-AT")) Zeilen · @current.Columns.Count Spalten</p>
+                            </div>
+                        </div>
+
+                        <DynamicResultTable Result="@current"
+                                            ExportName="@($"{package.Manifest.Title}_{activeDataSet}")" />
+                    </section>
+                }
+            }
+        }
+        else
+        {
+            <div class="panel dyn2-package-ready">
+                <strong>Selbstständiger Bericht</strong>
+                <p>
+                    SQL, Parameter, Berechnungen und Layout liegen vollständig in dieser
+                    <code>.dynreport</code>-Datei. Für die Ausführung ist keine RDL erforderlich.
+                </p>
+            </div>
+        }
+
+        <footer>DynReport System 0.6.0 · Designer-first package runtime · Windows SSO</footer>
+    </main>
+</div>
+}
+
+@code {
+    [Parameter] public string ReportId { get; set; } = "";
+
+    private LoadedDynReportPackage? package;
+    private DynReportRun? run;
+    private bool initialized;
+    private bool allowed;
+    private bool canDesign;
+    private bool busy;
+    private string error = "";
+    private string viewMode = "Report";
+    private string activeDataSet = "";
+    private DateTime lastUpdated;
+    private CancellationTokenSource? refreshCts;
+    private readonly Dictionary<string, DynReportParameterValue> values =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IReadOnlyList<DynReportParameterOption>> options =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private IEnumerable<DynReportParameter> VisibleParameters =>
+        package?.Document.Parameters
+            .Where(x => !x.Hidden)
+            .OrderBy(x => x.Order)
+            .ThenBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase)
+        ?? [];
+
+    private QueryResult? CurrentResult =>
+        run is not null && run.Results.TryGetValue(activeDataSet, out var result)
+            ? result
+            : null;
+
+    private string ParameterSummary =>
+        string.Join(" · ", VisibleParameters.Take(4).Select(parameter =>
+        {
+            var state = values.GetValueOrDefault(parameter.Name);
+            var value = state is null || state.Values.Count == 0
+                ? "–"
+                : state.MultiValue
+                    ? $"{state.Values.Count} Werte"
+                    : state.Values[0];
+
+            return $"{parameter.Label}: {value}";
+        }));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        CancelAutoRefresh();
+        initialized = false;
+        error = "";
+        run = null;
+        values.Clear();
+        options.Clear();
+
+        try
+        {
+            package = Packages.Get(ReportId)
+                ?? throw new FileNotFoundException(
+                    $"DynReport-Paket '{ReportId}' wurde nicht gefunden.");
+
+            var user = (await Authentication.GetAuthenticationStateAsync()).User;
+            allowed = Access.Can(user, ReportId, "View") && Access.Can(user, ReportId, "Run");
+            canDesign = Access.Can(user, ReportId, "EditLayout")
+                        || Access.Can(user, ReportId, "Edit")
+                        || Access.Can(user, ReportId, "Publish")
+                        || Access.Can(user, ReportId, "Manage");
+
+            if (!allowed)
+                return;
+
+            foreach (var item in Executor.CreateInitialValues(package))
+                values[item.Key] = item.Value;
+
+            await ReloadOptionsAsync();
+
+            if (package.Document.Settings.AutoRun)
+                await RunAsync();
+
+            StartAutoRefresh();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            initialized = true;
+        }
+    }
+
+    private async Task ReloadOptionsAsync()
+    {
+        if (package is null)
+            return;
+
+        foreach (var parameter in VisibleParameters)
+        {
+            try
+            {
+                options[parameter.Name] = await Executor.GetParameterOptionsAsync(
+                    package,
+                    parameter,
+                    values);
+            }
+            catch
+            {
+                options[parameter.Name] = parameter.Options;
+            }
+        }
+    }
+
+    private IReadOnlyList<DynReportParameterOption> Options(DynReportParameter parameter) =>
+        options.TryGetValue(parameter.Name, out var list) ? list : parameter.Options;
+
+    private void SetScalar(DynReportParameter parameter, string? value)
+    {
+        var state = values[parameter.Name];
+        state.Values.Clear();
+        if (!string.IsNullOrWhiteSpace(value))
+            state.Values.Add(value.Trim());
+    }
+
+    private void SetText(DynReportParameter parameter, string? value)
+    {
+        var state = values[parameter.Name];
+        state.Values.Clear();
+
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+
+        if (parameter.MultiValue)
+        {
+            state.Values.AddRange(value.Split(
+                ';',
+                StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+        }
+        else
+        {
+            state.Values.Add(value.Trim());
+        }
+    }
+
+    private void OnMultiSelect(DynReportParameter parameter, ChangeEventArgs args)
+    {
+        var state = values[parameter.Name];
+        state.Values.Clear();
+
+        if (args.Value is string[] array)
+        {
+            state.Values.AddRange(array.Where(x => !string.IsNullOrWhiteSpace(x)));
+            return;
+        }
+
+        if (args.Value is IEnumerable<string> enumerable)
+        {
+            state.Values.AddRange(enumerable.Where(x => !string.IsNullOrWhiteSpace(x)));
+            return;
+        }
+
+        var scalar = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(scalar))
+            state.Values.Add(scalar);
+    }
+
+    private static string DisplayValue(DynReportParameterValue state) =>
+        state.MultiValue
+            ? string.Join("; ", state.Values)
+            : state.Values.FirstOrDefault() ?? "";
+
+    private static string DateInputType(DynReportParameter parameter) =>
+        parameter.InputMode.Equals("datetime-local", StringComparison.OrdinalIgnoreCase)
+            ? "datetime-local"
+            : "date";
+
+    private static string DateValue(
+        DynReportParameter parameter,
+        DynReportParameterValue state)
+    {
+        var raw = state.Values.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(raw))
+            return "";
+
+        if (!DateTime.TryParse(
+                raw,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces,
+                out var date))
+            return raw;
+
+        return DateInputType(parameter) == "datetime-local"
+            ? date.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture)
+            : date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    private async Task RunAsync()
+    {
+        if (package is null)
+            return;
+
+        busy = true;
+        error = "";
+
+        try
+        {
+            run = await Executor.RunAsync(package, values);
+            activeDataSet = run.Results.Keys.FirstOrDefault() ?? "";
+            lastUpdated = DateTime.Now;
+            viewMode = "Report";
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private void StartAutoRefresh()
+    {
+        if (package is null || package.Document.Settings.AutoRefreshSeconds < 30)
+            return;
+
+        refreshCts = new CancellationTokenSource();
+        var token = refreshCts.Token;
+        var seconds = package.Document.Settings.AutoRefreshSeconds;
+
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(seconds));
+            try
+            {
+                while (await timer.WaitForNextTickAsync(token))
+                {
+                    await InvokeAsync(async () =>
+                    {
+                        if (!busy)
+                            await RunAsync();
+                    });
+                }
+            }
+            catch (OperationCanceledException) { }
+        }, token);
+    }
+
+    private void CancelAutoRefresh()
+    {
+        try
+        {
+            refreshCts?.Cancel();
+            refreshCts?.Dispose();
+        }
+        catch { }
+
+        refreshCts = null;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        CancelAutoRefresh();
+        return ValueTask.CompletedTask;
+    }
+
+    private async Task BackAsync()
+    {
+        await JS.InvokeVoidAsync("DynReportCharts.goBack", "/");
+    }
+}
