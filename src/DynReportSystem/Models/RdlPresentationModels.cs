@@ -29,6 +29,7 @@ public sealed class RdlPresentationItem
     public RdlChartPresentation? Chart { get; init; }
     public RdlGaugePresentation? Gauge { get; init; }
     public IReadOnlyList<RdlFilterPresentation> Filters { get; init; } = [];
+    public string? HiddenExpression { get; init; }
     public string? Text { get; init; }
     public string? BackgroundColor { get; init; }
     public string? ForegroundColor { get; init; }
