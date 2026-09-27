@@ -23,6 +23,7 @@ public sealed class DynReportPackageStore(
     private const double MaxCompressionRatio = 100d;
 
     private readonly object _gate = new();
+    private readonly SemaphoreSlim _mutationGate = new(1, 1);
     private readonly JsonSerializerOptions _json = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -80,6 +81,8 @@ public sealed class DynReportPackageStore(
         string? importedBy = null,
         CancellationToken cancellationToken = default)
     {
+        using var mutation = await EnterMutationAsync(cancellationToken);
+
         Directory.CreateDirectory(_root);
         Directory.CreateDirectory(_revisionsRoot);
 
@@ -133,6 +136,8 @@ public sealed class DynReportPackageStore(
         string editedBy,
         CancellationToken cancellationToken = default)
     {
+        using var mutation = await EnterMutationAsync(cancellationToken);
+
         var path = Path.Combine(_root, SafeFileName(package.Manifest.ReportId) + ".dynreport");
         Directory.CreateDirectory(_root);
 
@@ -232,6 +237,8 @@ public sealed class DynReportPackageStore(
         string restoredBy,
         CancellationToken cancellationToken = default)
     {
+        using var mutation = await EnterMutationAsync(cancellationToken);
+
         if (!metadata.IsConfigured)
         {
             throw new InvalidOperationException(
@@ -776,6 +783,23 @@ public sealed class DynReportPackageStore(
 
             if (config.GetValue("Metadata:FailPublishWhenUnavailable", false))
                 throw;
+        }
+    }
+
+    private async Task<IDisposable> EnterMutationAsync(
+        CancellationToken cancellationToken)
+    {
+        await _mutationGate.WaitAsync(cancellationToken);
+        return new MutationLease(_mutationGate);
+    }
+
+    private sealed class MutationLease(SemaphoreSlim gate) : IDisposable
+    {
+        private SemaphoreSlim? _gate = gate;
+
+        public void Dispose()
+        {
+            Interlocked.Exchange(ref _gate, null)?.Release();
         }
     }
 
