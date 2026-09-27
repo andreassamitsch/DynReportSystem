@@ -169,15 +169,27 @@
     private bool showHidden;
     private string loadError = "";
     private ImportedPortalStats importedStats = new();
+    private PlatformCatalog catalogSnapshot = new();
     private List<ReportItem> authorizedReports = [];
+    private List<ReportItem> authorizedVisibleReports = [];
     private HashSet<string> optimizedReportIds = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> hiddenReportIds = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> hiddenFolderIds = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, ImportedReport> importedReportsById =
+        new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, LoadedDynReportPackage> packagesById =
+        new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, ReportFolder> foldersById =
+        new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, int> visibleDescendantCounts =
+        new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, int> allDescendantCounts =
+        new(StringComparer.OrdinalIgnoreCase);
 
-    private PlatformCatalog Catalog => Access.Catalog;
+    private PlatformCatalog Catalog => catalogSnapshot;
 
-    private List<ReportItem> AccessibleReports =>
-        authorizedReports
-            .Where(r => showHidden || (!IsHidden(r.Id) && !HasHiddenAncestor(r.FolderId)))
-            .ToList();
+    private IReadOnlyList<ReportItem> AccessibleReports =>
+        showHidden ? authorizedReports : authorizedVisibleReports;
 
     private List<ReportFolder> VisibleSubFolders
     {
@@ -205,9 +217,8 @@
             : AccessibleReports
                 .Where(report =>
                 {
-                    var package = Packages.Get(report.Id);
-                    var imported = Imported.Catalog.Reports.FirstOrDefault(x =>
-                        x.Id.Equals(report.Id, StringComparison.OrdinalIgnoreCase));
+                    packagesById.TryGetValue(report.Id, out var package);
+                    importedReportsById.TryGetValue(report.Id, out var imported);
 
                     return report.Title.Contains(search, StringComparison.CurrentCultureIgnoreCase)
                            || (package?.Manifest.Path?.Contains(search, StringComparison.CurrentCultureIgnoreCase) ?? false)
@@ -229,8 +240,7 @@
                 result.Add(current);
                 current = string.IsNullOrWhiteSpace(current.ParentId)
                     ? null
-                    : Catalog.Folders.FirstOrDefault(x =>
-                        x.Id.Equals(current.ParentId, StringComparison.OrdinalIgnoreCase));
+                    : foldersById.GetValueOrDefault(current.ParentId);
             }
 
             result.Reverse();
@@ -245,20 +255,46 @@
 
         try
         {
-            importedStats = Imported.Catalog.Stats;
-            optimizedReportIds = Packages.List()
-                .Select(x => x.Manifest.ReportId)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var importedCatalog = Imported.Catalog;
+            var packageList = Packages.List();
+            catalogSnapshot = Access.Catalog;
 
-            // Resolve expensive SSRS/Windows ACL checks exactly once per report
-            // for this portal session. All folder counters/navigation then work
-            // from this in-memory list instead of repeating domain role checks.
-            authorizedReports = Catalog.Reports
+            importedStats = importedCatalog.Stats;
+            importedReportsById = importedCatalog.Reports.ToDictionary(
+                x => x.Id,
+                StringComparer.OrdinalIgnoreCase);
+            packagesById = packageList.ToDictionary(
+                x => x.Manifest.ReportId,
+                StringComparer.OrdinalIgnoreCase);
+            optimizedReportIds = packagesById.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            hiddenReportIds = importedCatalog.Reports
+                .Where(x => x.Hidden)
+                .Select(x => x.Id)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            hiddenFolderIds = importedCatalog.Folders
+                .Where(x => x.Hidden)
+                .Select(x => x.Id)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foldersById = catalogSnapshot.Folders.ToDictionary(
+                x => x.Id,
+                StringComparer.OrdinalIgnoreCase);
+
+            // Resolve Windows/SSRS ACLs once for this portal circuit.
+            authorizedReports = catalogSnapshot.Reports
                 .Where(r => Access.Can(user, r.Id, "View") && Access.Can(user, r.Id, "Run"))
                 .OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
 
-            var roots = Catalog.Folders
+            // Hidden/ancestor checks used to be recomputed for every folder counter
+            // and every render. Cache the visible report set once.
+            authorizedVisibleReports = authorizedReports
+                .Where(r => !hiddenReportIds.Contains(r.Id) && !HasHiddenAncestorFast(r.FolderId))
+                .ToList();
+
+            allDescendantCounts = BuildDescendantCounts(authorizedReports);
+            visibleDescendantCounts = BuildDescendantCounts(authorizedVisibleReports);
+
+            var roots = catalogSnapshot.Folders
                 .Where(x => string.IsNullOrWhiteSpace(x.ParentId) && DescendantReportCount(x.Id) > 0)
                 .ToList();
 
@@ -269,6 +305,7 @@
         {
             loadError = ex.Message;
             authorizedReports = [];
+            authorizedVisibleReports = [];
         }
     }
 
@@ -277,49 +314,57 @@
         activeFolderId = id;
         activeFolder = string.IsNullOrWhiteSpace(id)
             ? null
-            : Catalog.Folders.FirstOrDefault(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            : foldersById.GetValueOrDefault(id);
     }
 
     private int DescendantReportCount(string folderId)
     {
-        var descendantIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { folderId };
-        var changed = true;
+        var counts = showHidden ? allDescendantCounts : visibleDescendantCounts;
+        return counts.TryGetValue(folderId, out var count) ? count : 0;
+    }
 
-        while (changed)
+    private Dictionary<string, int> BuildDescendantCounts(
+        IEnumerable<ReportItem> reports)
+    {
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var report in reports)
         {
-            changed = false;
-            foreach (var folder in Catalog.Folders)
+            var currentId = report.FolderId;
+            var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            while (!string.IsNullOrWhiteSpace(currentId) && visited.Add(currentId))
             {
-                if (!string.IsNullOrWhiteSpace(folder.ParentId)
-                    && descendantIds.Contains(folder.ParentId)
-                    && descendantIds.Add(folder.Id))
-                    changed = true;
+                counts[currentId] = counts.GetValueOrDefault(currentId) + 1;
+
+                currentId = foldersById.TryGetValue(currentId, out var folder)
+                    ? folder.ParentId ?? ""
+                    : "";
             }
         }
 
-        return AccessibleReports.Count(report => descendantIds.Contains(report.FolderId));
+        return counts;
     }
 
-    private bool IsHidden(string reportId) =>
-        Imported.Catalog.Reports.FirstOrDefault(x =>
-            x.Id.Equals(reportId, StringComparison.OrdinalIgnoreCase))?.Hidden == true;
+    private bool IsHidden(string reportId) => hiddenReportIds.Contains(reportId);
 
-    private bool IsHiddenFolder(string folderId) =>
-        Imported.Catalog.Folders.FirstOrDefault(x =>
-            x.Id.Equals(folderId, StringComparison.OrdinalIgnoreCase))?.Hidden == true;
+    private bool IsHiddenFolder(string folderId) => hiddenFolderIds.Contains(folderId);
 
-    private bool HasHiddenAncestor(string folderId)
+    private bool HasHiddenAncestor(string folderId) => HasHiddenAncestorFast(folderId);
+
+    private bool HasHiddenAncestorFast(string folderId)
     {
         var currentId = folderId;
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         while (!string.IsNullOrWhiteSpace(currentId) && visited.Add(currentId))
         {
-            if (IsHiddenFolder(currentId))
+            if (hiddenFolderIds.Contains(currentId))
                 return true;
 
-            currentId = Catalog.Folders.FirstOrDefault(x =>
-                x.Id.Equals(currentId, StringComparison.OrdinalIgnoreCase))?.ParentId ?? "";
+            currentId = foldersById.TryGetValue(currentId, out var folder)
+                ? folder.ParentId ?? ""
+                : "";
         }
 
         return false;
@@ -327,9 +372,8 @@
 
     private RenderFragment ReportCard(ReportItem report) => builder =>
     {
-        var package = Packages.Get(report.Id);
-        var imported = Imported.Catalog.Reports.FirstOrDefault(x =>
-            x.Id.Equals(report.Id, StringComparison.OrdinalIgnoreCase));
+        packagesById.TryGetValue(report.Id, out var package);
+        importedReportsById.TryGetValue(report.Id, out var imported);
 
         var sequence = 0;
         builder.OpenElement(sequence++, "a");
