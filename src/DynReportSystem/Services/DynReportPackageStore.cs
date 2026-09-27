@@ -130,6 +130,21 @@ public sealed class DynReportPackageStore(
         var path = Path.Combine(_root, SafeFileName(package.Manifest.ReportId) + ".dynreport");
         Directory.CreateDirectory(_root);
 
+        if (File.Exists(path))
+        {
+            var currentModifiedUtc = File.GetLastWriteTimeUtc(path);
+
+            // Optimistic concurrency: a designer session must not silently
+            // overwrite a package that was changed after it was opened.
+            if (package.ModifiedUtc != DateTime.MinValue
+                && Math.Abs((currentModifiedUtc - package.ModifiedUtc).TotalMilliseconds) > 5)
+            {
+                throw new InvalidOperationException(
+                    "Der Bericht wurde zwischenzeitlich von einer anderen Sitzung geändert. " +
+                    "Bitte neu laden und die Änderungen erneut anwenden.");
+            }
+        }
+
         package.Manifest.ModifiedUtc = DateTime.UtcNow;
 
         var temp = path + ".tmp";
