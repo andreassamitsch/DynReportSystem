@@ -2,11 +2,13 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
 using DynReportSystem.Models;
+using Microsoft.Data.SqlClient;
 
 namespace DynReportSystem.Services;
 
 public sealed class DynReportPackageStore(
     DynReportMetadataStore metadata,
+    DynReportSqlPolicyValidator queryPolicy,
     IConfiguration config,
     ILogger<DynReportPackageStore> logger)
 {
@@ -389,6 +391,31 @@ public sealed class DynReportPackageStore(
         if (dataSetIds.Count != document.Datasets.Count)
             throw new InvalidDataException("Doppelte Dataset-ID.");
 
+        foreach (var source in document.DataSources)
+        {
+            if (string.IsNullOrWhiteSpace(source.DefaultConnectionString))
+                continue;
+
+            try
+            {
+                var builder = new SqlConnectionStringBuilder(source.DefaultConnectionString);
+
+                if (!string.IsNullOrWhiteSpace(builder.UserID)
+                    || !string.IsNullOrWhiteSpace(builder.Password))
+                {
+                    throw new InvalidDataException(
+                        $"Datenquelle '{source.Id}' enthält Zugangsdaten im Report-Paket. " +
+                        "Native DynReport-Pakete dürfen keine SQL-Credentials enthalten.");
+                }
+            }
+            catch (ArgumentException ex)
+            {
+                throw new InvalidDataException(
+                    $"Datenquelle '{source.Id}' enthält ungültige Connection-Metadaten.",
+                    ex);
+            }
+        }
+
         foreach (var dataSet in document.Datasets)
         {
             if (!sourceIds.Contains(dataSet.DataSourceId))
@@ -396,9 +423,11 @@ public sealed class DynReportPackageStore(
                     $"Dataset '{dataSet.Id}' referenziert unbekannte Datenquelle '{dataSet.DataSourceId}'.");
 
             if (string.IsNullOrWhiteSpace(dataSet.QueryFile)
-                || !files.ContainsKey(dataSet.QueryFile))
+                || !files.TryGetValue(dataSet.QueryFile, out var queryText))
                 throw new InvalidDataException(
                     $"SQL-Datei '{dataSet.QueryFile}' für Dataset '{dataSet.Id}' fehlt.");
+
+            queryPolicy.Validate(dataSet, queryText);
         }
 
         var parameterNames = document.Parameters
