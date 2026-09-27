@@ -33,6 +33,7 @@ builder.Services.AddSingleton<DynReportMetadataStore>();
 builder.Services.AddSingleton<DynReportDataSourceRegistry>();
 builder.Services.AddSingleton<DynReportSqlPolicyValidator>();
 builder.Services.AddSingleton<DynReportExecutionGate>();
+builder.Services.AddSingleton<DynReportMetrics>();
 builder.Services.AddSingleton<DynReportPackageStore>();
 builder.Services.AddSingleton<DynExpressionEngine>();
 builder.Services.AddScoped<DynReportPackageExecutionService>();
