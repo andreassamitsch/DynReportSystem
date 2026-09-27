@@ -29,10 +29,18 @@ public sealed class DynReportPackageStore(
         "Revisions");
 
     private Dictionary<string, LoadedDynReportPackage>? _cache;
-    private DateTime _stamp;
+    private DateTime _directoryStamp;
+    private long _generation;
 
     public string RootPath => _root;
     public string RevisionsPath => _revisionsRoot;
+
+    /// <summary>
+    /// Cheap in-process change token used by the portal/ACL catalog. Package
+    /// imports/designer saves increment it so callers do not have to rescan the
+    /// package directory for every permission or render check.
+    /// </summary>
+    public long Generation => Interlocked.Read(ref _generation);
 
     public LoadedDynReportPackage? Get(string reportId)
     {
@@ -217,15 +225,15 @@ public sealed class DynReportPackageStore(
     {
         Directory.CreateDirectory(_root);
 
-        var stamp = Directory
-            .EnumerateFiles(_root, "*.dynreport", SearchOption.TopDirectoryOnly)
-            .Select(File.GetLastWriteTimeUtc)
-            .DefaultIfEmpty(DateTime.MinValue)
-            .Max();
+        // Directory timestamp is a single cheap filesystem metadata lookup.
+        // The old implementation enumerated every *.dynreport file on every
+        // Get/List call, which became very expensive because the portal calls
+        // package lookups repeatedly while rendering report cards/ACLs.
+        var directoryStamp = Directory.GetLastWriteTimeUtc(_root);
 
         lock (_gate)
         {
-            if (_cache is not null && stamp == _stamp)
+            if (_cache is not null && directoryStamp == _directoryStamp)
                 return;
 
             var loaded = new Dictionary<string, LoadedDynReportPackage>(StringComparer.OrdinalIgnoreCase);
@@ -244,7 +252,8 @@ public sealed class DynReportPackageStore(
             }
 
             _cache = loaded;
-            _stamp = stamp;
+            _directoryStamp = directoryStamp;
+            Interlocked.Increment(ref _generation);
         }
     }
 
@@ -472,7 +481,8 @@ public sealed class DynReportPackageStore(
         lock (_gate)
         {
             _cache = null;
-            _stamp = DateTime.MinValue;
+            _directoryStamp = DateTime.MinValue;
+            Interlocked.Increment(ref _generation);
         }
     }
 
