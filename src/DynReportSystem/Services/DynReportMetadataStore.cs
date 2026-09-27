@@ -85,7 +85,7 @@ public sealed class DynReportMetadataStore(
                 reader.GetString(3),
                 reader.GetString(4),
                 reader.GetInt64(5),
-                reader.GetDateTime(6),
+                DateTime.SpecifyKind(reader.GetDateTime(6), DateTimeKind.Utc),
                 reader.IsDBNull(7) ? null : reader.GetString(7),
                 reader.GetBoolean(8),
                 reader.GetBoolean(9)));
