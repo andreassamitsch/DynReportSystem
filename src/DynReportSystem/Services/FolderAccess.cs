@@ -149,6 +149,61 @@ public sealed class FolderAccess(
         return false;
     }
 
+    public bool CanAll(
+        ClaimsPrincipal user,
+        string reportId,
+        params string[] permissions)
+    {
+        if (user.Identity?.IsAuthenticated != true || permissions.Length == 0)
+            return false;
+
+        _ = Catalog;
+
+        if (!_reportsById.TryGetValue(reportId, out var report))
+            return false;
+
+        var missing = permissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        ApplyAllowed(report.Grants, user, missing);
+
+        var folderId = report.FolderId;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (missing.Count > 0
+               && !string.IsNullOrWhiteSpace(folderId)
+               && visited.Add(folderId))
+        {
+            if (!_foldersById.TryGetValue(folderId, out var folder))
+                break;
+
+            ApplyAllowed(folder.Grants, user, missing);
+            folderId = folder.ParentId;
+        }
+
+        return missing.Count == 0;
+    }
+
+    private void ApplyAllowed(
+        IEnumerable<ReportGrant> grants,
+        ClaimsPrincipal user,
+        HashSet<string> missing)
+    {
+        foreach (var grant in grants)
+        {
+            if (missing.Count == 0)
+                return;
+
+            var relevant = grant.Permissions
+                .Where(permission => missing.Contains(permission))
+                .ToArray();
+
+            if (relevant.Length == 0 || !PrincipalMatches(grant, user))
+                continue;
+
+            foreach (var permission in relevant)
+                missing.Remove(permission);
+        }
+    }
+
     public bool CanRunDataset(ClaimsPrincipal user, string dataset) =>
         Catalog.Reports.Any(r =>
             r.Datasets.Contains(dataset, StringComparer.OrdinalIgnoreCase)
