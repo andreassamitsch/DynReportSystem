@@ -2,7 +2,74 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
-## Version 0.6.2
+## Version 0.7.0
+
+Version 0.7 establishes the **production architecture foundation** before additional SSRS reports are migrated.
+
+### 0.7.0 architecture foundation
+
+The target architecture is now explicitly documented and partially implemented:
+
+- SQL Server is the long-term authoritative catalog for report metadata, immutable revisions,
+  permissions, audit, execution history and background jobs.
+- `.dynreport` remains the portable import/export/build artifact rather than the only
+  production database.
+- current filesystem packages stay supported during the transition so existing installations
+  keep running.
+- package imports/designer saves can mirror validated immutable revisions into a dedicated
+  DynReport metadata database.
+- native report SQL passes a defense-in-depth read-only query policy before execution.
+- the primary SQL security boundary remains a dedicated least-privilege SQL/Windows identity.
+- report packages containing SQL credentials are rejected.
+- logical DataSource profiles resolve centrally from server configuration.
+- package uploads enforce entry count, expanded-size and compression-ratio limits.
+- query execution has global concurrency protection, cancellation, absolute row/time limits,
+  structured execution IDs and slow-query logging.
+- optional SQL audit/execution tracking is available through the metadata database.
+- `/health/live` and `/health/ready` are available for operations monitoring.
+- CSP is introduced in report-only mode before enforcing it in production.
+- the manifest now supports a minimum runtime version.
+- JSON Schema files document the stable package contract.
+
+SQL bootstrap:
+
+```text
+sql/001-dynreport-metadata-schema.sql
+sql/010-runtime-principal-template.sql
+```
+
+Architecture/operations baseline:
+
+```text
+docs/architecture/ADR-0001-self-contained-designer-first-dynreport.md
+docs/architecture/ADR-0002-central-sql-catalog-and-package-artifacts.md
+docs/architecture/ADR-0003-query-security-boundary.md
+docs/architecture/ADR-0004-web-runtime-and-designer.md
+docs/operations/backup-recovery.md
+docs/roadmap/architecture-foundation.md
+schemas/dynreport-manifest-2.0.schema.json
+schemas/dynreport-report-2.0.schema.json
+```
+
+### RDL policy from 0.7 onward
+
+RDL is **not** a target runtime format.
+
+Existing SSRS/RDL reports are migrated one by one:
+
+1. analyse the original report's business purpose
+2. understand SQL/datasets, parameters, calculations, grouping, colors, visibility and actions
+3. measure/validate the query
+4. intentionally redesign the UX
+5. model the result with native generic DynReport components and expressions
+6. compare values against the original SSRS report
+7. publish a native `.dynreport` revision
+8. retire the RDL dependency for that report
+
+The old generic RDL runtime remains only as a temporary compatibility path for reports that
+have not yet been manually converted. No further architecture should depend on automatic
+RDL-to-DynReport presentation conversion.
+
 
 Version 0.6 introduces the **self-contained, designer-first report architecture**.
 
@@ -185,26 +252,38 @@ The Kundencockpit remains the first hand-optimized DynReport report and demonstr
 
 Production credentials belong only in appsettings.Production.json on APP-01. Never commit them.
 
-Optional imported data-source keys:
+Server-side data-source keys:
 
 - DataSources:OxaionPRD:ConnectionString
 - DataSources:SyncosPRD:ConnectionString
 - DataSources:SyncosPRDHephax:ConnectionString
 - DataSources:ReportServerDB:ConnectionString
+- DataSources:DynReportMetadata:ConnectionString
 
-If an imported SQL data source has no explicit configuration, DynReport can use the imported server/database target together with credentials from the existing Cockpit:ConnectionString. Whether that succeeds depends on that SQL account's permissions.
+For the new metadata database either `Metadata:ConnectionString` or
+`DataSources:DynReportMetadata:ConnectionString` can be configured.
+
+The preferred production configuration uses a dedicated Windows service identity / SQL principal
+with the minimum required read/execute permissions and SQL TLS certificate validation. Package
+connection-string fallback exists only for the migration phase and must not contain credentials.
 
 ## Installation / update
 
-GitHub Actions builds DynReportSystem-Server-Setup-0.6.2-win-x64.exe.
+GitHub Actions builds DynReportSystem-Server-Setup-0.7.0-win-x64.exe.
 
 For an SSRS migration, keep the setup EXE, MigrationBundle.zip and the optimized Kundencockpit.rdl (when updating it) next to each other. The setup performs an in-place update and preserves the existing production appsettings, local DynReport permissions and IIS/HTTPS bindings.
 
 ## Current migration boundaries
 
-The generic runtime covers common SSRS data and parameter behavior. Complex VB expressions, unusual parameter dependencies, proprietary/custom report items, exact print pagination and subscription delivery can require report-specific refinement.
+The legacy generic RDL runtime remains available only for reports that have not yet been manually
+converted. It is no longer the design target.
 
-Subscription and schedule definitions are imported as metadata; DynReport 0.3 does not yet execute SSRS subscriptions.
+New native report capabilities are added to the generic DynReport schema/runtime/designer rather
+than through report-specific Razor/C# code. Long-running export workers, a fully SQL-authoritative
+catalog, distributed caching and the final client-heavy designer are still roadmap items.
+
+Subscription and schedule definitions from SSRS remain migration metadata; native DynReport job
+execution is represented in the new metadata schema but the worker process is not yet implemented.
 
 ## Security
 
