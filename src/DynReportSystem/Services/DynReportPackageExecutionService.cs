@@ -1,4 +1,5 @@
 using System.Data;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using DynReportSystem.Models;
@@ -6,7 +7,13 @@ using Microsoft.Data.SqlClient;
 
 namespace DynReportSystem.Services;
 
-public sealed class DynReportPackageExecutionService(IConfiguration config)
+public sealed class DynReportPackageExecutionService(
+    IConfiguration config,
+    DynReportDataSourceRegistry dataSources,
+    DynReportSqlPolicyValidator queryPolicy,
+    DynReportMetadataStore metadata,
+    DynReportExecutionGate executionGate,
+    ILogger<DynReportPackageExecutionService> logger)
 {
     public Dictionary<string, DynReportParameterValue> CreateInitialValues(
         LoadedDynReportPackage package)
@@ -33,27 +40,147 @@ public sealed class DynReportPackageExecutionService(IConfiguration config)
     public async Task<DynReportRun> RunAsync(
         LoadedDynReportPackage package,
         IReadOnlyDictionary<string, DynReportParameterValue> parameters,
+        string? userName = null,
         CancellationToken cancellationToken = default)
     {
-        var run = new DynReportRun();
+        var run = new DynReportRun
+        {
+            ExecutionId = Guid.NewGuid(),
+            CorrelationId = Guid.NewGuid(),
+            StartedUtc = DateTime.UtcNow
+        };
 
-        foreach (var dataSet in package.Document.Datasets)
+        var total = Stopwatch.StartNew();
+
+        try
         {
             try
             {
-                run.Results[dataSet.Id] = await ExecuteDataSetAsync(
-                    package,
-                    dataSet,
-                    parameters,
+                await metadata.RegisterExecutionStartAsync(
+                    run.ExecutionId,
+                    run.CorrelationId,
+                    package.Manifest.ReportId,
+                    userName,
                     cancellationToken);
             }
             catch (Exception ex)
             {
-                run.Errors.Add($"{dataSet.Id}: {ex.Message}");
+                logger.LogWarning(
+                    ex,
+                    "Could not register DynReport execution start for {ReportId}",
+                    package.Manifest.ReportId);
             }
-        }
 
-        return run;
+            foreach (var dataSet in package.Document.Datasets)
+            {
+                var stopwatch = Stopwatch.StartNew();
+
+                try
+                {
+                    var result = await ExecuteDataSetAsync(
+                        package,
+                        dataSet,
+                        parameters,
+                        cancellationToken);
+
+                    run.Results[dataSet.Id] = result;
+
+                    await metadata.WriteAuditAsync(
+                        new DynAuditEvent(
+                            run.CorrelationId,
+                            "dataset.execute",
+                            "success",
+                            userName,
+                            package.Manifest.ReportId,
+                            DataSourceId: dataSet.DataSourceId,
+                            DatasetId: dataSet.Id,
+                            DurationMs: stopwatch.ElapsedMilliseconds,
+                            RowCount: result.Rows.Count,
+                            DetailsJson: DynAuditEvent.Details(new
+                            {
+                                result.Truncated,
+                                MaxRows = package.Document.Settings.MaxRowsPerDataset
+                            })),
+                        cancellationToken);
+
+                    var slowThreshold = Math.Max(
+                        250,
+                        config.GetValue("Runtime:SlowQueryThresholdMs", 2000));
+
+                    if (stopwatch.ElapsedMilliseconds >= slowThreshold)
+                    {
+                        logger.LogWarning(
+                            "Slow DynReport dataset {ReportId}/{DatasetId}: {DurationMs} ms, {RowCount} rows",
+                            package.Manifest.ReportId,
+                            dataSet.Id,
+                            stopwatch.ElapsedMilliseconds,
+                            result.Rows.Count);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    await metadata.WriteAuditAsync(
+                        new DynAuditEvent(
+                            run.CorrelationId,
+                            "dataset.execute",
+                            "cancelled",
+                            userName,
+                            package.Manifest.ReportId,
+                            DataSourceId: dataSet.DataSourceId,
+                            DatasetId: dataSet.Id,
+                            DurationMs: stopwatch.ElapsedMilliseconds),
+                        CancellationToken.None);
+
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    run.Errors.Add($"{dataSet.Id}: {ex.Message}");
+
+                    await metadata.WriteAuditAsync(
+                        new DynAuditEvent(
+                            run.CorrelationId,
+                            "dataset.execute",
+                            "error",
+                            userName,
+                            package.Manifest.ReportId,
+                            DataSourceId: dataSet.DataSourceId,
+                            DatasetId: dataSet.Id,
+                            DurationMs: stopwatch.ElapsedMilliseconds,
+                            DetailsJson: DynAuditEvent.Details(new
+                            {
+                                ErrorType = ex.GetType().Name
+                            })),
+                        cancellationToken);
+
+                    logger.LogError(
+                        ex,
+                        "DynReport dataset failed {ReportId}/{DatasetId}",
+                        package.Manifest.ReportId,
+                        dataSet.Id);
+                }
+            }
+
+            return run;
+        }
+        finally
+        {
+            total.Stop();
+            run.DurationMs = total.ElapsedMilliseconds;
+
+            await metadata.RegisterExecutionEndAsync(
+                run.ExecutionId,
+                run.DurationMs,
+                run.Errors.Count,
+                CancellationToken.None);
+
+            logger.LogInformation(
+                "DynReport execution {ExecutionId} for {ReportId} finished in {DurationMs} ms with {ErrorCount} errors",
+                run.ExecutionId,
+                package.Manifest.ReportId,
+                run.DurationMs,
+                run.Errors.Count);
+        }
     }
 
     public async Task<IReadOnlyList<DynReportParameterOption>> GetParameterOptionsAsync(
@@ -74,10 +201,16 @@ public sealed class DynReportPackageExecutionService(IConfiguration config)
         if (dataSet is null)
             return [];
 
-        var result = await ExecuteDataSetAsync(package, dataSet, parameters, cancellationToken);
+        var result = await ExecuteDataSetAsync(
+            package,
+            dataSet,
+            parameters,
+            cancellationToken);
+
         var valueField = string.IsNullOrWhiteSpace(parameter.OptionsValueField)
             ? result.Columns.FirstOrDefault() ?? ""
             : parameter.OptionsValueField;
+
         var labelField = string.IsNullOrWhiteSpace(parameter.OptionsLabelField)
             ? valueField
             : parameter.OptionsLabelField;
@@ -104,6 +237,8 @@ public sealed class DynReportPackageExecutionService(IConfiguration config)
                 $"SQL-Datei '{dataSet.QueryFile}' für Dataset '{dataSet.Id}' fehlt oder ist leer.");
         }
 
+        queryPolicy.Validate(dataSet, sql);
+
         var source = package.Document.DataSources.FirstOrDefault(x =>
             x.Id.Equals(dataSet.DataSourceId, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidDataException(
@@ -113,11 +248,7 @@ public sealed class DynReportPackageExecutionService(IConfiguration config)
             throw new NotSupportedException(
                 $"Datenquellen-Provider '{source.Provider}' wird noch nicht unterstützt.");
 
-        var connectionString = ResolveConnectionString(source);
-        if (string.IsNullOrWhiteSpace(connectionString))
-            throw new InvalidOperationException(
-                $"Datenquelle '{source.Id}' ist noch nicht konfiguriert.");
-
+        var connectionString = dataSources.ResolveConnectionString(source);
         var sqlParameters = new List<SqlParameter>();
 
         foreach (var binding in dataSet.Parameters)
@@ -159,14 +290,16 @@ public sealed class DynReportPackageExecutionService(IConfiguration config)
                 ? package.Document.Settings.MaxRowsPerDataset
                 : config.GetValue("Portal:MaxRowsPerDataset", 20000),
             100,
-            100000);
+            Math.Clamp(config.GetValue("Runtime:AbsoluteMaxRows", 100000), 1000, 1000000));
 
         var timeout = Math.Clamp(
             package.Document.Settings.CommandTimeoutSeconds > 0
                 ? package.Document.Settings.CommandTimeoutSeconds
                 : config.GetValue("Portal:CommandTimeoutSeconds", 120),
-            10,
-            900);
+            5,
+            Math.Clamp(config.GetValue("Runtime:AbsoluteMaxQuerySeconds", 300), 30, 900));
+
+        using var gateLease = await executionGate.EnterQueryAsync(cancellationToken);
 
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
@@ -215,6 +348,7 @@ public sealed class DynReportPackageExecutionService(IConfiguration config)
             }
 
             var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
             for (var i = 0; i < reader.FieldCount; i++)
             {
                 row[columns[i]] = await reader.IsDBNullAsync(i, cancellationToken)
@@ -232,49 +366,6 @@ public sealed class DynReportPackageExecutionService(IConfiguration config)
             Rows = rows,
             Truncated = truncated
         };
-    }
-
-    private string ResolveConnectionString(DynReportDataSource source)
-    {
-        var direct = config[$"DataSources:{source.ConfigKey}:ConnectionString"];
-        if (!string.IsNullOrWhiteSpace(direct))
-            return direct;
-
-        direct = config[$"DataSources:{source.Id}:ConnectionString"];
-        if (!string.IsNullOrWhiteSpace(direct))
-            return direct;
-
-        if (string.IsNullOrWhiteSpace(source.DefaultConnectionString))
-            return "";
-
-        var fallback = config["Cockpit:ConnectionString"];
-        if (string.IsNullOrWhiteSpace(fallback))
-            return source.DefaultConnectionString;
-
-        try
-        {
-            var target = new SqlConnectionStringBuilder(source.DefaultConnectionString);
-            var credentials = new SqlConnectionStringBuilder(fallback);
-
-            if (credentials.IntegratedSecurity)
-            {
-                target.IntegratedSecurity = true;
-            }
-            else
-            {
-                target.UserID = credentials.UserID;
-                target.Password = credentials.Password;
-            }
-
-            target.Encrypt = credentials.Encrypt;
-            target.TrustServerCertificate = credentials.TrustServerCertificate;
-            target.ConnectTimeout = credentials.ConnectTimeout;
-            return target.ConnectionString;
-        }
-        catch
-        {
-            return source.DefaultConnectionString;
-        }
     }
 
     private static SqlParameter CreateParameter(
@@ -336,6 +427,7 @@ public sealed class DynReportPackageExecutionService(IConfiguration config)
         string replacement)
     {
         var pattern = $@"(?<![A-Za-z0-9_]){Regex.Escape(parameter)}(?![A-Za-z0-9_])";
+
         return Regex.Replace(
             sql,
             pattern,
