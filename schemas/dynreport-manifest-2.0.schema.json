@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dynreport.local/schema/manifest-2.0.json",
+  "title": "DynReport manifest 2.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "SchemaVersion",
+    "ReportId",
+    "Path",
+    "FolderPath",
+    "Title",
+    "Version",
+    "CreatedUtc",
+    "ModifiedUtc",
+    "Grants"
+  ],
+  "properties": {
+    "SchemaVersion": { "const": "2.0" },
+    "ReportId": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "Path": { "type": "string", "minLength": 1, "maxLength": 600 },
+    "FolderPath": { "type": "string", "minLength": 1, "maxLength": 600 },
+    "Title": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "Description": { "type": "string", "maxLength": 2000 },
+    "Version": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "MinRuntimeVersion": { "type": "string", "maxLength": 32 },
+    "CreatedUtc": { "type": "string", "format": "date-time" },
+    "ModifiedUtc": { "type": "string", "format": "date-time" },
+    "Tags": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 100 },
+      "maxItems": 100
+    },
+    "Grants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["PrincipalType", "Principal", "Permissions"],
+        "properties": {
+          "PrincipalType": { "type": "string", "maxLength": 50 },
+          "Principal": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "Permissions": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "View",
+                "Run",
+                "Export",
+                "EditLayout",
+                "EditExpressions",
+                "EditDataset",
+                "Publish",
+                "ManagePermissions",
+                "ManageDataSources",
+                "Manage",
+                "Edit"
+              ]
+            },
+            "uniqueItems": true
+          }
+        }
+      }
+    }
+  }
+}
