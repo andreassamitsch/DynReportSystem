@@ -2,7 +2,7 @@
   "AllowedHosts": "*",
   "Cockpit": {
     "RdlPath": "Reports/Kundencockpit.rdl",
-    "ConnectionString": "Server=OXAION_SQL_SERVER;Database=OXAION_DATABASE;User ID=REPORTUSER;Password=CHANGE_ME;Encrypt=True;TrustServerCertificate=True;",
+    "ConnectionString": "Server=SQL_SERVER;Database=OXAION_DATABASE;Integrated Security=True;Encrypt=True;TrustServerCertificate=False;Application Name=DynReport;",
     "CommandTimeoutSeconds": 120,
     "MaxRowsPerDataset": 20000
   },
@@ -12,16 +12,33 @@
   },
   "DataSources": {
     "OxaionPRD": {
-      "ConnectionString": ""
+      "ConnectionString": "Server=SQL_SERVER;Database=OXAION_DATABASE;Integrated Security=True;Encrypt=True;TrustServerCertificate=False;Application Name=DynReport;"
     },
     "SyncosPRD": {
-      "ConnectionString": "Server=SYNCOS_SQL_SERVER;Database=SYNCOS_DATABASE;User ID=REPORTUSER;Password=CHANGE_ME;Encrypt=True;TrustServerCertificate=True;"
+      "ConnectionString": "Server=SQL_SERVER;Database=SYNCOS_DATABASE;Integrated Security=True;Encrypt=True;TrustServerCertificate=False;Application Name=DynReport;"
     },
     "SyncosPRDHephax": {
-      "ConnectionString": "Server=SYNCOS_SQL_SERVER;Database=SYNCOS_SECONDARY_DATABASE;User ID=REPORTUSER;Password=CHANGE_ME;Encrypt=True;TrustServerCertificate=True;"
+      "ConnectionString": "Server=SQL_SERVER;Database=SYNCOS_SECONDARY_DATABASE;Integrated Security=True;Encrypt=True;TrustServerCertificate=False;Application Name=DynReport;"
     },
     "ReportServerDB": {
-      "ConnectionString": "Server=REPORTING_SQL_SERVER;Database=REPORTSERVER_DATABASE;User ID=REPORTUSER;Password=CHANGE_ME;Encrypt=True;TrustServerCertificate=True;"
+      "ConnectionString": "Server=SQL_SERVER;Database=REPORTSERVER_DATABASE;Integrated Security=True;Encrypt=True;TrustServerCertificate=False;Application Name=DynReport;"
+    },
+    "DynReportMetadata": {
+      "ConnectionString": "Server=SQL_SERVER;Database=DynReport;Integrated Security=True;Encrypt=True;TrustServerCertificate=False;Application Name=DynReport;"
     }
+  },
+  "Metadata": {
+    "ConnectionString": "",
+    "FailPublishWhenUnavailable": false
+  },
+  "Runtime": {
+    "MaxConcurrentQueries": 8,
+    "AbsoluteMaxRows": 100000,
+    "AbsoluteMaxQuerySeconds": 300,
+    "SlowQueryThresholdMs": 2000
+  },
+  "Security": {
+    "AllowLegacyPackageConnectionStringFallback": true,
+    "RequireValidatedSqlTls": false
   }
 }
