@@ -42,9 +42,42 @@
                     </p>
                 </div>
 
-                <InputFile OnChange="ImportAsync"
-                           accept=".dynreport,application/zip"
-                           disabled="@busy" />
+                <div class="import-file-picker">
+                    <InputFile OnChange="SelectFile"
+                               accept=".dynreport,application/zip"
+                               disabled="@busy"
+                               class="import-native-file" />
+
+                    @if (selectedFile is not null)
+                    {
+                        <div class="selected-import-file">
+                            <span class="selected-file-icon">✓</span>
+                            <div>
+                                <strong>@selectedFile.Name</strong>
+                                <small>@FormatFileSize(selectedFile.Size)</small>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="import-actions">
+                <div class="import-action-hint">
+                    @if (selectedFile is null)
+                    {
+                        <span>Zuerst eine <code>.dynreport</code>-Datei auswählen.</span>
+                    }
+                    else
+                    {
+                        <span>Datei ausgewählt. Der Import startet erst nach Bestätigung.</span>
+                    }
+                </div>
+
+                <button class="primary-btn import-submit"
+                        disabled="@(busy || selectedFile is null)"
+                        @onclick="ImportSelectedAsync">
+                    @(busy ? "Wird importiert …" : "Paket importieren")
+                </button>
             </div>
 
             @if (busy)
@@ -131,7 +164,7 @@
         </section>
 
         <footer>
-            DynReport System 0.6.0 · Paketimporte werden versioniert ·
+            DynReport System 0.6.1 · Paketimporte werden versioniert ·
             Zugangsdaten bleiben zentral auf dem Server
         </footer>
     </main>
@@ -142,6 +175,7 @@
     private bool busy;
     private bool success;
     private string message = "";
+    private IBrowserFile? selectedFile;
     private LoadedDynReportPackage? imported;
 
     private IReadOnlyList<LoadedDynReportPackage> Installed => Packages.List();
@@ -162,8 +196,38 @@
             || Access.Can(user, reportId, "Edit")
             || CanPublish(reportId));
 
-    private async Task ImportAsync(InputFileChangeEventArgs e)
+    private void SelectFile(InputFileChangeEventArgs e)
     {
+        success = false;
+        imported = null;
+        message = "";
+
+        var file = e.File;
+
+        if (!file.Name.EndsWith(".dynreport", StringComparison.OrdinalIgnoreCase))
+        {
+            selectedFile = null;
+            message = "Bitte eine .dynreport-Datei auswählen.";
+            return;
+        }
+
+        if (file.Size > 25 * 1024 * 1024)
+        {
+            selectedFile = null;
+            message = "Die ausgewählte Datei ist größer als 25 MB.";
+            return;
+        }
+
+        selectedFile = file;
+        success = true;
+        message = $"'{file.Name}' wurde ausgewählt. Mit „Paket importieren“ wird die Datei geprüft und installiert.";
+    }
+
+    private async Task ImportSelectedAsync()
+    {
+        if (selectedFile is null || busy)
+            return;
+
         busy = true;
         success = false;
         message = "";
@@ -171,11 +235,7 @@
 
         try
         {
-            var file = e.File;
-            if (!file.Name.EndsWith(".dynreport", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("Bitte eine .dynreport-Datei auswählen.");
-
-            await using var source = file.OpenReadStream(25 * 1024 * 1024);
+            await using var source = selectedFile.OpenReadStream(25 * 1024 * 1024);
             using var memory = new MemoryStream();
             await source.CopyToAsync(memory);
 
@@ -209,6 +269,8 @@
             message =
                 $"'{imported.Manifest.Title}' v{imported.Manifest.Version} wurde installiert. " +
                 "Die vorherige Version wurde als Revision gesichert.";
+
+            selectedFile = null;
         }
         catch (Exception ex)
         {
@@ -219,6 +281,17 @@
         {
             busy = false;
         }
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes >= 1024 * 1024)
+            return $"{bytes / 1024d / 1024d:N1} MB";
+
+        if (bytes >= 1024)
+            return $"{bytes / 1024d:N0} KB";
+
+        return $"{bytes:N0} Byte";
     }
 
     private void OpenImported()
