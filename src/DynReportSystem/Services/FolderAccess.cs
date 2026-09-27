@@ -51,7 +51,11 @@ public sealed class FolderAccess(
     private PlatformCatalog? _catalog;
     private DateTime _mtime;
     private DateTime _migrationMtime;
-    private DateTime _packageMtime;
+    private long _packageGeneration = -1;
+    private Dictionary<string, ReportItem> _reportsById =
+        new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, ReportFolder> _foldersById =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, bool> _principalMatchCache =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -67,18 +71,29 @@ public sealed class FolderAccess(
                 ? File.GetLastWriteTimeUtc(_migrationPath)
                 : DateTime.MinValue;
 
-            var packages = packageStore.List();
-            var packageTime = packages
-                .Select(x => x.ModifiedUtc)
-                .DefaultIfEmpty(DateTime.MinValue)
-                .Max();
+            var packageGeneration = packageStore.Generation;
 
             lock (_lock)
             {
                 if (_catalog is not null
                     && time == _mtime
                     && migrationTime == _migrationMtime
-                    && packageTime == _packageMtime)
+                    && packageGeneration == _packageGeneration)
+                    return _catalog;
+            }
+
+            // Only enumerate/read packages when something actually changed.
+            // Access.Can() is called hundreds of times during the first portal
+            // render, so packageStore.List() must not sit on its hot path.
+            var packages = packageStore.List();
+            packageGeneration = packageStore.Generation;
+
+            lock (_lock)
+            {
+                if (_catalog is not null
+                    && time == _mtime
+                    && migrationTime == _migrationMtime
+                    && packageGeneration == _packageGeneration)
                     return _catalog;
 
                 var config = Read(_path);
@@ -90,9 +105,15 @@ public sealed class FolderAccess(
                 Validate(config);
 
                 _catalog = config;
+                _reportsById = config.Reports.ToDictionary(
+                    x => x.Id,
+                    StringComparer.OrdinalIgnoreCase);
+                _foldersById = config.Folders.ToDictionary(
+                    x => x.Id,
+                    StringComparer.OrdinalIgnoreCase);
                 _mtime = time;
                 _migrationMtime = migrationTime;
-                _packageMtime = packageTime;
+                _packageGeneration = packageGeneration;
                 return config;
             }
         }
@@ -103,11 +124,9 @@ public sealed class FolderAccess(
         if (user.Identity?.IsAuthenticated != true)
             return false;
 
-        var catalog = Catalog;
-        var report = catalog.Reports.FirstOrDefault(r =>
-            r.Id.Equals(reportId, StringComparison.OrdinalIgnoreCase));
+        _ = Catalog;
 
-        if (report is null)
+        if (!_reportsById.TryGetValue(reportId, out var report))
             return false;
 
         if (Allowed(report.Grants, user, permission))
@@ -118,10 +137,7 @@ public sealed class FolderAccess(
 
         while (!string.IsNullOrWhiteSpace(folderId) && visited.Add(folderId))
         {
-            var folder = catalog.Folders.FirstOrDefault(f =>
-                f.Id.Equals(folderId, StringComparison.OrdinalIgnoreCase));
-
-            if (folder is null)
+            if (!_foldersById.TryGetValue(folderId, out var folder))
                 return false;
 
             if (Allowed(folder.Grants, user, permission))
