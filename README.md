@@ -19,6 +19,9 @@ SQL catalog becomes the authoritative runtime source.
 - if SQL activation fails after the local package was replaced, the previous local package is
   restored as a compensating rollback
 - native package import, designer save and restore are serialized to prevent overlapping writes
+- metadata configuration now correctly falls back to `DataSources:DynReportMetadata` when
+  `Metadata:ConnectionString` is empty
+- the same SQL TLS validation policy now applies to the DynReport metadata database
 
 Research and operating baseline:
 
