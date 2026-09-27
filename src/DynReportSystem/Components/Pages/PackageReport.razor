@@ -512,9 +512,17 @@ else
 
         _ = Task.Run(async () =>
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(seconds));
+            // Small per-client jitter prevents many TV dashboards opened at the
+            // same time from hitting SQL on exactly the same second.
+            var jitterSeconds = Random.Shared.NextDouble() * Math.Min(8d, seconds * 0.10d);
+
             try
             {
+                if (jitterSeconds > 0)
+                    await Task.Delay(TimeSpan.FromSeconds(jitterSeconds), token);
+
+                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(seconds));
+
                 while (await timer.WaitForNextTickAsync(token))
                 {
                     await InvokeAsync(async () =>
