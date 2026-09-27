@@ -46,10 +46,17 @@ jobs:
           dotnet publish installer/DynReportSystem.Setup/DynReportSystem.Setup.csproj `
             -c Release -r win-x64 --self-contained true `
             -o artifacts/setup
+          Copy-Item sql/001-dynreport-metadata-schema.sql artifacts/setup/ -Force
+          Copy-Item sql/010-runtime-principal-template.sql artifacts/setup/ -Force
+          Copy-Item docs/operations/backup-recovery.md artifacts/setup/ -Force
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: DynReportSystem-Server-Setup-0.6.2-win-x64
-          path: artifacts/setup/DynReportSystem-Server-Setup-0.6.2-win-x64.exe
+          name: DynReportSystem-Server-Setup-0.7.0-win-x64
+          path: |
+            artifacts/setup/DynReportSystem-Server-Setup-0.7.0-win-x64.exe
+            artifacts/setup/001-dynreport-metadata-schema.sql
+            artifacts/setup/010-runtime-principal-template.sql
+            artifacts/setup/backup-recovery.md
           if-no-files-found: error
