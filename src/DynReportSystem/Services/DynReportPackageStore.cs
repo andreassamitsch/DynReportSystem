@@ -9,6 +9,7 @@ namespace DynReportSystem.Services;
 public sealed class DynReportPackageStore(
     DynReportMetadataStore metadata,
     DynReportSqlPolicyValidator queryPolicy,
+    DynReportMetrics metrics,
     IConfiguration config,
     ILogger<DynReportPackageStore> logger)
 {
@@ -107,6 +108,11 @@ public sealed class DynReportPackageStore(
             var installed = LoadFile(target);
             await MirrorToMetadataAsync(installed, importedBy, cancellationToken);
 
+            metrics.PackagePublishes.Add(
+                1,
+                new KeyValuePair<string, object?>("report.id", loaded.Manifest.ReportId),
+                new KeyValuePair<string, object?>("publish.kind", "import"));
+
             logger.LogInformation(
                 "DynReport package {ReportId} version {Version} imported by {User}",
                 loaded.Manifest.ReportId,
@@ -179,6 +185,11 @@ public sealed class DynReportPackageStore(
 
         var installed = LoadFile(path);
         await MirrorToMetadataAsync(installed, editedBy, cancellationToken);
+
+        metrics.PackagePublishes.Add(
+            1,
+            new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
+            new KeyValuePair<string, object?>("publish.kind", "designer"));
 
         logger.LogInformation(
             "DynReport package {ReportId} saved by designer user {User}",
