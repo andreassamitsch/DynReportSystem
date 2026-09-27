@@ -16,12 +16,19 @@ public sealed class DynReportMetadataStore(
     IConfiguration config,
     ILogger<DynReportMetadataStore> logger)
 {
-    private readonly string _connectionString =
-        config["Metadata:ConnectionString"]
-        ?? config["DataSources:DynReportMetadata:ConnectionString"]
-        ?? "";
+    private readonly string _connectionString = ResolveConnectionString(config);
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
+
+    private static string ResolveConnectionString(IConfiguration config)
+    {
+        var dedicated = config["Metadata:ConnectionString"];
+        if (!string.IsNullOrWhiteSpace(dedicated))
+            return dedicated;
+
+        var dataSource = config["DataSources:DynReportMetadata:ConnectionString"];
+        return string.IsNullOrWhiteSpace(dataSource) ? "" : dataSource;
+    }
 
     public async Task<bool> CheckAsync(CancellationToken cancellationToken = default)
     {
