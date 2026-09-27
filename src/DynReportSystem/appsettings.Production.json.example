@@ -35,7 +35,8 @@
     "MaxConcurrentQueries": 8,
     "AbsoluteMaxRows": 100000,
     "AbsoluteMaxQuerySeconds": 300,
-    "SlowQueryThresholdMs": 2000
+    "SlowQueryThresholdMs": 2000,
+    "AbsoluteMaxResultBytes": 67108864
   },
   "Security": {
     "AllowLegacyPackageConnectionStringFallback": true,
