@@ -6,10 +6,18 @@ using DynReportSystem.Models;
 namespace DynReportSystem.Services;
 
 public sealed class DynReportPackageStore(
+    DynReportMetadataStore metadata,
+    IConfiguration config,
     ILogger<DynReportPackageStore> logger)
 {
     public const string ManifestEntry = "manifest.json";
     public const string ReportEntry = "report.json";
+
+    private const long MaxPackageBytes = 25L * 1024 * 1024;
+    private const long MaxEntryBytes = 10L * 1024 * 1024;
+    private const long MaxExpandedBytes = 50L * 1024 * 1024;
+    private const int MaxEntries = 200;
+    private const double MaxCompressionRatio = 100d;
 
     private readonly object _gate = new();
     private readonly JsonSerializerOptions _json = new()
@@ -82,7 +90,7 @@ public sealed class DynReportPackageStore(
             }
 
             var info = new FileInfo(temp);
-            if (info.Length <= 0 || info.Length > 25 * 1024 * 1024)
+            if (info.Length <= 0 || info.Length > MaxPackageBytes)
                 throw new InvalidDataException("Die DynReport-Datei muss zwischen 1 Byte und 25 MB groß sein.");
 
             var loaded = LoadFile(temp);
@@ -94,13 +102,16 @@ public sealed class DynReportPackageStore(
             File.Move(temp, target, true);
             Invalidate();
 
+            var installed = LoadFile(target);
+            await MirrorToMetadataAsync(installed, importedBy, cancellationToken);
+
             logger.LogInformation(
                 "DynReport package {ReportId} version {Version} imported by {User}",
                 loaded.Manifest.ReportId,
                 loaded.Manifest.Version,
                 importedBy ?? "unknown");
 
-            return LoadFile(target);
+            return installed;
         }
         catch
         {
@@ -149,12 +160,15 @@ public sealed class DynReportPackageStore(
         File.Move(temp, path, true);
         Invalidate();
 
+        var installed = LoadFile(path);
+        await MirrorToMetadataAsync(installed, editedBy, cancellationToken);
+
         logger.LogInformation(
             "DynReport package {ReportId} saved by designer user {User}",
             package.Manifest.ReportId,
             editedBy);
 
-        return LoadFile(path);
+        return installed;
     }
 
     public IReadOnlyList<DynReportRevision> Revisions(string reportId)
@@ -262,11 +276,36 @@ public sealed class DynReportPackageStore(
         using var stream = File.OpenRead(path);
         using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: false);
 
-        if (archive.Entries.Count == 0 || archive.Entries.Count > 200)
+        if (archive.Entries.Count == 0 || archive.Entries.Count > MaxEntries)
             throw new InvalidDataException("Ungültige DynReport-Paketstruktur.");
 
+        long expandedBytes = 0;
+
         foreach (var entry in archive.Entries)
+        {
             ValidateEntryName(entry.FullName);
+
+            if (entry.Length < 0 || entry.Length > MaxEntryBytes)
+                throw new InvalidDataException(
+                    $"Paketdatei '{entry.FullName}' überschreitet das Größenlimit.");
+
+            expandedBytes = checked(expandedBytes + entry.Length);
+            if (expandedBytes > MaxExpandedBytes)
+                throw new InvalidDataException(
+                    "Das entpackte DynReport-Paket überschreitet 50 MB.");
+
+            if (entry.Length > 0)
+            {
+                if (entry.CompressedLength <= 0)
+                    throw new InvalidDataException(
+                        $"Paketdatei '{entry.FullName}' hat eine ungültige Kompressionsgröße.");
+
+                var ratio = entry.Length / (double)entry.CompressedLength;
+                if (ratio > MaxCompressionRatio)
+                    throw new InvalidDataException(
+                        $"Paketdatei '{entry.FullName}' hat eine verdächtige Kompressionsrate.");
+            }
+        }
 
         var manifestEntry = FindEntry(archive, ManifestEntry)
             ?? throw new InvalidDataException("manifest.json fehlt.");
@@ -286,9 +325,6 @@ public sealed class DynReportPackageStore(
         {
             if (entry.FullName.EndsWith("/", StringComparison.Ordinal))
                 continue;
-
-            if (entry.Length > 10 * 1024 * 1024)
-                throw new InvalidDataException($"Paketdatei '{entry.FullName}' ist zu groß.");
 
             if (entry.FullName.Equals(ManifestEntry, StringComparison.OrdinalIgnoreCase)
                 || entry.FullName.Equals(ReportEntry, StringComparison.OrdinalIgnoreCase))
@@ -474,6 +510,53 @@ public sealed class DynReportPackageStore(
             || name.Contains("..", StringComparison.Ordinal)
             || name.Contains(':'))
             throw new InvalidDataException($"Ungültiger Paketpfad '{name}'.");
+    }
+
+    private async Task MirrorToMetadataAsync(
+        LoadedDynReportPackage package,
+        string? userName,
+        CancellationToken cancellationToken)
+    {
+        if (!metadata.IsConfigured)
+            return;
+
+        try
+        {
+            var bytes = await File.ReadAllBytesAsync(package.FilePath, cancellationToken);
+            await metadata.PublishPackageAsync(
+                package,
+                bytes,
+                userName,
+                cancellationToken);
+
+            await metadata.WriteAuditAsync(
+                new DynAuditEvent(
+                    Guid.NewGuid(),
+                    "report.publish",
+                    "success",
+                    userName,
+                    package.Manifest.ReportId,
+                    DetailsJson: DynAuditEvent.Details(new
+                    {
+                        package.Manifest.Version,
+                        package.Manifest.SchemaVersion,
+                        PackageBytes = bytes.LongLength
+                    })),
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // During the transition the filesystem remains the runtime source.
+            // Metadata failures are surfaced in logs/readiness but do not corrupt
+            // the already validated local package.
+            logger.LogError(
+                ex,
+                "Could not mirror DynReport package {ReportId} to metadata database",
+                package.Manifest.ReportId);
+
+            if (config.GetValue("Metadata:FailPublishWhenUnavailable", false))
+                throw;
+        }
     }
 
     private void Invalidate()
