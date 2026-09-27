@@ -19,6 +19,33 @@
 - rollback: activation pointer can return to the preceding validated report revision
 - installer deployment: preserve production configuration and report storage
 
+## Report revision rollback in 0.7.1
+
+The in-application rollback is for a **single native report revision**. It does not replace a full
+SQL/configuration disaster-recovery restore.
+
+Procedure:
+
+1. open the native report in the DynReport Designer
+2. open **Versionen**
+3. verify that the SQL revision catalog is available
+4. choose a non-active validated revision
+5. click **Wiederherstellen**
+6. confirm with **Wirklich wiederherstellen**
+7. reopen/run the report and validate business values
+8. verify the active revision and audit event in the DynReport metadata database
+
+Only users with `Publish` or `Manage` permission can perform this action.
+
+Before activation DynReport verifies package length and SHA-256 and validates the package with the
+current runtime. SQL report metadata, grants and the active revision pointer are changed in one
+transaction. If that SQL transaction fails after the local package was replaced, DynReport attempts
+to restore the previous local package automatically.
+
+A process or machine failure at exactly the boundary between local file replacement and SQL
+activation cannot be made atomic without making the SQL revision store the authoritative runtime
+source. This is one reason the 0.7.1 rollback must be validated on APP-01 before that later cutover.
+
 ## Restore test checklist
 
 - restore metadata DB to isolated target
@@ -30,7 +57,10 @@
 - execute at least one Oxaion and one Syncos report
 - verify Windows SSO and report permissions
 - verify audit writes
-- verify package rollback
+- restore an older native report revision through the designer
+- verify package hash/length validation succeeded
+- verify ActiveRevisionId, report grants and active package agree after rollback
+- verify a failed/aborted rollback leaves the previous report usable
 
 ## Values still to be agreed
 
