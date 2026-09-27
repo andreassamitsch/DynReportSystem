@@ -88,7 +88,12 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 }).AllowAnonymous();
 
 app.MapGet("/api/packages/{reportId}/download",
-    (string reportId, HttpContext context, DynReportPackageStore packages, FolderAccess access) =>
+    async (
+        string reportId,
+        HttpContext context,
+        DynReportPackageStore packages,
+        DynReportMetadataStore metadata,
+        FolderAccess access) =>
     {
         if (!access.Can(context.User, reportId, "View"))
             return Results.Forbid();
@@ -96,6 +101,20 @@ app.MapGet("/api/packages/{reportId}/download",
         var package = packages.Get(reportId);
         if (package is null || !File.Exists(package.FilePath))
             return Results.NotFound();
+
+        await metadata.WriteAuditAsync(
+            new DynAuditEvent(
+                Guid.NewGuid(),
+                "report.package.export",
+                "success",
+                context.User.Identity?.Name,
+                reportId,
+                DetailsJson: DynAuditEvent.Details(new
+                {
+                    package.Manifest.Version,
+                    package.Manifest.SchemaVersion
+                })),
+            context.RequestAborted);
 
         var safeTitle = string.Concat(package.Manifest.Title.Select(ch =>
             Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
