@@ -1,6 +1,7 @@
 @page "/designer/{ReportId}"
 @attribute [Authorize]
 @inject DynReportPackageStore Packages
+@inject DynReportMetadataStore Metadata
 @inject FolderAccess Access
 @inject AuthenticationStateProvider Authentication
 @inject NavigationManager Navigation
@@ -292,13 +293,69 @@ else
                         <p class="eyebrow">VERSIONIERUNG</p>
                         <h2>Gesicherte Revisionen</h2>
                     </div>
+                    <span class="section-note">
+                        @(Metadata.IsConfigured ? "SQL-Revisionskatalog" : "lokale Übergangsrevisionen")
+                    </span>
                 </div>
 
-                @if (revisions.Count == 0)
+                @if (!string.IsNullOrWhiteSpace(revisionWarning))
                 {
-                    <div class="empty">Noch keine ältere Revision vorhanden.</div>
+                    <div class="notice warn">@revisionWarning</div>
                 }
-                else
+
+                @if (Metadata.IsConfigured && metadataRevisions.Count > 0)
+                {
+                    <div class="designer-revision-list">
+                        @foreach (var revision in metadataRevisions)
+                        {
+                            <div>
+                                <div>
+                                    <strong>v@revision.PackageVersion</strong>
+                                    @if (revision.IsActive)
+                                    {
+                                        <span class="custom-report-meta">aktiv</span>
+                                    }
+                                    <span>@revision.CreatedUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")</span>
+                                    @if (!string.IsNullOrWhiteSpace(revision.CreatedBy))
+                                    {
+                                        <span>· @revision.CreatedBy</span>
+                                    }
+                                    <span>· @FormatBytes(revision.PackageLength)</span>
+                                </div>
+
+                                @if (!revision.IsActive && canPublish)
+                                {
+                                    @if (pendingRestoreRevision == revision.RevisionId)
+                                    {
+                                        <div class="designer-actions">
+                                            <button class="ghost-btn"
+                                                    disabled="@(restoringRevision is not null)"
+                                                    @onclick="() => pendingRestoreRevision = null">
+                                                Abbrechen
+                                            </button>
+                                            <button class="primary-btn"
+                                                    disabled="@(restoringRevision is not null)"
+                                                    @onclick="() => RestoreRevisionAsync(revision)">
+                                                @(restoringRevision == revision.RevisionId
+                                                    ? "Wird wiederhergestellt …"
+                                                    : "Wirklich wiederherstellen")
+                                            </button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <button class="ghost-btn"
+                                                disabled="@(restoringRevision is not null)"
+                                                @onclick="() => pendingRestoreRevision = revision.RevisionId">
+                                            Wiederherstellen
+                                        </button>
+                                    }
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                else if (revisions.Count > 0)
                 {
                     <div class="designer-revision-list">
                         @foreach (var revision in revisions)
@@ -309,6 +366,19 @@ else
                             </div>
                         }
                     </div>
+
+                    @if (!Metadata.IsConfigured)
+                    {
+                        <div class="notice info">
+                            Diese lokalen Revisionen bleiben während der 0.7-Übergangsphase erhalten.
+                            Ein transaktional nachvollziehbarer Rollback wird verfügbar, sobald die
+                            DynReport-Metadatenbank konfiguriert ist.
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="empty">Noch keine ältere Revision vorhanden.</div>
                 }
             </section>
         }
@@ -328,10 +398,15 @@ else
     private bool success;
     private bool canEditLayout;
     private bool canEditData;
+    private bool canPublish;
+    private Guid? pendingRestoreRevision;
+    private Guid? restoringRevision;
     private string message = "";
+    private string revisionWarning = "";
     private string tab = "report";
     private string activeDataset = "";
     private IReadOnlyList<DynReportRevision> revisions = [];
+    private IReadOnlyList<DynReportStoredRevision> metadataRevisions = [];
 
     private DynReportDataset? CurrentDataset =>
         draft?.Document.Datasets.FirstOrDefault(x =>
@@ -367,12 +442,16 @@ else
                 || Access.Can(user, ReportId, "Publish")
                 || Access.Can(user, ReportId, "Manage");
 
+            canPublish =
+                Access.Can(user, ReportId, "Publish")
+                || Access.Can(user, ReportId, "Manage");
+
             if (!canEditLayout)
                 return;
 
             draft = Clone(source);
             activeDataset = draft.Document.Datasets.FirstOrDefault()?.Id ?? "";
-            revisions = Packages.Revisions(ReportId);
+            await ReloadRevisionsAsync();
         }
         catch (Exception ex)
         {
@@ -422,7 +501,7 @@ else
                 draft,
                 user.Identity?.Name ?? "unknown");
 
-            revisions = Packages.Revisions(ReportId);
+            await ReloadRevisionsAsync();
             success = true;
             message = $"Gespeichert als v{draft.Manifest.Version}. Vorherige Version wurde als Revision gesichert.";
         }
@@ -434,6 +513,72 @@ else
         {
             saving = false;
         }
+    }
+
+    private async Task ReloadRevisionsAsync()
+    {
+        revisions = Packages.Revisions(ReportId);
+        metadataRevisions = [];
+        revisionWarning = "";
+
+        if (!Metadata.IsConfigured)
+            return;
+
+        try
+        {
+            metadataRevisions = await Metadata.ListRevisionsAsync(ReportId);
+        }
+        catch (Exception ex)
+        {
+            revisionWarning =
+                "SQL-Revisionskatalog ist derzeit nicht erreichbar: " + ex.Message;
+        }
+    }
+
+    private async Task RestoreRevisionAsync(DynReportStoredRevision revision)
+    {
+        if (user is null || !canPublish || revision.IsActive)
+            return;
+
+        restoringRevision = revision.RevisionId;
+        pendingRestoreRevision = null;
+        success = false;
+        message = "";
+
+        try
+        {
+            var restored = await Packages.RestoreRevisionAsync(
+                ReportId,
+                revision.RevisionId,
+                user.Identity?.Name ?? "unknown");
+
+            draft = Clone(restored);
+            activeDataset = draft.Document.Datasets.FirstOrDefault()?.Id ?? "";
+            await ReloadRevisionsAsync();
+
+            success = true;
+            message =
+                $"Revision v{restored.Manifest.Version} wurde wiederhergestellt und als aktive Revision gesetzt.";
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+        }
+        finally
+        {
+            restoringRevision = null;
+        }
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes >= 1024L * 1024L)
+            return $"{bytes / (1024d * 1024d):N1} MB";
+
+        if (bytes >= 1024L)
+            return $"{bytes / 1024d:N0} KB";
+
+        return $"{bytes:N0} B";
     }
 
     private static LoadedDynReportPackage Clone(LoadedDynReportPackage source)
