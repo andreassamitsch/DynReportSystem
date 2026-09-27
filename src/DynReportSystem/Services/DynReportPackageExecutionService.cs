@@ -318,6 +318,11 @@ public sealed class DynReportPackageExecutionService(
         var rows = new List<Dictionary<string, object?>>();
         var columns = new List<string>();
         var truncated = false;
+        long approximateBytes = 0;
+        var maxResultBytes = Math.Clamp(
+            config.GetValue<long>("Runtime:AbsoluteMaxResultBytes", 64L * 1024 * 1024),
+            4L * 1024 * 1024,
+            512L * 1024 * 1024);
 
         await using var reader = await command.ExecuteReaderAsync(
             CommandBehavior.SequentialAccess,
@@ -351,9 +356,18 @@ public sealed class DynReportPackageExecutionService(
 
             for (var i = 0; i < reader.FieldCount; i++)
             {
-                row[columns[i]] = await reader.IsDBNullAsync(i, cancellationToken)
+                var value = await reader.IsDBNullAsync(i, cancellationToken)
                     ? null
                     : reader.GetValue(i);
+
+                row[columns[i]] = value;
+                approximateBytes += ApproximateValueBytes(value);
+            }
+
+            if (approximateBytes > maxResultBytes)
+            {
+                truncated = true;
+                break;
             }
 
             rows.Add(row);
@@ -367,6 +381,23 @@ public sealed class DynReportPackageExecutionService(
             Truncated = truncated
         };
     }
+
+    private static long ApproximateValueBytes(object? value) => value switch
+    {
+        null => 1,
+        string text => 24L + (text.Length * 2L),
+        byte[] bytes => 24L + bytes.LongLength,
+        char[] chars => 24L + (chars.LongLength * 2L),
+        Guid => 16,
+        DateTime => 8,
+        DateTimeOffset => 16,
+        decimal => 16,
+        long or ulong or double => 8,
+        int or uint or float => 4,
+        short or ushort or char => 2,
+        byte or sbyte or bool => 1,
+        _ => 32
+    };
 
     private static SqlParameter CreateParameter(
         string name,
