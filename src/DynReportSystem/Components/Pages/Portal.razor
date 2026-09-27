@@ -281,7 +281,7 @@
 
             // Resolve Windows/SSRS ACLs once for this portal circuit.
             authorizedReports = catalogSnapshot.Reports
-                .Where(r => Access.Can(user, r.Id, "View") && Access.Can(user, r.Id, "Run"))
+                .Where(r => Access.CanAll(user, r.Id, "View", "Run"))
                 .OrderBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
 
