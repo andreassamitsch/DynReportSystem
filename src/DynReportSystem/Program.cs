@@ -1,6 +1,7 @@
 using DynReportSystem.Components;
 using DynReportSystem.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Server.IIS;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,9 +29,15 @@ builder.Services.AddSingleton<RdlStyleCatalog>();
 builder.Services.AddSingleton<DashboardCatalog>();
 builder.Services.AddSingleton<ChartOptionFactory>();
 builder.Services.AddSingleton<ImportedPortalCatalog>();
+builder.Services.AddSingleton<DynReportMetadataStore>();
+builder.Services.AddSingleton<DynReportDataSourceRegistry>();
+builder.Services.AddSingleton<DynReportSqlPolicyValidator>();
+builder.Services.AddSingleton<DynReportExecutionGate>();
 builder.Services.AddSingleton<DynReportPackageStore>();
 builder.Services.AddSingleton<DynExpressionEngine>();
 builder.Services.AddScoped<DynReportPackageExecutionService>();
+builder.Services.AddHealthChecks()
+    .AddCheck<DynReportReadinessHealthCheck>("dynreport_ready");
 builder.Services.AddSingleton<DynamicRdlService>();
 builder.Services.AddSingleton<RdlPresentationService>();
 builder.Services.AddSingleton<RdlExpressionEvaluator>();
@@ -50,6 +57,16 @@ app.Use(async (ctx, next) =>
     ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
     ctx.Response.Headers["Referrer-Policy"] = "no-referrer";
     ctx.Response.Headers["Cache-Control"] = "no-store";
+    ctx.Response.Headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+    ctx.Response.Headers["X-Correlation-ID"] = ctx.TraceIdentifier;
+
+    // Start in report-only mode so the policy can be hardened without breaking
+    // existing Blazor/ECharts behavior on APP-01.
+    ctx.Response.Headers["Content-Security-Policy-Report-Only"] =
+        "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; " +
+        "img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; " +
+        "script-src 'self'; connect-src 'self' https: wss:; form-action 'self'";
+
     await next();
 });
 
@@ -58,6 +75,17 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
+
+app.MapGet("/health/live", () => Results.Ok(new
+{
+    status = "ok",
+    service = "DynReportSystem"
+})).AllowAnonymous();
+
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = registration => registration.Name == "dynreport_ready"
+}).AllowAnonymous();
 
 app.MapGet("/api/packages/{reportId}/download",
     (string reportId, HttpContext context, DynReportPackageStore packages, FolderAccess access) =>
