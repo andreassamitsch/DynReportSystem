@@ -186,6 +186,8 @@ else
 
             <div class="dyn2-run-meta">
                 <span>Aktualisiert @lastUpdated.ToString("dd.MM.yyyy HH:mm:ss")</span>
+                <span>Execution @run.ExecutionId.ToString("N")[..8]</span>
+                <span>@run.DurationMs.ToString("N0", CultureInfo.GetCultureInfo("de-AT")) ms</span>
                 @if (package.Document.Settings.AutoRefreshSeconds >= 30)
                 {
                     <span>Auto-Refresh @package.Document.Settings.AutoRefreshSeconds s</span>
@@ -271,7 +273,9 @@ else
     private string viewMode = "Report";
     private string activeDataSet = "";
     private DateTime lastUpdated;
+    private string? userName;
     private CancellationTokenSource? refreshCts;
+    private CancellationTokenSource? runCts;
     private readonly Dictionary<string, DynReportParameterValue> values =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<DynReportParameterOption>> options =
@@ -325,7 +329,8 @@ else
                     $"DynReport-Paket '{ReportId}' wurde nicht gefunden.");
 
             var user = (await Authentication.GetAuthenticationStateAsync()).User;
-            allowed = Access.Can(user, ReportId, "View") && Access.Can(user, ReportId, "Run");
+            userName = user.Identity?.Name;
+            allowed = Access.CanAll(user, ReportId, "View", "Run");
             canDesign = Access.Can(user, ReportId, "EditLayout")
                         || Access.Can(user, ReportId, "Edit")
                         || Access.Can(user, ReportId, "Publish")
@@ -460,18 +465,31 @@ else
 
     private async Task RunAsync()
     {
-        if (package is null)
+        if (package is null || busy)
             return;
 
         busy = true;
         error = "";
 
+        runCts?.Cancel();
+        runCts?.Dispose();
+        runCts = new CancellationTokenSource();
+
         try
         {
-            run = await Executor.RunAsync(package, values);
+            run = await Executor.RunAsync(
+                package,
+                values,
+                userName,
+                runCts.Token);
+
             activeDataSet = run.Results.Keys.FirstOrDefault() ?? "";
             lastUpdated = DateTime.Now;
             viewMode = "Report";
+        }
+        catch (OperationCanceledException)
+        {
+            error = "";
         }
         catch (Exception ex)
         {
@@ -525,6 +543,15 @@ else
     public ValueTask DisposeAsync()
     {
         CancelAutoRefresh();
+
+        try
+        {
+            runCts?.Cancel();
+            runCts?.Dispose();
+        }
+        catch { }
+
+        runCts = null;
         return ValueTask.CompletedTask;
     }
 
