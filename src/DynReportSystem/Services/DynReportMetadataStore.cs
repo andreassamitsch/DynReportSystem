@@ -254,27 +254,23 @@ public sealed class DynReportMetadataStore(
         CancellationToken cancellationToken)
     {
         const string sql = """
-            MERGE dyn.Report AS target
-            USING
-            (
-                SELECT
-                    @ReportId AS ReportId,
-                    @Path AS [Path],
-                    @FolderPath AS FolderPath,
-                    @Title AS Title,
-                    @Description AS [Description]
-            ) AS source
-            ON target.ReportId = source.ReportId
-            WHEN MATCHED THEN UPDATE SET
-                [Path] = source.[Path],
-                FolderPath = source.FolderPath,
-                Title = source.Title,
-                [Description] = source.[Description],
+            UPDATE dyn.Report
+            SET
+                [Path] = @Path,
+                FolderPath = @FolderPath,
+                Title = @Title,
+                [Description] = @Description,
                 IsDeleted = 0,
                 ModifiedUtc = SYSUTCDATETIME()
-            WHEN NOT MATCHED THEN
-                INSERT (ReportId, [Path], FolderPath, Title, [Description])
-                VALUES (source.ReportId, source.[Path], source.FolderPath, source.Title, source.[Description]);
+            WHERE ReportId = @ReportId;
+
+            IF @@ROWCOUNT = 0
+            BEGIN
+                INSERT INTO dyn.Report
+                (ReportId, [Path], FolderPath, Title, [Description])
+                VALUES
+                (@ReportId, @Path, @FolderPath, @Title, @Description);
+            END;
             """;
 
         await using var command = new SqlCommand(sql, connection, transaction);
