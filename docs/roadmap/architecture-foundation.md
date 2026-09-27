@@ -22,8 +22,21 @@ DynReport report.
 - schema/version contract
 - runtime/designer use the same model
 
+## Completed through 0.7.1
+
+- central metadata schema and immutable SQL revisions
+- package/runtime security guardrails and least-privilege design
+- execution limits, audit, metrics and health/readiness endpoints
+- portal/package/ACL hot-path performance work
+- SQL revision browsing and permission-gated restore
+- SHA-256/length validation before restore
+- transactional active-revision + ACL rollback with local package compensation
+- serialized package mutations
+- backup/recovery and SQL performance runbooks
+
 ## P1 - product readiness
 
+- validate 0.7.1 rollback on APP-01 before making SQL the authoritative read path
 - viewer API with paging
 - static/lightweight portal
 - dataset cache with security-scoped keys
@@ -31,8 +44,8 @@ DynReport report.
 - Excel/PDF worker exports
 - health/readiness endpoints
 - execution telemetry and slow-query diagnostics
-- SQL Query Store operational baseline
-- backup/restore procedure and tested rollback
+- production Query Store rollout/thresholds after DBA review
+- automated restore drill and documented RPO/RTO
 
 ## P2 - designer growth
 
@@ -41,7 +54,7 @@ DynReport report.
 - visual expression builder
 - dataset editor with permission separation
 - preview/sample data mode
-- compare/restore revisions
+- visual revision compare (restore is implemented)
 - publish workflow
 - component library expansion only through generic schema components
 
