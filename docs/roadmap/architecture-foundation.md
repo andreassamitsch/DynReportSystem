@@ -1,0 +1,60 @@
+# DynReport architecture foundation before mass RDL migration
+
+## Rule
+
+Do not migrate the remaining SSRS inventory at scale until the native report model and
+runtime boundaries are stable.
+
+RDL is only an analysis source. Each report is deliberately redesigned as a native
+DynReport report.
+
+## P0 - foundation
+
+- central SQL metadata schema
+- immutable revisions + active revision pointer
+- logical DataSource registry
+- no secrets in packages
+- package upload hardening
+- declarative expression-only runtime
+- SQL query policy + least-privilege DB identities
+- execution IDs and structured audit
+- cancellation, timeouts, row limits
+- schema/version contract
+- runtime/designer use the same model
+
+## P1 - product readiness
+
+- viewer API with paging
+- static/lightweight portal
+- dataset cache with security-scoped keys
+- background worker/job queue
+- Excel/PDF worker exports
+- health/readiness endpoints
+- execution telemetry and slow-query diagnostics
+- SQL Query Store operational baseline
+- backup/restore procedure and tested rollback
+
+## P2 - designer growth
+
+- drag/drop grid
+- property editor
+- visual expression builder
+- dataset editor with permission separation
+- preview/sample data mode
+- compare/restore revisions
+- publish workflow
+- component library expansion only through generic schema components
+
+## RDL migration method
+
+For every source report:
+
+1. identify business question and users/devices
+2. extract datasets/queries and parameter semantics
+3. understand groups, calculations, custom code, colors, visibility and actions
+4. measure query performance and worst-case parameters
+5. redesign the UX intentionally
+6. model it only with native generic DynReport components/expressions
+7. compare values with SSRS
+8. publish native revision
+9. retire the RDL dependency for that report
