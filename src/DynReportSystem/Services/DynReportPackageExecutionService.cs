@@ -13,6 +13,7 @@ public sealed class DynReportPackageExecutionService(
     DynReportSqlPolicyValidator queryPolicy,
     DynReportMetadataStore metadata,
     DynReportExecutionGate executionGate,
+    DynReportMetrics metrics,
     ILogger<DynReportPackageExecutionService> logger)
 {
     public Dictionary<string, DynReportParameterValue> CreateInitialValues(
@@ -51,6 +52,9 @@ public sealed class DynReportPackageExecutionService(
         };
 
         var total = Stopwatch.StartNew();
+        metrics.ReportExecutions.Add(
+            1,
+            new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId));
 
         try
         {
@@ -84,6 +88,19 @@ public sealed class DynReportPackageExecutionService(
                         cancellationToken);
 
                     run.Results[dataSet.Id] = result;
+
+                    metrics.DatasetExecutions.Add(
+                        1,
+                        new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
+                        new KeyValuePair<string, object?>("dataset.id", dataSet.Id));
+                    metrics.DatasetDurationMs.Record(
+                        stopwatch.Elapsed.TotalMilliseconds,
+                        new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
+                        new KeyValuePair<string, object?>("dataset.id", dataSet.Id));
+                    metrics.DatasetRows.Record(
+                        result.Rows.Count,
+                        new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
+                        new KeyValuePair<string, object?>("dataset.id", dataSet.Id));
 
                     await metadata.WriteAuditAsync(
                         new DynAuditEvent(
@@ -136,6 +153,10 @@ public sealed class DynReportPackageExecutionService(
                 catch (Exception ex)
                 {
                     run.Errors.Add($"{dataSet.Id}: {ex.Message}");
+                    metrics.DatasetErrors.Add(
+                        1,
+                        new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
+                        new KeyValuePair<string, object?>("dataset.id", dataSet.Id));
 
                     await metadata.WriteAuditAsync(
                         new DynAuditEvent(
@@ -167,6 +188,9 @@ public sealed class DynReportPackageExecutionService(
         {
             total.Stop();
             run.DurationMs = total.ElapsedMilliseconds;
+            metrics.ReportDurationMs.Record(
+                total.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId));
 
             await metadata.RegisterExecutionEndAsync(
                 run.ExecutionId,
