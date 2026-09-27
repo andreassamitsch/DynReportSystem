@@ -2,6 +2,36 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
+## Version 0.7.1
+
+Version 0.7.1 closes the first **revision recovery and write-concurrency gaps** before the
+SQL catalog becomes the authoritative runtime source.
+
+### 0.7.1 revision safety
+
+- the designer can read immutable revisions from the DynReport metadata database
+- only users with `Publish` or `Manage` permission can restore an older SQL revision
+- restore requires a two-step confirmation in the designer
+- revision bytes are checked against stored package length and SHA-256 before activation
+- the restored package is fully validated by the current DynReport runtime before it replaces
+  the active local package
+- SQL activation updates report metadata, report grants and `ActiveRevisionId` in one transaction
+- if SQL activation fails after the local package was replaced, the previous local package is
+  restored as a compensating rollback
+- native package import, designer save and restore are serialized to prevent overlapping writes
+
+Research and operating baseline:
+
+```text
+docs/architecture/research-2026-09-27-platform-baseline.md
+docs/operations/sql-performance-baseline.md
+docs/operations/backup-recovery.md
+```
+
+The filesystem package store remains the active runtime source in 0.7.1. The switch to SQL as the
+authoritative read path is intentionally deferred until rollback and restore behavior have been
+validated on APP-01.
+
 ## Version 0.7.0
 
 Version 0.7 establishes the **production architecture foundation** before additional SSRS reports are migrated.
@@ -45,7 +75,9 @@ docs/architecture/ADR-0001-self-contained-designer-first-dynreport.md
 docs/architecture/ADR-0002-central-sql-catalog-and-package-artifacts.md
 docs/architecture/ADR-0003-query-security-boundary.md
 docs/architecture/ADR-0004-web-runtime-and-designer.md
+docs/architecture/research-2026-09-27-platform-baseline.md
 docs/operations/backup-recovery.md
+docs/operations/sql-performance-baseline.md
 docs/roadmap/architecture-foundation.md
 schemas/dynreport-manifest-2.0.schema.json
 schemas/dynreport-report-2.0.schema.json
@@ -269,7 +301,7 @@ connection-string fallback exists only for the migration phase and must not cont
 
 ## Installation / update
 
-GitHub Actions builds DynReportSystem-Server-Setup-0.7.0-win-x64.exe.
+GitHub Actions builds DynReportSystem-Server-Setup-0.7.1-win-x64.exe.
 
 For an SSRS migration, keep the setup EXE, MigrationBundle.zip and the optimized Kundencockpit.rdl (when updating it) next to each other. The setup performs an in-place update and preserves the existing production appsettings, local DynReport permissions and IIS/HTTPS bindings.
 
