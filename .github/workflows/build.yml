@@ -51,6 +51,7 @@ jobs:
           Copy-Item sql/001-dynreport-metadata-schema.sql artifacts/setup/ -Force
           Copy-Item sql/010-runtime-principal-template.sql artifacts/setup/ -Force
           Copy-Item docs/operations/backup-recovery.md artifacts/setup/ -Force
+          Copy-Item docs/operations/sql-metadata-setup.md artifacts/setup/ -Force
           Copy-Item docs/operations/sql-performance-baseline.md artifacts/setup/ -Force
           Copy-Item docs/architecture/research-2026-09-27-platform-baseline.md artifacts/setup/ -Force
 
@@ -63,6 +64,7 @@ jobs:
             artifacts/setup/001-dynreport-metadata-schema.sql
             artifacts/setup/010-runtime-principal-template.sql
             artifacts/setup/backup-recovery.md
+            artifacts/setup/sql-metadata-setup.md
             artifacts/setup/sql-performance-baseline.md
             artifacts/setup/research-2026-09-27-platform-baseline.md
           if-no-files-found: error
