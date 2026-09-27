@@ -302,13 +302,16 @@ public sealed class DynReportPackageStore(
             File.Move(temp, target, true);
             Invalidate();
 
-            var installed = LoadFile(target);
+            LoadedDynReportPackage installed;
 
             try
             {
+                installed = LoadFile(target);
+
                 // The SQL catalog and package ACL are changed only after the
-                // complete package is installed and validated locally. If this
-                // transaction fails, the filesystem package is compensated below.
+                // complete package is installed and validated locally. If local
+                // post-move validation or SQL activation fails, the filesystem
+                // package is compensated below.
                 await metadata.ActivateRevisionAsync(
                     installed,
                     revisionId,
