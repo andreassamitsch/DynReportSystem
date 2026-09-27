@@ -29,9 +29,12 @@
 -- Metadata database runtime example:
 -- USE [DynReport];
 -- CREATE USER [DOMAIN\DynReportSvc$] FROM WINDOWS;
--- GRANT SELECT, INSERT, UPDATE ON SCHEMA::dyn TO [DOMAIN\DynReportSvc$];
--- DENY DELETE ON SCHEMA::dyn TO [DOMAIN\DynReportSvc$];
+-- During the 0.7 transition the application writes catalog/revision/audit
+-- metadata directly. Grant only DML on the dedicated DynReport metadata schema:
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::dyn TO [DOMAIN\DynReportSvc$];
 --
--- Note:
--- Revision cleanup/retention should be performed by a separate maintenance
--- principal/job rather than giving the web runtime broad delete rights.
+-- This DML grant applies only to the isolated DynReport metadata database.
+-- Source systems (Syncos/Oxaion/etc.) remain read/execute only.
+-- A later hardening step can replace direct metadata DML with narrowly scoped
+-- stored procedures. Revision cleanup/retention should still be a separate
+-- maintenance job.
