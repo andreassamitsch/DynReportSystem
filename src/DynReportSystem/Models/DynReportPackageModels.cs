@@ -11,6 +11,7 @@ public sealed class DynReportManifest
     public string Title { get; set; } = "";
     public string Description { get; set; } = "";
     public string Version { get; set; } = "1.0.0";
+    public string MinRuntimeVersion { get; set; } = "0.6.0";
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime ModifiedUtc { get; set; } = DateTime.UtcNow;
     public List<string> Tags { get; set; } = [];
