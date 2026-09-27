@@ -16,12 +16,56 @@ public sealed class DynReportMetadataStore(
     IConfiguration config,
     ILogger<DynReportMetadataStore> logger)
 {
-    private readonly string _connectionString =
-        config["Metadata:ConnectionString"]
-        ?? config["DataSources:DynReportMetadata:ConnectionString"]
-        ?? "";
+    private readonly string _connectionString = ResolveConnectionString(config, logger);
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
+
+    private static string ResolveConnectionString(
+        IConfiguration config,
+        ILogger<DynReportMetadataStore> logger)
+    {
+        var value = config["Metadata:ConnectionString"];
+
+        if (string.IsNullOrWhiteSpace(value))
+            value = config["DataSources:DynReportMetadata:ConnectionString"];
+
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var builder = new SqlConnectionStringBuilder(value)
+        {
+            ApplicationName = "DynReport"
+        };
+
+        var requireTlsValidation = config.GetValue(
+            "Security:RequireValidatedSqlTls",
+            false);
+
+        if (!builder.Encrypt)
+        {
+            const string message =
+                "Die DynReport-Metadatenbank verwendet keine SQL-Transportverschlüsselung.";
+
+            if (requireTlsValidation)
+                throw new InvalidOperationException(message);
+
+            logger.LogWarning(message);
+        }
+
+        if (builder.TrustServerCertificate)
+        {
+            const string message =
+                "Die DynReport-Metadatenbank verwendet TrustServerCertificate=True. " +
+                "Für das Zielsystem ist Zertifikatsprüfung vorgesehen.";
+
+            if (requireTlsValidation)
+                throw new InvalidOperationException(message);
+
+            logger.LogWarning(message);
+        }
+
+        return builder.ConnectionString;
+    }
 
     public async Task<bool> CheckAsync(CancellationToken cancellationToken = default)
     {
@@ -40,6 +84,176 @@ public sealed class DynReportMetadataStore(
 
         _ = await command.ExecuteScalarAsync(cancellationToken);
         return true;
+    }
+
+    public async Task<IReadOnlyList<DynReportStoredRevision>> ListRevisionsAsync(
+        string reportId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured)
+            return [];
+
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        const string sql = """
+            SELECT
+                rr.RevisionId,
+                rr.ReportId,
+                rr.PackageVersion,
+                rr.FormatVersion,
+                rr.ContentHash,
+                rr.PackageLength,
+                rr.CreatedUtc,
+                rr.CreatedBy,
+                rr.IsValidated,
+                CAST(CASE WHEN r.ActiveRevisionId = rr.RevisionId THEN 1 ELSE 0 END AS bit) AS IsActive
+            FROM dyn.ReportRevision rr
+            INNER JOIN dyn.Report r ON r.ReportId = rr.ReportId
+            WHERE rr.ReportId = @ReportId
+            ORDER BY rr.CreatedUtc DESC;
+            """;
+
+        await using var command = new SqlCommand(sql, connection) { CommandTimeout = 10 };
+        command.Parameters.AddWithValue("@ReportId", reportId);
+
+        var revisions = new List<DynReportStoredRevision>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            revisions.Add(new DynReportStoredRevision(
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetInt64(5),
+                DateTime.SpecifyKind(reader.GetDateTime(6), DateTimeKind.Utc),
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.GetBoolean(8),
+                reader.GetBoolean(9)));
+        }
+
+        return revisions;
+    }
+
+    public async Task<DynReportRevisionContent?> ReadRevisionPackageAsync(
+        string reportId,
+        Guid revisionId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured)
+            return null;
+
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        const string sql = """
+            SELECT
+                RevisionId,
+                ReportId,
+                ContentHash,
+                PackageLength,
+                PackageContent
+            FROM dyn.ReportRevision
+            WHERE ReportId = @ReportId
+              AND RevisionId = @RevisionId
+              AND IsValidated = 1;
+            """;
+
+        await using var command = new SqlCommand(sql, connection) { CommandTimeout = 10 };
+        command.Parameters.AddWithValue("@ReportId", reportId);
+        command.Parameters.AddWithValue("@RevisionId", revisionId);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        if (!await reader.ReadAsync(cancellationToken) || reader.IsDBNull(4))
+            return null;
+
+        return new DynReportRevisionContent(
+            reader.GetGuid(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetInt64(3),
+            reader.GetFieldValue<byte[]>(4));
+    }
+
+    public async Task ActivateRevisionAsync(
+        LoadedDynReportPackage package,
+        Guid revisionId,
+        string? userName,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured)
+            throw new InvalidOperationException(
+                "Die DynReport-Metadatenbank ist nicht konfiguriert.");
+
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction =
+            (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            const string verifySql = """
+                SELECT COUNT_BIG(*)
+                FROM dyn.ReportRevision
+                WHERE RevisionId = @RevisionId
+                  AND ReportId = @ReportId
+                  AND IsValidated = 1
+                  AND PackageContent IS NOT NULL;
+                """;
+
+            await using (var verify = new SqlCommand(verifySql, connection, transaction)
+            {
+                CommandTimeout = 10
+            })
+            {
+                verify.Parameters.AddWithValue("@RevisionId", revisionId);
+                verify.Parameters.AddWithValue("@ReportId", package.Manifest.ReportId);
+
+                var count = Convert.ToInt64(
+                    await verify.ExecuteScalarAsync(cancellationToken)
+                    ?? 0L);
+
+                if (count != 1)
+                    throw new InvalidOperationException(
+                        "Die angeforderte validierte DynReport-Revision wurde nicht gefunden.");
+            }
+
+            await UpsertReportAsync(
+                connection,
+                transaction,
+                package.Manifest,
+                cancellationToken);
+
+            await ReplaceGrantsAsync(
+                connection,
+                transaction,
+                package.Manifest,
+                cancellationToken);
+
+            await SetActiveRevisionAsync(
+                connection,
+                transaction,
+                package.Manifest.ReportId,
+                revisionId,
+                cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+
+            logger.LogInformation(
+                "Activated DynReport {ReportId} revision {RevisionId} by {User}",
+                package.Manifest.ReportId,
+                revisionId,
+                userName ?? "unknown");
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     public async Task<Guid?> PublishPackageAsync(
@@ -402,6 +616,25 @@ public sealed class DynReportMetadataStore(
     private static object Db(string? value) =>
         string.IsNullOrWhiteSpace(value) ? DBNull.Value : value;
 }
+
+public sealed record DynReportStoredRevision(
+    Guid RevisionId,
+    string ReportId,
+    string PackageVersion,
+    string FormatVersion,
+    string ContentHash,
+    long PackageLength,
+    DateTime CreatedUtc,
+    string? CreatedBy,
+    bool IsValidated,
+    bool IsActive);
+
+public sealed record DynReportRevisionContent(
+    Guid RevisionId,
+    string ReportId,
+    string ContentHash,
+    long PackageLength,
+    byte[] PackageContent);
 
 public sealed record DynAuditEvent(
     Guid CorrelationId,

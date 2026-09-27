@@ -23,6 +23,7 @@ public sealed class DynReportPackageStore(
     private const double MaxCompressionRatio = 100d;
 
     private readonly object _gate = new();
+    private readonly SemaphoreSlim _mutationGate = new(1, 1);
     private readonly JsonSerializerOptions _json = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -80,6 +81,8 @@ public sealed class DynReportPackageStore(
         string? importedBy = null,
         CancellationToken cancellationToken = default)
     {
+        using var mutation = await EnterMutationAsync(cancellationToken);
+
         Directory.CreateDirectory(_root);
         Directory.CreateDirectory(_revisionsRoot);
 
@@ -133,6 +136,8 @@ public sealed class DynReportPackageStore(
         string editedBy,
         CancellationToken cancellationToken = default)
     {
+        using var mutation = await EnterMutationAsync(cancellationToken);
+
         var path = Path.Combine(_root, SafeFileName(package.Manifest.ReportId) + ".dynreport");
         Directory.CreateDirectory(_root);
 
@@ -224,6 +229,161 @@ public sealed class DynReportPackageStore(
         return revisions
             .OrderByDescending(x => x.CreatedUtc)
             .ToArray();
+    }
+
+    public async Task<LoadedDynReportPackage> RestoreRevisionAsync(
+        string reportId,
+        Guid revisionId,
+        string restoredBy,
+        CancellationToken cancellationToken = default)
+    {
+        using var mutation = await EnterMutationAsync(cancellationToken);
+
+        if (!metadata.IsConfigured)
+        {
+            throw new InvalidOperationException(
+                "Die DynReport-Metadatenbank ist nicht konfiguriert. " +
+                "SQL-basierte Revisionen können daher noch nicht wiederhergestellt werden.");
+        }
+
+        var stored = await metadata.ReadRevisionPackageAsync(
+            reportId,
+            revisionId,
+            cancellationToken)
+            ?? throw new FileNotFoundException(
+                $"Revision '{revisionId}' für Bericht '{reportId}' wurde nicht gefunden.");
+
+        if (stored.PackageLength != stored.PackageContent.LongLength)
+        {
+            throw new InvalidDataException(
+                "Die gespeicherte Revision hat eine inkonsistente Paketgröße.");
+        }
+
+        var actualHash = Convert.ToHexString(
+            SHA256.HashData(stored.PackageContent)).ToLowerInvariant();
+
+        if (!actualHash.Equals(stored.ContentHash, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                "Die gespeicherte Revision hat die Integritätsprüfung (SHA-256) nicht bestanden.");
+        }
+
+        Directory.CreateDirectory(_root);
+        Directory.CreateDirectory(_revisionsRoot);
+
+        var target = Path.Combine(_root, SafeFileName(reportId) + ".dynreport");
+        var temp = Path.Combine(_root, $".restore-{Guid.NewGuid():N}.dynreport");
+        var rollbackTemp = target + ".rollback";
+        byte[]? previousBytes = null;
+
+        if (File.Exists(target))
+            previousBytes = await File.ReadAllBytesAsync(target, cancellationToken);
+
+        try
+        {
+            await File.WriteAllBytesAsync(
+                temp,
+                stored.PackageContent,
+                cancellationToken);
+
+            var candidate = LoadFile(temp);
+
+            if (!candidate.Manifest.ReportId.Equals(
+                    reportId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException(
+                    "Die gespeicherte Revision gehört nicht zum angeforderten Bericht.");
+            }
+
+            if (File.Exists(target))
+                CreateRevision(target, reportId);
+
+            File.Move(temp, target, true);
+            Invalidate();
+
+            LoadedDynReportPackage installed;
+
+            try
+            {
+                installed = LoadFile(target);
+
+                // The SQL catalog and package ACL are changed only after the
+                // complete package is installed and validated locally. If local
+                // post-move validation or SQL activation fails, the filesystem
+                // package is compensated below.
+                await metadata.ActivateRevisionAsync(
+                    installed,
+                    revisionId,
+                    restoredBy,
+                    cancellationToken);
+            }
+            catch
+            {
+                try
+                {
+                    if (previousBytes is null)
+                    {
+                        TryDelete(target);
+                    }
+                    else
+                    {
+                        await File.WriteAllBytesAsync(
+                            rollbackTemp,
+                            previousBytes,
+                            CancellationToken.None);
+                        File.Move(rollbackTemp, target, true);
+                    }
+
+                    Invalidate();
+                }
+                catch (Exception rollbackEx)
+                {
+                    logger.LogCritical(
+                        rollbackEx,
+                        "DynReport restore compensation failed for {ReportId}",
+                        reportId);
+                }
+
+                throw;
+            }
+
+            metrics.PackagePublishes.Add(
+                1,
+                new KeyValuePair<string, object?>("report.id", reportId),
+                new KeyValuePair<string, object?>("publish.kind", "restore"));
+
+            await metadata.WriteAuditAsync(
+                new DynAuditEvent(
+                    Guid.NewGuid(),
+                    "report.revision.restore",
+                    "success",
+                    restoredBy,
+                    reportId,
+                    revisionId,
+                    DetailsJson: DynAuditEvent.Details(new
+                    {
+                        installed.Manifest.Version,
+                        installed.Manifest.SchemaVersion,
+                        stored.PackageLength,
+                        stored.ContentHash
+                    })),
+                CancellationToken.None);
+
+            logger.LogWarning(
+                "DynReport {ReportId} restored to revision {RevisionId} version {Version} by {User}",
+                reportId,
+                revisionId,
+                installed.Manifest.Version,
+                restoredBy);
+
+            return installed;
+        }
+        finally
+        {
+            TryDelete(temp);
+            TryDelete(rollbackTemp);
+        }
     }
 
     public void Remove(string reportId)
@@ -626,6 +786,23 @@ public sealed class DynReportPackageStore(
 
             if (config.GetValue("Metadata:FailPublishWhenUnavailable", false))
                 throw;
+        }
+    }
+
+    private async Task<IDisposable> EnterMutationAsync(
+        CancellationToken cancellationToken)
+    {
+        await _mutationGate.WaitAsync(cancellationToken);
+        return new MutationLease(_mutationGate);
+    }
+
+    private sealed class MutationLease(SemaphoreSlim gate) : IDisposable
+    {
+        private SemaphoreSlim? _gate = gate;
+
+        public void Dispose()
+        {
+            Interlocked.Exchange(ref _gate, null)?.Release();
         }
     }
 

@@ -101,6 +101,23 @@ or:
 
 Do not commit the production configuration.
 
+DynReport uses the first non-empty value from `Metadata:ConnectionString` and
+`DataSources:DynReportMetadata:ConnectionString`.
+
+After the metadata database has been created, permissions and TLS have been validated, set:
+
+```json
+{
+  "Metadata": {
+    "FailPublishWhenUnavailable": true
+  }
+}
+```
+
+for the production rollout. This prevents a native report publish from silently advancing the
+local filesystem package while the central metadata/revision catalog is unavailable. Keep it
+`false` only during the deliberate transition/bootstrap phase.
+
 ## 6. Restart and verify
 
 Recycle the DynReport IIS application pool, then test:
