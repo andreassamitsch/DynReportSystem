@@ -95,7 +95,13 @@ app.MapGet("/api/packages/{reportId}/download",
         DynReportMetadataStore metadata,
         FolderAccess access) =>
     {
-        if (!access.Can(context.User, reportId, "View"))
+        var canExportDefinition =
+            access.Can(context.User, reportId, "EditLayout")
+            || access.Can(context.User, reportId, "Edit")
+            || access.Can(context.User, reportId, "Publish")
+            || access.Can(context.User, reportId, "Manage");
+
+        if (!canExportDefinition)
             return Results.Forbid();
 
         var package = packages.Get(reportId);
