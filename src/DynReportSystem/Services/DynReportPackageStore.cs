@@ -365,6 +365,21 @@ public sealed class DynReportPackageStore(
             throw new InvalidDataException(
                 $"Nicht unterstützte DynReport-Schemaversion '{manifest.SchemaVersion}'. Erwartet: 2.0.");
 
+        if (!string.IsNullOrWhiteSpace(manifest.MinRuntimeVersion)
+            && Version.TryParse(manifest.MinRuntimeVersion, out var minimumRuntime))
+        {
+            var currentRuntime =
+                typeof(DynReportPackageStore).Assembly.GetName().Version
+                ?? new Version(0, 0);
+
+            if (currentRuntime < minimumRuntime)
+            {
+                throw new InvalidDataException(
+                    $"Der Bericht benötigt DynReport {minimumRuntime} oder neuer. " +
+                    $"Installiert ist {currentRuntime}.");
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(manifest.ReportId))
             throw new InvalidDataException("ReportId fehlt.");
 
