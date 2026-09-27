@@ -215,6 +215,10 @@ public sealed class DynReportParameterValue
 
 public sealed class DynReportRun
 {
+    public Guid ExecutionId { get; init; } = Guid.NewGuid();
+    public Guid CorrelationId { get; init; } = Guid.NewGuid();
+    public DateTime StartedUtc { get; init; } = DateTime.UtcNow;
+    public long DurationMs { get; set; }
     public Dictionary<string, QueryResult> Results { get; init; } =
         new(StringComparer.OrdinalIgnoreCase);
     public List<string> Errors { get; init; } = [];
