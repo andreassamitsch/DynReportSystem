@@ -16,18 +16,55 @@ public sealed class DynReportMetadataStore(
     IConfiguration config,
     ILogger<DynReportMetadataStore> logger)
 {
-    private readonly string _connectionString = ResolveConnectionString(config);
+    private readonly string _connectionString = ResolveConnectionString(config, logger);
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
 
-    private static string ResolveConnectionString(IConfiguration config)
+    private static string ResolveConnectionString(
+        IConfiguration config,
+        ILogger<DynReportMetadataStore> logger)
     {
-        var dedicated = config["Metadata:ConnectionString"];
-        if (!string.IsNullOrWhiteSpace(dedicated))
-            return dedicated;
+        var value = config["Metadata:ConnectionString"];
 
-        var dataSource = config["DataSources:DynReportMetadata:ConnectionString"];
-        return string.IsNullOrWhiteSpace(dataSource) ? "" : dataSource;
+        if (string.IsNullOrWhiteSpace(value))
+            value = config["DataSources:DynReportMetadata:ConnectionString"];
+
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var builder = new SqlConnectionStringBuilder(value)
+        {
+            ApplicationName = "DynReport"
+        };
+
+        var requireTlsValidation = config.GetValue(
+            "Security:RequireValidatedSqlTls",
+            false);
+
+        if (!builder.Encrypt)
+        {
+            const string message =
+                "Die DynReport-Metadatenbank verwendet keine SQL-Transportverschlüsselung.";
+
+            if (requireTlsValidation)
+                throw new InvalidOperationException(message);
+
+            logger.LogWarning(message);
+        }
+
+        if (builder.TrustServerCertificate)
+        {
+            const string message =
+                "Die DynReport-Metadatenbank verwendet TrustServerCertificate=True. " +
+                "Für das Zielsystem ist Zertifikatsprüfung vorgesehen.";
+
+            if (requireTlsValidation)
+                throw new InvalidOperationException(message);
+
+            logger.LogWarning(message);
+        }
+
+        return builder.ConnectionString;
     }
 
     public async Task<bool> CheckAsync(CancellationToken cancellationToken = default)
