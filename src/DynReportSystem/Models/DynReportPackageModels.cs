@@ -197,7 +197,7 @@ public sealed class DynExpr
     public string Field { get; set; } = "";
     public string Name { get; set; } = "";
     public string Parameter { get; set; } = "";
-    public JsonElement Value { get; set; }
+    public JsonElement Value { get; set; } = JsonSerializer.SerializeToElement<object?>(null);
     public List<DynExpr> Args { get; set; } = [];
     public DynExpr? Where { get; set; }
     public List<string> DistinctBy { get; set; } = [];
