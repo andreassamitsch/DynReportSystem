@@ -346,7 +346,7 @@ public sealed class DynReportMetadataStore(
                 INSERT INTO dyn.AuditEvent
                 (
                     CorrelationId, UserName, EventType, ReportId, RevisionId,
-                    DataSourceId, DatasetId, DurationMs, RowCount, Result, DetailsJson
+                    DataSourceId, DatasetId, DurationMs, [RowCount], Result, DetailsJson
                 )
                 VALUES
                 (
