@@ -8,7 +8,7 @@ namespace DynReportSystem.Services;
 /// </summary>
 public sealed class DynReportMetrics : IDisposable
 {
-    private readonly Meter _meter = new("DynReportSystem", "0.9.0");
+    private readonly Meter _meter = new("DynReportSystem", "0.11.0");
 
     public Counter<long> ReportExecutions { get; }
     public Counter<long> DatasetExecutions { get; }
@@ -17,6 +17,9 @@ public sealed class DynReportMetrics : IDisposable
     public Histogram<double> DatasetDurationMs { get; }
     public Histogram<long> DatasetRows { get; }
     public Histogram<double> ReportDurationMs { get; }
+    public Counter<long> InteractiveTableQueries { get; }
+    public Histogram<double> InteractiveTableDurationMs { get; }
+    public Histogram<long> InteractiveTableRows { get; }
 
     public DynReportMetrics()
     {
@@ -54,6 +57,21 @@ public sealed class DynReportMetrics : IDisposable
             "dynreport.report.duration",
             unit: "ms",
             description: "End-to-end native report execution duration.");
+
+        InteractiveTableQueries = _meter.CreateCounter<long>(
+            "dynreport.table.queries",
+            unit: "{query}",
+            description: "Number of server-side interactive table queries.");
+
+        InteractiveTableDurationMs = _meter.CreateHistogram<double>(
+            "dynreport.table.query.duration",
+            unit: "ms",
+            description: "Server-side interactive table query duration.");
+
+        InteractiveTableRows = _meter.CreateHistogram<long>(
+            "dynreport.table.query.rows",
+            unit: "{row}",
+            description: "Rows returned by server-side interactive table queries.");
     }
 
     public void Dispose() => _meter.Dispose();
