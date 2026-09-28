@@ -427,7 +427,7 @@ public sealed class DynReportPackageExecutionService(
                 .ToArray();
 
         var effectiveSort = table.GroupBy
-            .Where(allowedColumns.Contains)
+            .Where(configuredFields.Contains)
             .Select(groupField => new DynSortDefinition { Field = groupField, Direction = "Asc" })
             .Concat(chosenSort)
             .GroupBy(x => x.Field, StringComparer.OrdinalIgnoreCase)
@@ -435,10 +435,17 @@ public sealed class DynReportPackageExecutionService(
             .Take(8)
             .ToArray();
 
+        var fallbackSortField = table.Columns
+            .Where(x => !x.Hidden && configuredFields.Contains(x.Field))
+            .Select(x => x.Field)
+            .FirstOrDefault()
+            ?? dataSet.Fields.FirstOrDefault(configuredFields.Contains)
+            ?? configuredFields.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).First();
+
         var orderBy = effectiveSort.Length > 0
             ? string.Join(", ", effectiveSort.Select(x =>
                 $"src.{QuoteIdentifier(x.Field)} {(x.Direction.Equals("Desc", StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC")}"))
-            : $"src.{QuoteIdentifier(allowedColumns.First())} ASC";
+            : $"src.{QuoteIdentifier(fallbackSortField)} ASC";
 
         var maxPageSize = Math.Clamp(
             config.GetValue("Runtime:MaxInteractivePageSize", 1000),
