@@ -22,7 +22,7 @@
                 <span>@ActiveFilterCount Spaltenfilter</span>
                 <button class="text-btn" disabled="@busy" @onclick="ClearFiltersAsync">Filter löschen</button>
             }
-            <span class="custom-report-meta">Server</span>
+            <span class="custom-report-meta">Server · @PresentationLabel</span>
         </div>
 
         <label class="page-size">
@@ -72,7 +72,7 @@
                             </th>
                         }
                     </tr>
-                    @if (Definition.Filterable)
+                    @if (Definition.Filterable && IsRowsMode)
                     {
                         <tr class="table-filter-row">
                             @foreach (var column in DisplayColumns)
@@ -98,7 +98,7 @@
                     }
                     @foreach (var row in result.Rows)
                     {
-                        var group = GroupLabel(row);
+                        var group = IsRowsMode ? GroupLabel(row) : "";
                         if (!string.IsNullOrWhiteSpace(group)
                             && !string.Equals(group, previousGroup, StringComparison.Ordinal))
                         {
@@ -152,10 +152,27 @@
     private int offset;
     private int pageSize = 100;
 
+    private bool IsRowsMode =>
+        string.IsNullOrWhiteSpace(Definition.PresentationMode)
+        || Definition.PresentationMode.Equals("Rows", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsPivotMode =>
+        Definition.PresentationMode.Equals("Pivot", StringComparison.OrdinalIgnoreCase);
+
+    private string PresentationLabel =>
+        IsPivotMode
+            ? "Pivot"
+            : IsRowsMode
+                ? "Zeilen"
+                : "Aggregiert";
+
     private IReadOnlyList<string> DisplayColumns
     {
         get
         {
+            if (!IsRowsMode)
+                return result?.Columns ?? [];
+
             var configured = Definition.Columns
                 .Where(x => !x.Hidden && !string.IsNullOrWhiteSpace(x.Field))
                 .Select(x => x.Field)
@@ -336,11 +353,21 @@
         return string.IsNullOrWhiteSpace(configured) ? column : configured;
     }
 
-    private bool CanSort(string column) =>
-        Definition.Sortable && ColumnDefinition(column)?.Sortable != false;
+    private bool CanSort(string column)
+    {
+        if (!Definition.Sortable || IsPivotMode)
+            return false;
+
+        if (!IsRowsMode)
+            return result?.Columns.Contains(column, StringComparer.OrdinalIgnoreCase) == true;
+
+        return ColumnDefinition(column)?.Sortable != false;
+    }
 
     private bool CanFilter(string column) =>
-        Definition.Filterable && ColumnDefinition(column)?.Filterable != false;
+        IsRowsMode
+        && Definition.Filterable
+        && ColumnDefinition(column)?.Filterable != false;
 
     private static DynTableQueryFilter ParseFilter(string fieldName, string expression)
     {
