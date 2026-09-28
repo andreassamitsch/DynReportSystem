@@ -2,6 +2,33 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
+## Version 0.8.0
+
+Version 0.8.0 hardens the SQL revision catalog after the successful APP-01
+rollback validation.
+
+Changes:
+
+- existing local transition revisions are migrated once into `dyn.ReportRevision`
+  at startup when the metadata database is configured
+- historical imports are content-hash deduplicated and never change
+  `dyn.Report.ActiveRevisionId`
+- the currently installed package is registered first and remains the active
+  revision after the historical backfill
+- the backfill is idempotent and writes
+  `%ProgramData%\DynReportSystem\migration-local-revisions-v1.complete` only
+  after all local revision files were processed without errors
+- designer saves and package imports now compensate the local package if a
+  hard-fail SQL metadata publish fails, preventing SQL/filesystem divergence
+- production configuration upgrades merge new non-secret settings without
+  overwriting existing values or copying template ConnectionStrings into an
+  existing installation
+- upgrades from pre-0.8 installations with a real metadata connection set
+  `Metadata:FailPublishWhenUnavailable=true` once
+- the installer creates a timestamped backup of
+  `appsettings.Production.json` before merging settings
+- no SQL schema migration is required for 0.8.0
+
 ## Version 0.7.9
 
 Version 0.7.9 fixes the confirmed root cause of the DynReport Interactive Server
@@ -451,7 +478,7 @@ connection-string fallback exists only for the migration phase and must not cont
 
 ## Installation / update
 
-GitHub Actions builds DynReportSystem-Server-Setup-0.7.9-win-x64.exe.
+GitHub Actions builds DynReportSystem-Server-Setup-0.8.0-win-x64.exe.
 
 For an SSRS migration, keep the setup EXE, MigrationBundle.zip and the optimized Kundencockpit.rdl (when updating it) next to each other. The setup performs an in-place update and preserves the existing production appsettings, local DynReport permissions and IIS/HTTPS bindings.
 
