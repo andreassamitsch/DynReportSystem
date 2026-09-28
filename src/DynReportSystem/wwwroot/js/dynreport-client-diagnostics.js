@@ -1,8 +1,10 @@
 (() => {
+    const nativeFetch = window.fetch.bind(window);
+    const NativeWebSocket = window.WebSocket;
+
     const state = {
         startedAt: new Date().toISOString(),
         interactive: false,
-        scriptLoaded: typeof window.Blazor !== 'undefined',
         online: navigator.onLine,
         frameworkStatus: null,
         healthStatus: null,
@@ -10,14 +12,42 @@
         negotiateContentType: null,
         negotiateBodyLength: null,
         negotiateBodyPreview: null,
-        error: null
+        error: null,
+        timeline: []
     };
 
     let timer;
 
     const qs = id => document.getElementById(id);
 
+    function sanitize(value) {
+        return String(value ?? '')
+            .replace(/([?&]id=)[^&\s'"]+/gi, '$1<redacted>')
+            .replace(/([?&](?:access_token|token)=)[^&\s'"]+/gi, '$1<redacted>')
+            .replace(/(Bearer\s+)[A-Za-z0-9._~+\/-]+/gi, '$1<redacted>');
+    }
+
+    function safeUrl(value) {
+        try {
+            const url = new URL(value, location.origin);
+            return sanitize(url.pathname + url.search);
+        } catch {
+            return sanitize(value);
+        }
+    }
+
+    function addTimeline(kind, message) {
+        const elapsed = Math.round(performance.now());
+        state.timeline.push(`${elapsed} ms [${kind}] ${sanitize(message)}`);
+        if (state.timeline.length > 60)
+            state.timeline.splice(0, state.timeline.length - 60);
+    }
+
     function detailsText() {
+        const timeline = state.timeline.length
+            ? '\n\nBlazor/SignalR Ablauf:\n' + state.timeline.join('\n')
+            : '';
+
         return [
             'Zeit: ' + new Date().toISOString(),
             'Pfad: ' + location.pathname,
@@ -28,10 +58,10 @@
             'Blazor negotiate HTTP: ' + (state.negotiateStatus ?? 'nicht geprüft'),
             'Negotiate Content-Type: ' + (state.negotiateContentType ?? 'nicht geprüft'),
             'Negotiate Body-Länge: ' + (state.negotiateBodyLength ?? 'nicht geprüft'),
-            state.negotiateBodyPreview ? 'Negotiate Body: ' + state.negotiateBodyPreview : '',
+            state.negotiateBodyPreview ? 'Negotiate Body: ' + sanitize(state.negotiateBodyPreview) : '',
             'Browser: ' + navigator.userAgent,
-            state.error ? 'Fehler: ' + state.error : ''
-        ].filter(Boolean).join('\n');
+            state.error ? 'Fehler: ' + sanitize(state.error) : ''
+        ].filter(Boolean).join('\n') + timeline;
     }
 
     function show(title, message) {
@@ -54,9 +84,75 @@
         if (panel) panel.hidden = true;
     }
 
+    async function captureBlazorResponse(response, method, url, started) {
+        if (!url.includes('/_blazor'))
+            return;
+
+        let body = '';
+        try {
+            body = await response.clone().text();
+        } catch (e) {
+            body = '<Body nicht lesbar: ' + e + '>';
+        }
+
+        const contentType = response.headers.get('content-type') || '(leer)';
+        const elapsed = Math.round(performance.now() - started);
+        const preview = body.length > 0 ? sanitize(body.slice(0, 350)) : '(leer)';
+
+        addTimeline(
+            'FETCH',
+            `${method} ${safeUrl(url)} -> ${response.status}; ${contentType}; ${body.length} Zeichen; ${elapsed} ms; Body=${preview}`
+        );
+    }
+
+    window.fetch = async function(input, init) {
+        const request = input instanceof Request ? input : null;
+        const url = request?.url || String(input);
+        const method = String(init?.method || request?.method || 'GET').toUpperCase();
+        const started = performance.now();
+
+        try {
+            const response = await nativeFetch(input, init);
+            await captureBlazorResponse(response, method, url, started);
+            return response;
+        } catch (e) {
+            if (url.includes('/_blazor')) {
+                addTimeline(
+                    'FETCH-ERROR',
+                    `${method} ${safeUrl(url)} -> ${e?.stack || e}`
+                );
+            }
+            throw e;
+        }
+    };
+
+    if (NativeWebSocket) {
+        window.WebSocket = new Proxy(NativeWebSocket, {
+            construct(Target, args) {
+                const url = safeUrl(args[0]);
+                addTimeline('WS', 'create ' + url);
+                const socket = Reflect.construct(Target, args);
+
+                socket.addEventListener('open', () =>
+                    addTimeline('WS', 'open ' + url));
+
+                socket.addEventListener('error', () =>
+                    addTimeline('WS', 'error ' + url));
+
+                socket.addEventListener('close', event =>
+                    addTimeline(
+                        'WS',
+                        `close ${url}; code=${event.code}; clean=${event.wasClean}; reason=${event.reason || '(leer)'}`
+                    ));
+
+                return socket;
+            }
+        });
+    }
+
     async function probeHttp() {
         try {
-            const framework = await fetch('/_framework/blazor.web.js', {
+            const framework = await nativeFetch('/_framework/blazor.web.js', {
                 method: 'HEAD',
                 credentials: 'same-origin',
                 cache: 'no-store'
@@ -68,7 +164,7 @@
         }
 
         try {
-            const health = await fetch('/health/live', {
+            const health = await nativeFetch('/health/live', {
                 method: 'GET',
                 credentials: 'same-origin',
                 cache: 'no-store'
@@ -80,7 +176,7 @@
         }
 
         try {
-            const negotiate = await fetch('/_blazor/negotiate?negotiateVersion=1', {
+            const negotiate = await nativeFetch('/_blazor/negotiate?negotiateVersion=1', {
                 method: 'POST',
                 credentials: 'same-origin',
                 cache: 'no-store'
@@ -114,10 +210,21 @@
         markInteractive() {
             state.interactive = true;
             clearTimeout(timer);
+            addTimeline('CIRCUIT', 'Interactive Server aktiv');
             hide();
         },
+        markStart() {
+            addTimeline('BLAZOR', 'Blazor.start() wird aufgerufen');
+        },
+        markStarted() {
+            addTimeline('BLAZOR', 'Blazor.start() Promise erfolgreich');
+        },
+        logSignalR(level, message) {
+            addTimeline('SIGNALR-' + level, message);
+        },
         showFailure(title, message, error) {
-            state.error = error ? String(error) : state.error;
+            state.error = error?.stack || error?.message || (error ? String(error) : state.error);
+            addTimeline('FAIL', state.error || message);
             show(title, message);
         }
     };
@@ -135,12 +242,14 @@
 
         if (event.error) {
             state.error = event.error.stack || event.error.message || String(event.error);
+            addTimeline('WINDOW-ERROR', state.error);
         }
     }, true);
 
     window.addEventListener('unhandledrejection', event => {
         const reason = event.reason;
         state.error = reason?.stack || reason?.message || String(reason ?? 'Unhandled promise rejection');
+        addTimeline('PROMISE-ERROR', state.error);
     });
 
     window.addEventListener('offline', () => {
