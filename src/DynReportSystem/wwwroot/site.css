@@ -1081,3 +1081,44 @@ button.filter-chip{cursor:pointer}
     font-size:11px;
   }
 }
+
+
+/* Blazor circuit reconnect status */
+.reconnect-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.35);
+    backdrop-filter: blur(2px);
+}
+
+.reconnect-modal.components-reconnect-show,
+.reconnect-modal.components-reconnect-failed,
+.reconnect-modal.components-reconnect-rejected {
+    display: flex;
+}
+
+.reconnect-card {
+    width: min(92vw, 520px);
+    padding: 1.25rem 1.4rem;
+    border-radius: 16px;
+    background: white;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.22);
+    display: grid;
+    gap: 0.6rem;
+}
+
+.reconnect-card span {
+    color: #52616b;
+}
+
+.reconnect-card button {
+    justify-self: start;
+    border: 0;
+    border-radius: 10px;
+    padding: 0.65rem 0.95rem;
+    cursor: pointer;
+}

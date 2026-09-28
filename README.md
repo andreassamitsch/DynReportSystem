@@ -2,6 +2,19 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
+## Version 0.7.4
+
+Version 0.7.4 fixes Blazor interactivity failures where pages rendered correctly but
+buttons, tabs and other `@onclick` actions did not respond.
+
+- removes the custom `autostart=false` / manual `Blazor.start(...)` bootstrap
+- restores the framework-supported standard Blazor Web autostart
+- isolates PWA service-worker registration from the Blazor startup path
+- adds a visible reconnect overlay so a disconnected server circuit is no longer silent
+
+This directly affects the native report designer, import page and all other interactive
+server components.
+
 ## Version 0.7.3
 
 Version 0.7.3 fixes a native report designer load failure that could show
@@ -333,7 +346,7 @@ connection-string fallback exists only for the migration phase and must not cont
 
 ## Installation / update
 
-GitHub Actions builds DynReportSystem-Server-Setup-0.7.3-win-x64.exe.
+GitHub Actions builds DynReportSystem-Server-Setup-0.7.4-win-x64.exe.
 
 For an SSRS migration, keep the setup EXE, MigrationBundle.zip and the optimized Kundencockpit.rdl (when updating it) next to each other. The setup performs an in-place update and preserves the existing production appsettings, local DynReport permissions and IIS/HTTPS bindings.
 
