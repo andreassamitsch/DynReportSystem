@@ -4,7 +4,14 @@
   "title": "DynReport report document 2.0",
   "type": "object",
   "additionalProperties": false,
-  "required": ["Settings", "DataSources", "Datasets", "Parameters", "Calculations", "Pages"],
+  "required": [
+    "Settings",
+    "DataSources",
+    "Datasets",
+    "Parameters",
+    "Calculations",
+    "Pages"
+  ],
   "properties": {
     "Settings": {
       "type": "object",
@@ -17,30 +24,66 @@
         "CommandTimeoutSeconds"
       ],
       "properties": {
-        "AutoRun": { "type": "boolean" },
+        "AutoRun": {
+          "type": "boolean"
+        },
         "AutoRefreshSeconds": {
           "type": "integer",
           "minimum": 0,
           "anyOf": [
-            { "const": 0 },
-            { "minimum": 30 }
+            {
+              "const": 0
+            },
+            {
+              "minimum": 30
+            }
           ]
         },
-        "ParametersCollapsedByDefault": { "type": "boolean" },
-        "Culture": { "type": "string", "minLength": 2, "maxLength": 20 },
-        "MaxRowsPerDataset": { "type": "integer", "minimum": 1, "maximum": 1000000 },
-        "CommandTimeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 900 }
+        "ParametersCollapsedByDefault": {
+          "type": "boolean"
+        },
+        "Culture": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 20
+        },
+        "MaxRowsPerDataset": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "CommandTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 900
+        }
       }
     },
     "DataSources": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["Id", "Provider", "ConfigKey"],
+        "required": [
+          "Id",
+          "Provider",
+          "ConfigKey"
+        ],
         "properties": {
-          "Id": { "type": "string", "minLength": 1, "maxLength": 128 },
-          "Provider": { "enum": ["SQL"] },
-          "ConfigKey": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "Id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "Provider": {
+            "enum": [
+              "SQL"
+            ]
+          },
+          "ConfigKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
           "DefaultConnectionString": {
             "type": "string",
             "description": "Transitional non-secret target metadata only. Credentials are forbidden."
@@ -52,33 +95,353 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["Id", "DataSourceId", "CommandType", "QueryFile", "Parameters", "Fields"],
+        "required": [
+          "Id",
+          "DataSourceId",
+          "CommandType",
+          "QueryFile",
+          "Parameters",
+          "Fields"
+        ],
         "properties": {
-          "Id": { "type": "string", "minLength": 1, "maxLength": 200 },
-          "DataSourceId": { "type": "string", "minLength": 1, "maxLength": 128 },
-          "CommandType": { "enum": ["Text", "StoredProcedure"] },
-          "QueryFile": { "type": "string", "pattern": "^datasets/.+\\.sql$" },
-          "Parameters": { "type": "array" },
+          "Id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "DataSourceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "CommandType": {
+            "enum": [
+              "Text",
+              "StoredProcedure"
+            ]
+          },
+          "QueryFile": {
+            "type": "string",
+            "pattern": "^datasets/.+\\.sql$"
+          },
+          "Parameters": {
+            "type": "array"
+          },
           "Fields": {
             "type": "array",
-            "items": { "type": "string", "maxLength": 200 }
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            }
           }
         }
       }
     },
-    "Parameters": { "type": "array" },
-    "Calculations": { "type": "object" },
+    "Parameters": {
+      "type": "array"
+    },
+    "Calculations": {
+      "type": "object"
+    },
     "Pages": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["Id", "Columns", "Components"],
+        "required": [
+          "Id",
+          "Columns",
+          "Components"
+        ],
         "properties": {
-          "Id": { "type": "string", "minLength": 1, "maxLength": 100 },
-          "Title": { "type": "string", "maxLength": 300 },
-          "Columns": { "type": "integer", "minimum": 1, "maximum": 24 },
-          "Components": { "type": "array" }
+          "Id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "Title": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "Columns": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 24
+          },
+          "Components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/visual"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sort": {
+      "type": "object",
+      "required": [
+        "Field",
+        "Direction"
+      ],
+      "properties": {
+        "Field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "Direction": {
+          "enum": [
+            "Asc",
+            "Desc",
+            "asc",
+            "desc"
+          ]
+        }
+      }
+    },
+    "tableColumn": {
+      "type": "object",
+      "required": [
+        "Field"
+      ],
+      "properties": {
+        "Field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "Header": {
+          "type": "string"
+        },
+        "Format": {
+          "type": "string"
+        },
+        "Unit": {
+          "type": "string"
+        },
+        "Hidden": {
+          "type": "boolean"
+        },
+        "Filterable": {
+          "type": "boolean"
+        },
+        "Sortable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "table": {
+      "type": "object",
+      "properties": {
+        "Columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/tableColumn"
+          }
+        },
+        "GroupBy": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "DefaultSort": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sort"
+          }
+        },
+        "Searchable": {
+          "type": "boolean"
+        },
+        "Filterable": {
+          "type": "boolean"
+        },
+        "Sortable": {
+          "type": "boolean"
+        },
+        "PageSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5000
+        },
+        "DataMode": {
+          "enum": [
+            "Auto",
+            "Client",
+            "Server"
+          ]
+        }
+      }
+    },
+    "chartSeries": {
+      "type": "object",
+      "required": [
+        "Field"
+      ],
+      "properties": {
+        "Field": {
+          "type": "string",
+          "minLength": 1
+        },
+        "Label": {
+          "type": "string"
+        },
+        "Aggregation": {
+          "enum": [
+            "Sum",
+            "Avg",
+            "Min",
+            "Max",
+            "Count",
+            "First",
+            "None"
+          ]
+        },
+        "Format": {
+          "type": "string"
+        },
+        "Unit": {
+          "type": "string"
+        }
+      }
+    },
+    "chart": {
+      "type": "object",
+      "properties": {
+        "ChartType": {
+          "enum": [
+            "Auto",
+            "Bar",
+            "Line",
+            "Area",
+            "Donut"
+          ]
+        },
+        "CategoryField": {
+          "type": "string"
+        },
+        "SeriesByField": {
+          "type": "string"
+        },
+        "Series": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/chartSeries"
+          }
+        },
+        "Sort": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sort"
+          }
+        },
+        "Stacked": {
+          "type": "boolean"
+        },
+        "ShowLegend": {
+          "type": "boolean"
+        },
+        "ShowLabels": {
+          "type": "boolean"
+        },
+        "MaxPoints": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5000
+        },
+        "Height": {
+          "type": "integer",
+          "minimum": 180,
+          "maximum": 1200
+        }
+      }
+    },
+    "visual": {
+      "type": "object",
+      "required": [
+        "Id",
+        "Type",
+        "Span",
+        "MobileSpan"
+      ],
+      "properties": {
+        "Id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "Type": {
+          "enum": [
+            "heading",
+            "text",
+            "metric-strip",
+            "grouped-board",
+            "table",
+            "chart"
+          ]
+        },
+        "Title": {
+          "type": "string"
+        },
+        "Subtitle": {
+          "type": "string"
+        },
+        "Dataset": {
+          "type": "string"
+        },
+        "Span": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 24
+        },
+        "MobileSpan": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 24
+        },
+        "CssClass": {
+          "type": "string"
+        },
+        "Value": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "Format": {
+          "type": "string"
+        },
+        "Unit": {
+          "type": "string"
+        },
+        "Metrics": {
+          "type": "array"
+        },
+        "Board": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "Table": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/table"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "Chart": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/chart"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     }
