@@ -2,6 +2,29 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
+## Version 0.9.0
+
+Version 0.9.0 introduces the first visual, schema-native DynReport designer workbench.
+
+Changes:
+
+- visual page tabs for multi-page reports
+- create and remove report pages without leaving the designer
+- component palette for headings, text/value blocks, KPI strips, tables, charts and grouped boards
+- responsive grid canvas based directly on each page's existing 1-24 column model
+- component selection and a dedicated properties inspector
+- edit title, subtitle, dataset, desktop/mobile span and CSS class
+- move components through the document order, duplicate them or remove them
+- simple expression editor for heading/text values using field/count/sum/avg/min/max
+- KPI editor for adding/removing metrics and configuring count/field/sum/avg/min/max/distinct-count expressions
+- initial grouped-board grouping editor for section and row grouping
+- new components receive safe generic defaults from the selected report datasets/fields
+- all designer operations edit the same `.dynreport` document model used by the runtime; no report-specific Razor/C# model is introduced
+- no SQL schema migration and no package schema migration are required
+
+The grouped-board column/status/rule designer and richer chart/table configuration remain
+follow-up work on the same model.
+
 ## Version 0.8.0
 
 Version 0.8.0 hardens the SQL revision catalog after the successful APP-01
@@ -478,7 +501,7 @@ connection-string fallback exists only for the migration phase and must not cont
 
 ## Installation / update
 
-GitHub Actions builds DynReportSystem-Server-Setup-0.8.0-win-x64.exe.
+GitHub Actions builds DynReportSystem-Server-Setup-0.9.0-win-x64.exe.
 
 For an SSRS migration, keep the setup EXE, MigrationBundle.zip and the optimized Kundencockpit.rdl (when updating it) next to each other. The setup performs an in-place update and preserves the existing production appsettings, local DynReport permissions and IIS/HTTPS bindings.
 

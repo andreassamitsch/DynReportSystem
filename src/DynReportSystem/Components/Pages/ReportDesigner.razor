@@ -217,71 +217,356 @@ else
 
         @if (tab == "layout")
         {
-            <section class="panel designer-panel">
+            <section class="panel designer-panel designer-layout-panel">
                 <div class="section-heading">
                     <div>
-                        <p class="eyebrow">LAYOUTMODELL</p>
-                        <h2>Komponenten</h2>
+                        <p class="eyebrow">LAYOUT DESIGNER</p>
+                        <h2>Seiten & Komponenten</h2>
                     </div>
-                    <span class="section-note">strukturierter Designer-Grundbau</span>
+                    <div class="designer-actions">
+                        <button class="ghost-btn" @onclick="AddPage">+ Seite</button>
+                    </div>
                 </div>
 
-                @foreach (var page in draft.Document.Pages)
+                @if (draft.Document.Pages.Count == 0)
                 {
-                    <div class="designer-page-card">
-                        <div class="designer-page-head">
-                            <div>
-                                <strong>@(page.Title)</strong>
-                                <small>@(page.Columns) Spalten</small>
-                            </div>
-                        </div>
-
-                        <div class="designer-component-list">
-                            @foreach (var component in page.Components)
-                            {
-                                <article class="designer-component-card">
-                                    <div class="designer-component-icon">@ComponentIcon(component.Type)</div>
-                                    <div class="designer-component-main">
-                                        <strong>@component.Type</strong>
-                                        <label>
-                                            <span>Titel</span>
-                                            <input @bind="component.Title" />
-                                        </label>
-                                        <div class="designer-inline-fields">
-                                            <label>
-                                                <span>Desktop Span</span>
-                                                <input type="number" min="1" max="24" @bind="component.Span" />
-                                            </label>
-                                            <label>
-                                                <span>Mobile Span</span>
-                                                <input type="number" min="1" max="24" @bind="component.MobileSpan" />
-                                            </label>
-                                        </div>
-                                        @if (component.Type.Equals("grouped-board", StringComparison.OrdinalIgnoreCase)
-                                             && component.Board is not null)
-                                        {
-                                            <small>
-                                                Gruppierung:
-                                                @string.Join(" → ", component.Board.SectionGroupBy.Concat(component.Board.RowGroupBy))
-                                                · @component.Board.Columns.Count Spalten
-                                            </small>
-                                        }
-                                        @if (component.Type.Equals("metric-strip", StringComparison.OrdinalIgnoreCase))
-                                        {
-                                            <small>@component.Metrics.Count Kennzahlen</small>
-                                        }
-                                    </div>
-                                </article>
-                            }
-                        </div>
+                    <div class="empty">
+                        Noch keine Seite vorhanden.
+                        <button class="primary-btn" @onclick="AddPage">Erste Seite anlegen</button>
                     </div>
                 }
+                else
+                {
+                    <div class="designer-page-tabs">
+                        @foreach (var pageTab in draft.Document.Pages)
+                        {
+                            <button class="@(pageTab.Id == activePageId ? "active" : "")"
+                                    @onclick="() => SelectPage(pageTab.Id)">
+                                @(string.IsNullOrWhiteSpace(pageTab.Title) ? pageTab.Id : pageTab.Title)
+                                <span>@(pageTab.Components.Count)</span>
+                            </button>
+                        }
+                    </div>
 
-                <div class="notice info">
-                    Die Runtime ist bereits vollständig schema-/designergetrieben.
-                    Drag & Drop und der grafische Eigenschaften-Editor können auf diesem
-                    Komponentenmodell aufbauen, ohne das Dateiformat erneut zu ändern.
-                </div>
+                    @if (CurrentPage is DynReportPage currentPage)
+                    {
+                        <div class="designer-workbench">
+                            <aside class="designer-palette">
+                                <div class="designer-workbench-title">
+                                    <strong>Komponenten</strong>
+                                    <small>zur aktuellen Seite hinzufügen</small>
+                                </div>
+
+                                <button @onclick='() => AddComponent("heading")'>
+                                    <span>T</span>
+                                    <div><strong>Überschrift</strong><small>Titel / Abschnitt</small></div>
+                                </button>
+                                <button @onclick='() => AddComponent("text")'>
+                                    <span>¶</span>
+                                    <div><strong>Text</strong><small>Text oder Einzelwert</small></div>
+                                </button>
+                                <button @onclick='() => AddComponent("metric-strip")'>
+                                    <span>123</span>
+                                    <div><strong>Kennzahlen</strong><small>KPI-Leiste</small></div>
+                                </button>
+                                <button @onclick='() => AddComponent("table")'>
+                                    <span>☷</span>
+                                    <div><strong>Tabelle</strong><small>Dataset-Tabelle</small></div>
+                                </button>
+                                <button @onclick='() => AddComponent("chart")'>
+                                    <span>⌁</span>
+                                    <div><strong>Diagramm</strong><small>automatische Visualisierung</small></div>
+                                </button>
+                                <button @onclick='() => AddComponent("grouped-board")'>
+                                    <span>▦</span>
+                                    <div><strong>Board</strong><small>gruppierte Statusansicht</small></div>
+                                </button>
+                            </aside>
+
+                            <div class="designer-canvas-shell">
+                                <div class="designer-page-settings">
+                                    <label>
+                                        <span>Seitentitel</span>
+                                        <input @bind="currentPage.Title" />
+                                    </label>
+                                    <label>
+                                        <span>Spalten</span>
+                                        <input type="number" min="1" max="24" @bind="currentPage.Columns" />
+                                    </label>
+                                    <div class="designer-actions">
+                                        @if (draft.Document.Pages.Count > 1)
+                                        {
+                                            <button class="ghost-btn danger" @onclick="RemoveCurrentPage">
+                                                Seite löschen
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+
+                                <div class="designer-canvas"
+                                     style="@($"--designer-columns:{Math.Clamp(currentPage.Columns, 1, 24)}")">
+                                    @if (currentPage.Components.Count == 0)
+                                    {
+                                        <div class="designer-canvas-empty">
+                                            Links eine Komponente auswählen.
+                                        </div>
+                                    }
+
+                                    @foreach (var canvasComponent in currentPage.Components)
+                                    {
+                                        <article class="designer-canvas-component @(canvasComponent.Id == selectedComponentId ? "selected" : "")"
+                                                 style="@($"--designer-span:{Math.Clamp(canvasComponent.Span, 1, Math.Max(1, currentPage.Columns))}")"
+                                                 @onclick="() => SelectComponent(canvasComponent.Id)">
+                                            <div class="designer-canvas-component-head">
+                                                <span class="designer-component-icon">@ComponentIcon(canvasComponent.Type)</span>
+                                                <div>
+                                                    <strong>@ComponentDisplayName(canvasComponent.Type)</strong>
+                                                    <small>@canvasComponent.Id</small>
+                                                </div>
+                                            </div>
+
+                                            <div class="designer-canvas-component-body">
+                                                <strong>@(string.IsNullOrWhiteSpace(canvasComponent.Title) ? "Ohne Titel" : canvasComponent.Title)</strong>
+                                                @if (!string.IsNullOrWhiteSpace(canvasComponent.Dataset))
+                                                {
+                                                    <small>Dataset: @canvasComponent.Dataset</small>
+                                                }
+                                                @if (canvasComponent.Type.Equals("metric-strip", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <small>@canvasComponent.Metrics.Count Kennzahl(en)</small>
+                                                }
+                                                @if (canvasComponent.Type.Equals("grouped-board", StringComparison.OrdinalIgnoreCase)
+                                                     && canvasComponent.Board is not null)
+                                                {
+                                                    <small>@canvasComponent.Board.Columns.Count Board-Spalte(n)</small>
+                                                }
+                                            </div>
+
+                                            <div class="designer-canvas-span">
+                                                @(canvasComponent.Span) / @(currentPage.Columns)
+                                            </div>
+                                        </article>
+                                    }
+                                </div>
+                            </div>
+
+                            <aside class="designer-inspector">
+                                <div class="designer-workbench-title">
+                                    <strong>Eigenschaften</strong>
+                                    <small>ausgewählte Komponente</small>
+                                </div>
+
+                                @if (SelectedComponent is not DynVisual selected)
+                                {
+                                    <div class="designer-inspector-empty">
+                                        Eine Komponente auf der Arbeitsfläche auswählen.
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="designer-inspector-actions">
+                                        <button title="nach vorne" @onclick='() => MoveSelected(-1)'>←</button>
+                                        <button title="nach hinten" @onclick='() => MoveSelected(1)'>→</button>
+                                        <button title="duplizieren" @onclick="DuplicateSelected">⧉</button>
+                                        <button class="danger" title="löschen" @onclick="RemoveSelected">×</button>
+                                    </div>
+
+                                    <div class="designer-inspector-form">
+                                        <label>
+                                            <span>Typ</span>
+                                            <input value="@ComponentDisplayName(selected.Type)" readonly />
+                                        </label>
+                                        <label>
+                                            <span>ID</span>
+                                            <input value="@selected.Id" readonly />
+                                        </label>
+                                        <label>
+                                            <span>Titel</span>
+                                            <input @bind="selected.Title" />
+                                        </label>
+                                        <label>
+                                            <span>Untertitel</span>
+                                            <input @bind="selected.Subtitle" />
+                                        </label>
+
+                                        @if (ComponentUsesDataset(selected.Type))
+                                        {
+                                            <label>
+                                                <span>Dataset</span>
+                                                <select @bind="selected.Dataset">
+                                                    <option value="">– auswählen –</option>
+                                                    @foreach (var dataset in draft.Document.Datasets)
+                                                    {
+                                                        <option value="@dataset.Id">@dataset.Id</option>
+                                                    }
+                                                </select>
+                                            </label>
+                                        }
+
+                                        <div class="designer-inspector-grid">
+                                            <label>
+                                                <span>Desktop</span>
+                                                <input type="number"
+                                                       min="1"
+                                                       max="@Math.Max(1, currentPage.Columns)"
+                                                       @bind="selected.Span" />
+                                            </label>
+                                            <label>
+                                                <span>Mobil</span>
+                                                <input type="number" min="1" max="24" @bind="selected.MobileSpan" />
+                                            </label>
+                                        </div>
+
+                                        <label>
+                                            <span>CSS-Klasse</span>
+                                            <input @bind="selected.CssClass" />
+                                        </label>
+
+                                        @if (selected.Type.Equals("heading", StringComparison.OrdinalIgnoreCase)
+                                             || selected.Type.Equals("text", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <div class="designer-inspector-section">
+                                                <strong>Wert</strong>
+
+                                                @if (selected.Value is null)
+                                                {
+                                                    <button class="ghost-btn" @onclick="AddComponentValue">
+                                                        + dynamischen Wert hinzufügen
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <label>
+                                                        <span>Operation</span>
+                                                        <select @bind="selected.Value.Op">
+                                                            <option value="field">Erster Feldwert</option>
+                                                            <option value="count">Anzahl Zeilen</option>
+                                                            <option value="sum">Summe</option>
+                                                            <option value="avg">Durchschnitt</option>
+                                                            <option value="min">Minimum</option>
+                                                            <option value="max">Maximum</option>
+                                                        </select>
+                                                    </label>
+
+                                                    @if (ExpressionUsesField(selected.Value.Op))
+                                                    {
+                                                        <label>
+                                                            <span>Feld</span>
+                                                            <select @bind="selected.Value.Field">
+                                                                <option value="">– Feld –</option>
+                                                                @foreach (var field in FieldsFor(selected.Dataset))
+                                                                {
+                                                                    <option value="@field">@field</option>
+                                                                }
+                                                            </select>
+                                                        </label>
+                                                    }
+
+                                                    <div class="designer-inspector-grid">
+                                                        <label>
+                                                            <span>Format</span>
+                                                            <input @bind="selected.Format" />
+                                                        </label>
+                                                        <label>
+                                                            <span>Einheit</span>
+                                                            <input @bind="selected.Unit" />
+                                                        </label>
+                                                    </div>
+
+                                                    <button class="designer-link-danger"
+                                                            @onclick="RemoveComponentValue">
+                                                        dynamischen Wert entfernen
+                                                    </button>
+                                                }
+                                            </div>
+                                        }
+
+                                        @if (selected.Type.Equals("metric-strip", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <div class="designer-inspector-section">
+                                                <div class="designer-inspector-section-head">
+                                                    <strong>Kennzahlen</strong>
+                                                    <button @onclick="AddMetric">+ KPI</button>
+                                                </div>
+
+                                                @foreach (var metric in selected.Metrics.ToArray())
+                                                {
+                                                    <div class="designer-metric-editor">
+                                                        <div class="designer-metric-editor-head">
+                                                            <strong>@metric.Id</strong>
+                                                            <button class="danger" @onclick="() => RemoveMetric(metric)">×</button>
+                                                        </div>
+                                                        <label>
+                                                            <span>Bezeichnung</span>
+                                                            <input @bind="metric.Label" />
+                                                        </label>
+                                                        <label>
+                                                            <span>Operation</span>
+                                                            <select @bind="metric.Value.Op">
+                                                                <option value="count">Anzahl Zeilen</option>
+                                                                <option value="field">Erster Feldwert</option>
+                                                                <option value="sum">Summe</option>
+                                                                <option value="avg">Durchschnitt</option>
+                                                                <option value="min">Minimum</option>
+                                                                <option value="max">Maximum</option>
+                                                                <option value="distinctcount">Eindeutige Anzahl</option>
+                                                            </select>
+                                                        </label>
+                                                        @if (ExpressionUsesField(metric.Value.Op))
+                                                        {
+                                                            <label>
+                                                                <span>Feld</span>
+                                                                <select @bind="metric.Value.Field">
+                                                                    <option value="">– Feld –</option>
+                                                                    @foreach (var field in FieldsFor(selected.Dataset))
+                                                                    {
+                                                                        <option value="@field">@field</option>
+                                                                    }
+                                                                </select>
+                                                            </label>
+                                                        }
+                                                        <div class="designer-inspector-grid">
+                                                            <label>
+                                                                <span>Format</span>
+                                                                <input @bind="metric.Format" />
+                                                            </label>
+                                                            <label>
+                                                                <span>Einheit</span>
+                                                                <input @bind="metric.Unit" />
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+
+                                        @if (selected.Type.Equals("grouped-board", StringComparison.OrdinalIgnoreCase)
+                                             && selected.Board is not null)
+                                        {
+                                            <div class="designer-inspector-section">
+                                                <strong>Board-Struktur</strong>
+                                                <label>
+                                                    <span>Bereichsgruppierung (; getrennt)</span>
+                                                    <input value="@string.Join("; ", selected.Board.SectionGroupBy)"
+                                                           @onchange="e => SetStringList(selected.Board.SectionGroupBy, e.Value?.ToString())" />
+                                                </label>
+                                                <label>
+                                                    <span>Zeilengruppierung (; getrennt)</span>
+                                                    <input value="@string.Join("; ", selected.Board.RowGroupBy)"
+                                                           @onchange="e => SetStringList(selected.Board.RowGroupBy, e.Value?.ToString())" />
+                                                </label>
+                                                <small>
+                                                    Spalten, Status-Mappings und Regeln bleiben vollständig im selben
+                                                    Komponentenmodell und werden im nächsten Designer-Schritt grafisch erweitert.
+                                                </small>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </aside>
+                        </div>
+                    }
+                }
             </section>
         }
 
@@ -383,7 +668,7 @@ else
             </section>
         }
 
-        <footer>DynReport Designer 0.8.0 · Runtime und Designer verwenden dasselbe Paketmodell</footer>
+        <footer>DynReport Designer 0.9.0 · Runtime und Designer verwenden dasselbe Paketmodell</footer>
     </main>
 </div>
 }
@@ -405,6 +690,8 @@ else
     private string revisionWarning = "";
     private string tab = "report";
     private string activeDataset = "";
+    private string activePageId = "";
+    private string? selectedComponentId;
     private IReadOnlyList<DynReportRevision> revisions = [];
     private IReadOnlyList<DynReportStoredRevision> metadataRevisions = [];
 
@@ -418,6 +705,15 @@ else
         && draft.TextFiles.TryGetValue(CurrentDataset.QueryFile, out var sql)
             ? sql
             : "";
+
+    private DynReportPage? CurrentPage =>
+        draft?.Document.Pages.FirstOrDefault(x =>
+            x.Id.Equals(activePageId, StringComparison.OrdinalIgnoreCase))
+        ?? draft?.Document.Pages.FirstOrDefault();
+
+    private DynVisual? SelectedComponent =>
+        CurrentPage?.Components.FirstOrDefault(x =>
+            x.Id.Equals(selectedComponentId, StringComparison.OrdinalIgnoreCase));
 
     protected override async Task OnParametersSetAsync()
     {
@@ -451,6 +747,8 @@ else
 
             draft = Clone(source);
             activeDataset = draft.Document.Datasets.FirstOrDefault()?.Id ?? "";
+            activePageId = draft.Document.Pages.FirstOrDefault()?.Id ?? "";
+            selectedComponentId = null;
             await ReloadRevisionsAsync();
         }
         catch (Exception ex)
@@ -554,6 +852,8 @@ else
 
             draft = Clone(restored);
             activeDataset = draft.Document.Datasets.FirstOrDefault()?.Id ?? "";
+            activePageId = draft.Document.Pages.FirstOrDefault()?.Id ?? "";
+            selectedComponentId = null;
             await ReloadRevisionsAsync();
 
             success = true;
@@ -569,6 +869,321 @@ else
             restoringRevision = null;
         }
     }
+
+    private void SelectPage(string pageId)
+    {
+        activePageId = pageId;
+        selectedComponentId = null;
+    }
+
+    private void SelectComponent(string componentId)
+    {
+        selectedComponentId = componentId;
+    }
+
+    private void AddPage()
+    {
+        if (draft is null)
+            return;
+
+        var number = draft.Document.Pages.Count + 1;
+        var id = UniquePageId($"page-{number}");
+
+        draft.Document.Pages.Add(new DynReportPage
+        {
+            Id = id,
+            Title = $"Seite {number}",
+            Columns = 12
+        });
+
+        activePageId = id;
+        selectedComponentId = null;
+    }
+
+    private void RemoveCurrentPage()
+    {
+        if (draft is null || CurrentPage is null || draft.Document.Pages.Count <= 1)
+            return;
+
+        var index = draft.Document.Pages.IndexOf(CurrentPage);
+        draft.Document.Pages.Remove(CurrentPage);
+
+        var next = draft.Document.Pages[Math.Clamp(index - 1, 0, draft.Document.Pages.Count - 1)];
+        activePageId = next.Id;
+        selectedComponentId = null;
+    }
+
+    private void AddComponent(string type)
+    {
+        if (draft is null || CurrentPage is null)
+            return;
+
+        var dataset = draft.Document.Datasets.FirstOrDefault();
+        var firstField = dataset?.Fields.FirstOrDefault() ?? "";
+        var id = UniqueComponentId(type.Replace("-strip", "").Replace("grouped-", ""));
+
+        var component = new DynVisual
+        {
+            Id = id,
+            Type = type,
+            Title = ComponentDisplayName(type),
+            Dataset = ComponentUsesDataset(type) ? dataset?.Id ?? "" : "",
+            Span = type.Equals("heading", StringComparison.OrdinalIgnoreCase)
+                || type.Equals("text", StringComparison.OrdinalIgnoreCase)
+                    ? CurrentPage.Columns
+                    : Math.Min(CurrentPage.Columns, 12),
+            MobileSpan = 12
+        };
+
+        if (type.Equals("metric-strip", StringComparison.OrdinalIgnoreCase))
+        {
+            component.Metrics.Add(new DynMetricItem
+            {
+                Id = "kpi-1",
+                Label = "Zeilen",
+                Value = new DynExpr { Op = "count" }
+            });
+        }
+
+        if (type.Equals("grouped-board", StringComparison.OrdinalIgnoreCase))
+        {
+            component.Board = new DynGroupedBoard();
+
+            if (!string.IsNullOrWhiteSpace(firstField))
+            {
+                component.Board.RowGroupBy.Add(firstField);
+                component.Board.Columns.Add(new DynBoardColumn
+                {
+                    Id = SafeId(firstField),
+                    Header = firstField,
+                    Kind = "text",
+                    Value = new DynExpr
+                    {
+                        Op = "field",
+                        Field = firstField
+                    }
+                });
+            }
+            else
+            {
+                component.Board.Columns.Add(new DynBoardColumn
+                {
+                    Id = "value",
+                    Header = "Wert",
+                    Kind = "text",
+                    Value = new DynExpr()
+                });
+            }
+        }
+
+        CurrentPage.Components.Add(component);
+        selectedComponentId = component.Id;
+    }
+
+    private void DuplicateSelected()
+    {
+        if (CurrentPage is null || SelectedComponent is null)
+            return;
+
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            WriteIndented = true
+        };
+
+        var copy = JsonSerializer.Deserialize<DynVisual>(
+            JsonSerializer.Serialize(SelectedComponent, options),
+            options)!;
+
+        copy.Id = UniqueComponentId(SelectedComponent.Type.Replace("-strip", "").Replace("grouped-", ""));
+
+        var index = CurrentPage.Components.IndexOf(SelectedComponent);
+        CurrentPage.Components.Insert(index + 1, copy);
+        selectedComponentId = copy.Id;
+    }
+
+    private void RemoveSelected()
+    {
+        if (CurrentPage is null || SelectedComponent is null)
+            return;
+
+        var index = CurrentPage.Components.IndexOf(SelectedComponent);
+        CurrentPage.Components.Remove(SelectedComponent);
+
+        if (CurrentPage.Components.Count == 0)
+        {
+            selectedComponentId = null;
+            return;
+        }
+
+        var nextIndex = Math.Clamp(index, 0, CurrentPage.Components.Count - 1);
+        selectedComponentId = CurrentPage.Components[nextIndex].Id;
+    }
+
+    private void MoveSelected(int offset)
+    {
+        if (CurrentPage is null || SelectedComponent is null || offset == 0)
+            return;
+
+        var currentIndex = CurrentPage.Components.IndexOf(SelectedComponent);
+        var targetIndex = currentIndex + offset;
+
+        if (targetIndex < 0 || targetIndex >= CurrentPage.Components.Count)
+            return;
+
+        CurrentPage.Components.RemoveAt(currentIndex);
+        CurrentPage.Components.Insert(targetIndex, SelectedComponent);
+    }
+
+    private void AddComponentValue()
+    {
+        if (SelectedComponent is null)
+            return;
+
+        SelectedComponent.Value = new DynExpr
+        {
+            Op = "count"
+        };
+
+        if (string.IsNullOrWhiteSpace(SelectedComponent.Dataset))
+            SelectedComponent.Dataset = draft?.Document.Datasets.FirstOrDefault()?.Id ?? "";
+    }
+
+    private void RemoveComponentValue()
+    {
+        if (SelectedComponent is null)
+            return;
+
+        SelectedComponent.Value = null;
+    }
+
+    private void AddMetric()
+    {
+        if (SelectedComponent is null
+            || !SelectedComponent.Type.Equals("metric-strip", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var number = SelectedComponent.Metrics.Count + 1;
+        var id = UniqueMetricId(SelectedComponent, $"kpi-{number}");
+
+        SelectedComponent.Metrics.Add(new DynMetricItem
+        {
+            Id = id,
+            Label = $"Kennzahl {number}",
+            Value = new DynExpr { Op = "count" }
+        });
+    }
+
+    private void RemoveMetric(DynMetricItem metric)
+    {
+        SelectedComponent?.Metrics.Remove(metric);
+    }
+
+    private IEnumerable<string> FieldsFor(string datasetId)
+    {
+        if (draft is null || string.IsNullOrWhiteSpace(datasetId))
+            return [];
+
+        return draft.Document.Datasets
+            .FirstOrDefault(x => x.Id.Equals(datasetId, StringComparison.OrdinalIgnoreCase))
+            ?.Fields
+            ?? [];
+    }
+
+    private static bool ComponentUsesDataset(string type) => true;
+
+    private static bool ExpressionUsesField(string op) =>
+        !op.Equals("count", StringComparison.OrdinalIgnoreCase);
+
+    private static void SetStringList(List<string> target, string? value)
+    {
+        target.Clear();
+
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+
+        target.AddRange(value.Split(
+            ';',
+            StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private string UniquePageId(string seed)
+    {
+        if (draft is null)
+            return seed;
+
+        var existing = draft.Document.Pages
+            .Select(x => x.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return UniqueId(seed, existing);
+    }
+
+    private string UniqueComponentId(string seed)
+    {
+        if (draft is null)
+            return seed;
+
+        var existing = draft.Document.Pages
+            .SelectMany(x => x.Components)
+            .Select(x => x.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return UniqueId(SafeId(seed), existing);
+    }
+
+    private static string UniqueMetricId(DynVisual component, string seed)
+    {
+        var existing = component.Metrics
+            .Select(x => x.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return UniqueId(SafeId(seed), existing);
+    }
+
+    private static string UniqueId(string seed, HashSet<string> existing)
+    {
+        var normalized = string.IsNullOrWhiteSpace(seed) ? "item" : seed;
+
+        if (!existing.Contains(normalized))
+            return normalized;
+
+        for (var i = 2; i < 10000; i++)
+        {
+            var candidate = $"{normalized}-{i}";
+            if (!existing.Contains(candidate))
+                return candidate;
+        }
+
+        return $"{normalized}-{Guid.NewGuid():N}";
+    }
+
+    private static string SafeId(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "item";
+
+        var chars = value.Trim().ToLowerInvariant()
+            .Select(ch => char.IsLetterOrDigit(ch) ? ch : '-')
+            .ToArray();
+
+        var id = new string(chars)
+            .Replace("--", "-", StringComparison.Ordinal)
+            .Trim('-');
+
+        return string.IsNullOrWhiteSpace(id) ? "item" : id;
+    }
+
+    private static string ComponentDisplayName(string type) => type.ToLowerInvariant() switch
+    {
+        "metric-strip" => "Kennzahlen",
+        "grouped-board" => "Board",
+        "table" => "Tabelle",
+        "chart" => "Diagramm",
+        "heading" => "Überschrift",
+        "text" => "Text",
+        _ => type
+    };
 
     private static string FormatBytes(long bytes)
     {
