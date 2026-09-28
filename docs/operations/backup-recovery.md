@@ -5,16 +5,18 @@
 1. DynReport metadata SQL database
 2. Published report revisions / package storage
 3. APP-01 production configuration
-4. data-source credential/secret recovery procedure
-5. TLS certificates required by IIS/SQL validation
-6. audit retention store
-7. Git repository / CI artifacts
+4. portal-managed permission overrides in `C:\ProgramData\DynReportSystem\Config`
+5. data-source credential/secret recovery procedure
+6. TLS certificates required by IIS/SQL validation
+7. audit retention store
+8. Git repository / CI artifacts
 
 ## Minimum operational policy
 
 - metadata DB: SQL full backup plus differential/log strategy according to agreed RPO
 - package revisions: immutable and backed up independently
 - configuration: backed up without exposing secrets in Git
+- portal permissions: back up `C:\ProgramData\DynReportSystem\Config\permissions-overrides.json` and its `.bak` file
 - restore test: scheduled and documented
 - rollback: activation pointer can return to the preceding validated report revision
 - installer deployment: preserve production configuration and report storage
@@ -51,12 +53,14 @@ APP-01 rollback validation is the baseline for the later cutover to an SQL-autho
 
 - restore metadata DB to isolated target
 - restore package/revision storage
+- restore `C:\ProgramData\DynReportSystem\Config` before opening the portal for users
 - restore or re-bind required certificates
 - restore secrets through the approved secret recovery mechanism
 - start DynReport against restored metadata
 - open portal
 - execute at least one Oxaion and one Syncos report
-- verify Windows SSO and report permissions
+- verify Windows SSO, folder permission inheritance and report permissions
+- open the portal permission administration and verify that direct and inherited grants match the pre-restore state
 - verify audit writes
 - restore an older native report revision through the designer
 - verify package hash/length validation succeeded
