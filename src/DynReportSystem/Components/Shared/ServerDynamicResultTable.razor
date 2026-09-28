@@ -426,6 +426,57 @@
         return $"{Package.Manifest.ReportId}|{Package.Manifest.Version}|{Visual.Id}|{parameters}";
     }
 
+    private DynTableAggregate? AggregateDefinition(string column)
+    {
+        if (Definition.PresentationMode.Equals("Grouped", StringComparison.OrdinalIgnoreCase))
+        {
+            return Definition.Aggregates.FirstOrDefault(aggregate =>
+                AggregateMatchesColumn(aggregate, column));
+        }
+
+        if (Definition.PresentationMode.Equals("Pivot", StringComparison.OrdinalIgnoreCase)
+            && Definition.Pivot is not null)
+        {
+            return Definition.Pivot.Measures.FirstOrDefault(aggregate =>
+            {
+                var label = AggregateLabel(aggregate);
+                return column.EndsWith(
+                    " · " + label,
+                    StringComparison.CurrentCultureIgnoreCase);
+            });
+        }
+
+        return null;
+    }
+
+    private static bool AggregateMatchesColumn(
+        DynTableAggregate aggregate,
+        string column)
+    {
+        var candidates = new[]
+        {
+            aggregate.Alias,
+            aggregate.Label,
+            string.IsNullOrWhiteSpace(aggregate.Field)
+                ? aggregate.Function
+                : $"{aggregate.Function}_{aggregate.Field}"
+        };
+
+        return candidates
+            .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
+            .Any(candidate =>
+                candidate.Equals(column, StringComparison.CurrentCultureIgnoreCase));
+    }
+
+    private static string AggregateLabel(DynTableAggregate aggregate) =>
+        !string.IsNullOrWhiteSpace(aggregate.Label)
+            ? aggregate.Label
+            : !string.IsNullOrWhiteSpace(aggregate.Alias)
+                ? aggregate.Alias
+                : string.IsNullOrWhiteSpace(aggregate.Field)
+                    ? aggregate.Function
+                    : $"{aggregate.Function}_{aggregate.Field}";
+
     private string GroupLabel(IReadOnlyDictionary<string, object?> row)
     {
         var groups = Definition.GroupBy
@@ -448,14 +499,18 @@
         if (value is null) return "";
 
         var definition = ColumnDefinition(key);
-        if (!string.IsNullOrWhiteSpace(definition?.Format) && value is IFormattable formattable)
+        var aggregate = AggregateDefinition(key);
+        var format = definition?.Format ?? aggregate?.Format ?? "";
+        var unit = definition?.Unit ?? aggregate?.Unit ?? "";
+
+        if (!string.IsNullOrWhiteSpace(format) && value is IFormattable formattable)
         {
             try
             {
-                var formatted = formattable.ToString(definition.Format, DeAt) ?? "";
-                return string.IsNullOrWhiteSpace(definition.Unit)
+                var formatted = formattable.ToString(format, DeAt) ?? "";
+                return string.IsNullOrWhiteSpace(unit)
                     ? formatted
-                    : $"{formatted} {definition.Unit}";
+                    : $"{formatted} {unit}";
             }
             catch (FormatException)
             {
@@ -475,9 +530,9 @@
                 .Replace("\r", " · ")
         };
 
-        return string.IsNullOrWhiteSpace(definition?.Unit)
+        return string.IsNullOrWhiteSpace(unit)
             ? text
-            : $"{text} {definition.Unit}";
+            : $"{text} {unit}";
     }
 
     private async Task ExportPageAsync()
