@@ -93,8 +93,21 @@
                     }
                 </thead>
                 <tbody>
+                    @{
+                        string? previousGroup = null;
+                    }
                     @foreach (var row in result.Rows)
                     {
+                        var group = GroupLabel(row);
+                        if (!string.IsNullOrWhiteSpace(group)
+                            && !string.Equals(group, previousGroup, StringComparison.Ordinal))
+                        {
+                            <tr class="rdl-table-group-row">
+                                <td colspan="@DisplayColumns.Count">@group</td>
+                            </tr>
+                            previousGroup = group;
+                        }
+
                         <tr>
                             @foreach (var column in DisplayColumns)
                             {
@@ -384,6 +397,22 @@
                 .Select(x => x.Key + "=" + string.Join(";", x.Value.Values)));
 
         return $"{Package.Manifest.ReportId}|{Package.Manifest.Version}|{Visual.Id}|{parameters}";
+    }
+
+    private string GroupLabel(IReadOnlyDictionary<string, object?> row)
+    {
+        var groups = Definition.GroupBy
+            .Where(groupColumn =>
+                result?.Columns.Any(column =>
+                    column.Equals(groupColumn, StringComparison.OrdinalIgnoreCase)) == true)
+            .Take(3)
+            .ToArray();
+
+        if (groups.Length == 0)
+            return "";
+
+        return string.Join(" · ", groups.Select(groupColumn =>
+            $"{Header(groupColumn)}: {Cell(row, groupColumn)}"));
     }
 
     private string Cell(IReadOnlyDictionary<string, object?> row, string key)
