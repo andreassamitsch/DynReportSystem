@@ -37,7 +37,9 @@
     "AbsoluteMaxQuerySeconds": 300,
     "SlowQueryThresholdMs": 2000,
     "AbsoluteMaxResultBytes": 67108864,
-    "MaxInteractivePageSize": 1000
+    "MaxInteractivePageSize": 1000,
+    "MaxInteractivePivotRows": 250,
+    "MaxInteractivePivotCells": 5000
   },
   "Security": {
     "AllowLegacyPackageConnectionStringFallback": true,
