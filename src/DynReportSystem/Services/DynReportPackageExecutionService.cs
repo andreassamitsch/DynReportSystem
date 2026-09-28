@@ -816,7 +816,7 @@ public sealed class DynReportPackageExecutionService(
 
         return consumers.All(component =>
             component.Type.Equals("table", StringComparison.OrdinalIgnoreCase)
-            && component.Table?.DataMode.Equals("Server", StringComparison.OrdinalIgnoreCase) == true);
+            && string.Equals(component.Table?.DataMode, "Server", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string NormalizeComposableSelect(
