@@ -386,10 +386,10 @@ else
                                         </label>
                                         <label>
                                             <span>Untertitel</span>
-                                            <input @bind="component.Subtitle" />
+                                            <input @bind="selected.Subtitle" />
                                         </label>
 
-                                        @if (ComponentUsesDataset(component.Type))
+                                        @if (ComponentUsesDataset(selected.Type))
                                         {
                                             <label>
                                                 <span>Dataset</span>
@@ -408,27 +408,27 @@ else
                                                 <span>Desktop</span>
                                                 <input type="number"
                                                        min="1"
-                                                       max="@Math.Max(1, page.Columns)"
-                                                       @bind="component.Span" />
+                                                       max="@Math.Max(1, currentPage.Columns)"
+                                                       @bind="selected.Span" />
                                             </label>
                                             <label>
                                                 <span>Mobil</span>
-                                                <input type="number" min="1" max="24" @bind="component.MobileSpan" />
+                                                <input type="number" min="1" max="24" @bind="selected.MobileSpan" />
                                             </label>
                                         </div>
 
                                         <label>
                                             <span>CSS-Klasse</span>
-                                            <input @bind="component.CssClass" />
+                                            <input @bind="selected.CssClass" />
                                         </label>
 
-                                        @if (component.Type.Equals("heading", StringComparison.OrdinalIgnoreCase)
-                                             || component.Type.Equals("text", StringComparison.OrdinalIgnoreCase))
+                                        @if (selected.Type.Equals("heading", StringComparison.OrdinalIgnoreCase)
+                                             || selected.Type.Equals("text", StringComparison.OrdinalIgnoreCase))
                                         {
                                             <div class="designer-inspector-section">
                                                 <strong>Wert</strong>
 
-                                                @if (component.Value is null)
+                                                @if (selected.Value is null)
                                                 {
                                                     <button class="ghost-btn" @onclick="AddComponentValue">
                                                         + dynamischen Wert hinzufügen
@@ -438,7 +438,7 @@ else
                                                 {
                                                     <label>
                                                         <span>Operation</span>
-                                                        <select @bind="component.Value.Op">
+                                                        <select @bind="selected.Value.Op">
                                                             <option value="field">Erster Feldwert</option>
                                                             <option value="count">Anzahl Zeilen</option>
                                                             <option value="sum">Summe</option>
@@ -448,11 +448,11 @@ else
                                                         </select>
                                                     </label>
 
-                                                    @if (ExpressionUsesField(component.Value.Op))
+                                                    @if (ExpressionUsesField(selected.Value.Op))
                                                     {
                                                         <label>
                                                             <span>Feld</span>
-                                                            <select @bind="component.Value.Field">
+                                                            <select @bind="selected.Value.Field">
                                                                 <option value="">– Feld –</option>
                                                                 @foreach (var field in FieldsFor(selected.Dataset))
                                                                 {
@@ -465,11 +465,11 @@ else
                                                     <div class="designer-inspector-grid">
                                                         <label>
                                                             <span>Format</span>
-                                                            <input @bind="component.Format" />
+                                                            <input @bind="selected.Format" />
                                                         </label>
                                                         <label>
                                                             <span>Einheit</span>
-                                                            <input @bind="component.Unit" />
+                                                            <input @bind="selected.Unit" />
                                                         </label>
                                                     </div>
 
@@ -489,7 +489,7 @@ else
                                                     <button @onclick="AddMetric">+ KPI</button>
                                                 </div>
 
-                                                @foreach (var metric in component.Metrics.ToArray())
+                                                @foreach (var metric in selected.Metrics.ToArray())
                                                 {
                                                     <div class="designer-metric-editor">
                                                         <div class="designer-metric-editor-head">
@@ -547,13 +547,13 @@ else
                                                 <strong>Board-Struktur</strong>
                                                 <label>
                                                     <span>Bereichsgruppierung (; getrennt)</span>
-                                                    <input value="@string.Join("; ", component.Board.SectionGroupBy)"
-                                                           @onchange="e => SetStringList(component.Board.SectionGroupBy, e.Value?.ToString())" />
+                                                    <input value="@string.Join("; ", selected.Board.SectionGroupBy)"
+                                                           @onchange="e => SetStringList(selected.Board.SectionGroupBy, e.Value?.ToString())" />
                                                 </label>
                                                 <label>
                                                     <span>Zeilengruppierung (; getrennt)</span>
-                                                    <input value="@string.Join("; ", component.Board.RowGroupBy)"
-                                                           @onchange="e => SetStringList(component.Board.RowGroupBy, e.Value?.ToString())" />
+                                                    <input value="@string.Join("; ", selected.Board.RowGroupBy)"
+                                                           @onchange="e => SetStringList(selected.Board.RowGroupBy, e.Value?.ToString())" />
                                                 </label>
                                                 <small>
                                                     Spalten, Status-Mappings und Regeln bleiben vollständig im selben
