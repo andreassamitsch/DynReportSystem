@@ -8,10 +8,14 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/site.css" />
-    <HeadOutlet @rendermode="InteractiveServer" />
+    <HeadOutlet @rendermode="new InteractiveServerRenderMode(prerender: false)" />
 </head>
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <div id="dynreport-startup-indicator" class="startup-indicator">
+        <div class="loading-ring"></div>
+        <span>DynReport wird verbunden …</span>
+    </div>
+    <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
     <div id="dynreport-client-error" class="client-error-panel" hidden>
         <div class="client-error-card">
             <div>

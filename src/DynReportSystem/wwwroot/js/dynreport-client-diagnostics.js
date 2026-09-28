@@ -211,6 +211,8 @@
             state.interactive = true;
             clearTimeout(timer);
             addTimeline('CIRCUIT', 'Interactive Server aktiv');
+            const startup = qs('dynreport-startup-indicator');
+            if (startup) startup.hidden = true;
             hide();
         },
         markStart() {
