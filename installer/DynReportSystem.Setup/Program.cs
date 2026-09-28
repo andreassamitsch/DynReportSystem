@@ -184,6 +184,7 @@ void Install()
     Console.WriteLine($"Berichte: {reportsDir}");
     Console.WriteLine($"DynReport-Pakete: {Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "DynReportSystem", "Packages")}");
     Console.WriteLine($"Revisionen: {Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "DynReportSystem", "Revisions")}");
+    Console.WriteLine($"Portal-Berechtigungen: {Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "DynReportSystem", "Config", "permissions-overrides.json")}");
 
     try
     {
