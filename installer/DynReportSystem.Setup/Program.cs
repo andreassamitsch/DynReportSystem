@@ -342,6 +342,8 @@ $appcmd = Join-Path $env:windir 'System32\inetsrv\appcmd.exe'
 if ($LASTEXITCODE -ne 0) {{ throw 'Anonymous Authentication konnte nicht in ApplicationHost.config konfiguriert werden.' }}
 & $appcmd set config '{SiteName}' /section:system.webServer/security/authentication/windowsAuthentication /enabled:true /commit:apphost | Out-Null
 if ($LASTEXITCODE -ne 0) {{ throw 'Windows Authentication konnte nicht in ApplicationHost.config konfiguriert werden.' }}
+& $appcmd set config '{SiteName}' /section:system.webServer/webSocket /enabled:true /commit:apphost | Out-Null
+if ($LASTEXITCODE -ne 0) {{ throw 'WebSocket Protocol konnte für DynReport nicht aktiviert werden.' }}
 icacls '{escaped}' /grant 'IIS_IUSRS:(OI)(CI)(RX)' /T /C | Out-Null
 
 $dynRoot = Join-Path $env:ProgramData 'DynReportSystem'
@@ -361,7 +363,7 @@ void EnsureIisFeatures()
 {
     RunPowerShell(@"
 if (Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue) {
-  Install-WindowsFeature Web-Server,Web-Windows-Auth,Web-Mgmt-Tools -IncludeManagementTools | Out-Null
+  Install-WindowsFeature Web-Server,Web-Windows-Auth,Web-WebSockets,Web-Mgmt-Tools -IncludeManagementTools | Out-Null
 }
 ", throwOnError: false);
 }
