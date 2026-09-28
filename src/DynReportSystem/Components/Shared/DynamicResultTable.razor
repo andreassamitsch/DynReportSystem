@@ -2,13 +2,16 @@
 
 <div class="dynamic-table-wrap">
     <div class="table-toolbar">
-        <label class="table-search">
-            <span>Suche</span>
-            <input type="search"
-                   placeholder="Alle Spalten durchsuchen …"
-                   value="@search"
-                   @oninput="OnSearch" />
-        </label>
+        @if (Definition?.Searchable != false)
+        {
+            <label class="table-search">
+                <span>Suche</span>
+                <input type="search"
+                       placeholder="Alle Spalten durchsuchen …"
+                       value="@search"
+                       @oninput="OnSearch" />
+            </label>
+        }
 
         <div class="table-filter-summary">
             @if (ActiveFilterCount > 0)
@@ -45,27 +48,40 @@
                     @foreach (var column in DisplayColumns)
                     {
                         <th>
-                            <button class="column-sort" @onclick="() => Sort(column)">
-                                <span>@column</span>
-                                <span class="sort-indicator">
-                                    @(sortColumn == column ? (ascending ? "▲" : "▼") : "↕")
-                                </span>
-                            </button>
+                            @if (CanSort(column))
+                            {
+                                <button class="column-sort" @onclick="() => Sort(column)">
+                                    <span>@Header(column)</span>
+                                    <span class="sort-indicator">
+                                        @(sortColumn == column ? (ascending ? "▲" : "▼") : "↕")
+                                    </span>
+                                </button>
+                            }
+                            else
+                            {
+                                <span>@Header(column)</span>
+                            }
                         </th>
                     }
                 </tr>
-                <tr class="table-filter-row">
-                    @foreach (var column in DisplayColumns)
-                    {
-                        <th>
-                            <input class="column-filter"
-                                   value="@Filter(column)"
-                                   @oninput="e => SetFilter(column, e.Value?.ToString())"
-                                   placeholder="Filtern …"
-                                   title="Text oder =, !=, >, >=, <, <=" />
-                        </th>
-                    }
-                </tr>
+                @if (Definition?.Filterable != false)
+                {
+                    <tr class="table-filter-row">
+                        @foreach (var column in DisplayColumns)
+                        {
+                            <th>
+                                @if (CanFilter(column))
+                                {
+                                    <input class="column-filter"
+                                           value="@Filter(column)"
+                                           @oninput="e => SetFilter(column, e.Value?.ToString())"
+                                           placeholder="Filtern …"
+                                           title="Text oder =, !=, >, >=, <, <=" />
+                                }
+                            </th>
+                        }
+                    </tr>
+                }
             </thead>
             <tbody>
                 @{
@@ -109,17 +125,50 @@
     [Parameter] public IReadOnlyList<string>? Columns { get; set; }
     [Parameter] public IReadOnlyList<string>? GroupColumns { get; set; }
     [Parameter] public IReadOnlyList<string>? InitialSortColumns { get; set; }
+    [Parameter] public DynTableDefinition? Definition { get; set; }
 
-    private IReadOnlyList<string> DisplayColumns =>
-        Columns is null || Columns.Count == 0
-            ? Result.Columns
-            : Columns
-                .Select(requested => Result.Columns.FirstOrDefault(column =>
-                    column.Equals(requested, StringComparison.OrdinalIgnoreCase)))
-                .Where(column => !string.IsNullOrWhiteSpace(column))
-                .Cast<string>()
-                .Distinct(StringComparer.OrdinalIgnoreCase)
+    private IReadOnlyList<string> DisplayColumns
+    {
+        get
+        {
+            var requested = Definition?.Columns
+                .Where(x => !x.Hidden && !string.IsNullOrWhiteSpace(x.Field))
+                .Select(x => x.Field)
                 .ToArray();
+
+            if (requested is null || requested.Length == 0)
+                requested = Columns?.ToArray();
+
+            return requested is null || requested.Length == 0
+                ? Result.Columns
+                : requested
+                    .Select(field => Result.Columns.FirstOrDefault(column =>
+                        column.Equals(field, StringComparison.OrdinalIgnoreCase)))
+                    .Where(column => !string.IsNullOrWhiteSpace(column))
+                    .Cast<string>()
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+        }
+    }
+
+    private IReadOnlyList<string> EffectiveGroups =>
+        Definition?.GroupBy.Count > 0 ? Definition.GroupBy : GroupColumns ?? [];
+
+    private DynTableColumn? ColumnDefinition(string column) =>
+        Definition?.Columns.FirstOrDefault(x =>
+            x.Field.Equals(column, StringComparison.OrdinalIgnoreCase));
+
+    private string Header(string column)
+    {
+        var configured = ColumnDefinition(column)?.Header;
+        return string.IsNullOrWhiteSpace(configured) ? column : configured;
+    }
+
+    private bool CanSort(string column) =>
+        Definition?.Sortable != false && ColumnDefinition(column)?.Sortable != false;
+
+    private bool CanFilter(string column) =>
+        Definition?.Filterable != false && ColumnDefinition(column)?.Filterable != false;
 
     private static readonly CultureInfo DeAt = CultureInfo.GetCultureInfo("de-AT");
     private readonly Dictionary<string, string> filters = new(StringComparer.OrdinalIgnoreCase);
@@ -163,6 +212,9 @@
         sortColumn = null;
         filters.Clear();
         filtered = [];
+
+        if (Definition is not null)
+            pageSize = Math.Clamp(Definition.PageSize, 1, 5000);
     }
 
     private void OnSearch(ChangeEventArgs e)
@@ -215,7 +267,7 @@
 
         IEnumerable<Dictionary<string, object?>> rows = Result.Rows;
 
-        if (!string.IsNullOrWhiteSpace(search))
+        if (Definition?.Searchable != false && !string.IsNullOrWhiteSpace(search))
         {
             rows = rows.Where(row =>
                 DisplayColumns.Any(column =>
@@ -235,15 +287,32 @@
         }
         else
         {
-            var originalSort = (InitialSortColumns ?? GroupColumns ?? [])
-                .Where(column => Result.Columns.Contains(column, StringComparer.OrdinalIgnoreCase))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            var configuredSort = Definition?.DefaultSort
+                .Where(x => Result.Columns.Contains(x.Field, StringComparer.OrdinalIgnoreCase))
+                .ToArray()
+                ?? [];
 
-            // Apply from least to most significant. LINQ OrderBy is stable, so
-            // the last pass becomes the primary SSRS sort/group key.
-            foreach (var column in originalSort.Reverse())
-                rows = rows.OrderBy(row => QueryResult.Get(row, column), ObjectComparer.Instance);
+            if (configuredSort.Length > 0)
+            {
+                foreach (var sort in configuredSort.Reverse())
+                {
+                    rows = sort.Direction.Equals("Desc", StringComparison.OrdinalIgnoreCase)
+                        ? rows.OrderByDescending(row => QueryResult.Get(row, sort.Field), ObjectComparer.Instance)
+                        : rows.OrderBy(row => QueryResult.Get(row, sort.Field), ObjectComparer.Instance);
+                }
+            }
+            else
+            {
+                var originalSort = (InitialSortColumns ?? EffectiveGroups)
+                    .Where(column => Result.Columns.Contains(column, StringComparer.OrdinalIgnoreCase))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                // Apply from least to most significant. LINQ OrderBy is stable, so
+                // the last pass becomes the primary SSRS sort/group key.
+                foreach (var column in originalSort.Reverse())
+                    rows = rows.OrderBy(row => QueryResult.Get(row, column), ObjectComparer.Instance);
+            }
         }
 
         filtered = rows.ToList();
@@ -300,7 +369,7 @@
 
     private string GroupLabel(IReadOnlyDictionary<string, object?> row)
     {
-        var groups = (GroupColumns ?? [])
+        var groups = EffectiveGroups
             .Where(column => Result.Columns.Contains(column, StringComparer.OrdinalIgnoreCase))
             .Take(3)
             .ToArray();
@@ -336,12 +405,28 @@
         if (page + 1 < PageCount) page++;
     }
 
-    private static string Cell(IReadOnlyDictionary<string, object?> row, string key)
+    private string Cell(IReadOnlyDictionary<string, object?> row, string key)
     {
         var value = QueryResult.Get(row, key);
         if (value is null) return "";
 
-        return value switch
+        var definition = ColumnDefinition(key);
+        if (!string.IsNullOrWhiteSpace(definition?.Format) && value is IFormattable formattable)
+        {
+            try
+            {
+                var formatted = formattable.ToString(definition.Format, DeAt) ?? "";
+                return string.IsNullOrWhiteSpace(definition.Unit)
+                    ? formatted
+                    : $"{formatted} {definition.Unit}";
+            }
+            catch (FormatException)
+            {
+                // Fall back to the generic formatter below.
+            }
+        }
+
+        var text = value switch
         {
             DateTime date => date.ToString("dd.MM.yyyy HH:mm", DeAt),
             DateTimeOffset dto => dto.ToString("dd.MM.yyyy HH:mm", DeAt),
@@ -353,6 +438,10 @@
                 .Replace("\n", " · ")
                 .Replace("\r", " · ")
         };
+
+        return string.IsNullOrWhiteSpace(definition?.Unit)
+            ? text
+            : $"{text} {definition.Unit}";
     }
 
     private sealed class ObjectComparer : IComparer<object?>
