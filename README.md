@@ -2,6 +2,26 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
+## Version 0.7.6
+
+Version 0.7.6 changes the IIS hosting boundary for DynReport Interactive Server.
+
+The APP-01 diagnostics showed a successful `/_blazor/negotiate` HTTP 200 response
+followed by `Unexpected end of JSON input` inside `blazor.web.js`. This is the
+failure shape produced when SignalR receives an empty negotiation body under IIS.
+
+- switches ASP.NET Core hosting from IIS in-process to out-of-process
+- Kestrel now runs DynReport behind the ASP.NET Core Module (ANCM)
+- IIS remains responsible for HTTPS, Windows Authentication and front-door access
+- uses the IIS Integration Windows authentication scheme for the forwarded identity
+- the installer safely stops either the legacy in-process `w3wp.exe` worker or
+  the new out-of-process `DynReportSystem.exe` worker during upgrades
+- `/health/live` reports the hosting process/model for verification
+- the client diagnostic now displays negotiate Content-Type, response-body length
+  and a short body preview instead of checking HTTP status alone
+
+No DynReport SQL metadata migration is required for this hosting change.
+
 ## Version 0.7.5
 
 Version 0.7.5 adds first-class diagnostics for missing Blazor interactivity and
@@ -361,7 +381,7 @@ connection-string fallback exists only for the migration phase and must not cont
 
 ## Installation / update
 
-GitHub Actions builds DynReportSystem-Server-Setup-0.7.5-win-x64.exe.
+GitHub Actions builds DynReportSystem-Server-Setup-0.7.6-win-x64.exe.
 
 For an SSRS migration, keep the setup EXE, MigrationBundle.zip and the optimized Kundencockpit.rdl (when updating it) next to each other. The setup performs an in-place update and preserves the existing production appsettings, local DynReport permissions and IIS/HTTPS bindings.
 
