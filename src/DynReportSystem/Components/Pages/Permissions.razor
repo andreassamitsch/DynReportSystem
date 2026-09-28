@@ -283,7 +283,7 @@ else
                     string.IsNullOrWhiteSpace(search)
                     || folder.Title.Contains(search, StringComparison.CurrentCultureIgnoreCase)
                     || FolderPath(folder.Id).Contains(search, StringComparison.CurrentCultureIgnoreCase))
-                .OrderBy(FolderPath, StringComparer.CurrentCultureIgnoreCase)
+                .OrderBy(folder => FolderPath(folder.Id), StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
 
     private List<ReportItem> VisibleReports =>
