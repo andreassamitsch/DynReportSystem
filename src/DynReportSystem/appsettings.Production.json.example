@@ -36,7 +36,8 @@
     "AbsoluteMaxRows": 100000,
     "AbsoluteMaxQuerySeconds": 300,
     "SlowQueryThresholdMs": 2000,
-    "AbsoluteMaxResultBytes": 67108864
+    "AbsoluteMaxResultBytes": 67108864,
+    "MaxInteractivePageSize": 1000
   },
   "Security": {
     "AllowLegacyPackageConnectionStringFallback": true,
