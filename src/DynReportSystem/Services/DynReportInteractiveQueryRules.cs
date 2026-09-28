@@ -20,30 +20,32 @@ public static class DynReportInteractiveQueryRules
         if (!string.Equals(visual.Table.DataMode, "Auto", StringComparison.OrdinalIgnoreCase))
             return false;
 
+        var dataSet = package.Document.Datasets.FirstOrDefault(x =>
+            x.Id.Equals(visual.Dataset, StringComparison.OrdinalIgnoreCase));
+
+        if (dataSet is null
+            || !package.TextFiles.TryGetValue(dataSet.QueryFile, out var sql)
+            || string.IsNullOrWhiteSpace(sql)
+            || !TryNormalizeComposableSelect(
+                dataSet,
+                sql,
+                out _,
+                out _))
+            return false;
+
+        var presentation = visual.Table.PresentationMode ?? "Rows";
+        if (!presentation.Equals("Rows", StringComparison.OrdinalIgnoreCase))
+            return true;
+
         var consumers = package.Document.Pages
             .SelectMany(page => page.Components)
             .Where(component =>
                 component.Dataset.Equals(visual.Dataset, StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
-        if (consumers.Length == 0
-            || consumers.Any(component =>
-                !component.Type.Equals("table", StringComparison.OrdinalIgnoreCase)))
-            return false;
-
-        var dataSet = package.Document.Datasets.FirstOrDefault(x =>
-            x.Id.Equals(visual.Dataset, StringComparison.OrdinalIgnoreCase));
-
-        if (dataSet is null
-            || !package.TextFiles.TryGetValue(dataSet.QueryFile, out var sql)
-            || string.IsNullOrWhiteSpace(sql))
-            return false;
-
-        return TryNormalizeComposableSelect(
-            dataSet,
-            sql,
-            out _,
-            out _);
+        return consumers.Length > 0
+            && consumers.All(component =>
+                component.Type.Equals("table", StringComparison.OrdinalIgnoreCase));
     }
 
     public static string NormalizeComposableSelect(
