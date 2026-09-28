@@ -567,11 +567,11 @@ else
 
                                                 @if (string.Equals(selected.Table.DataMode, "Server", StringComparison.OrdinalIgnoreCase))
                                                 {
-                                                    <small>
-                                                        Servermodus benötigt eine komponierbare SQL-SELECT-Abfrage ohne abschließendes
-                                                        ORDER BY. Filter, Sortierung und Paging werden vom DynReport Query Runtime
-                                                        parametrisiert an SQL Server übergeben.
-                                                    </small>
+                                                    var serverStatus = ServerQueryStatus(selected);
+                                                    <div class="notice @(serverStatus.Compatible ? "info" : "warn") compact-notice">
+                                                        <strong>@(serverStatus.Compatible ? "Servermodus bereit" : "Servermodus noch nicht möglich")</strong>
+                                                        <div>@serverStatus.Message</div>
+                                                    </div>
                                                 }
 
                                                 <div class="designer-inspector-grid">
@@ -1492,6 +1492,32 @@ else
     private void RemoveMetric(DynMetricItem metric)
     {
         SelectedComponent?.Metrics.Remove(metric);
+    }
+
+    private (bool Compatible, string Message) ServerQueryStatus(DynVisual visual)
+    {
+        if (draft is null)
+            return (false, "Bericht ist noch nicht geladen.");
+
+        var dataSet = draft.Document.Datasets.FirstOrDefault(x =>
+            x.Id.Equals(visual.Dataset, StringComparison.OrdinalIgnoreCase));
+
+        if (dataSet is null)
+            return (false, "Bitte zuerst ein Dataset auswählen.");
+
+        if (!draft.TextFiles.TryGetValue(dataSet.QueryFile, out var sql)
+            || string.IsNullOrWhiteSpace(sql))
+        {
+            return (false, $"SQL-Datei '{dataSet.QueryFile}' fehlt oder ist leer.");
+        }
+
+        return DynReportInteractiveQueryRules.TryNormalizeComposableSelect(
+            dataSet,
+            sql,
+            out _,
+            out var compatibilityError)
+                ? (true, "Die Dataset-Abfrage ist für serverseitiges Filtern, Sortieren und Paging geeignet.")
+                : (false, compatibilityError);
     }
 
     private IEnumerable<string> FieldsFor(string datasetId)
