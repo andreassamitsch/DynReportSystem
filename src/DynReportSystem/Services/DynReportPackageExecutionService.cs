@@ -539,6 +539,34 @@ public sealed class DynReportPackageExecutionService(
 
         stopwatch.Stop();
 
+        metrics.InteractiveTableQueries.Add(
+            1,
+            new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
+            new KeyValuePair<string, object?>("dataset.id", dataSet.Id));
+        metrics.InteractiveTableDurationMs.Record(
+            stopwatch.Elapsed.TotalMilliseconds,
+            new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
+            new KeyValuePair<string, object?>("dataset.id", dataSet.Id));
+        metrics.InteractiveTableRows.Record(
+            rows.Count,
+            new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
+            new KeyValuePair<string, object?>("dataset.id", dataSet.Id));
+
+        var slowThreshold = Math.Max(
+            250,
+            config.GetValue("Runtime:SlowQueryThresholdMs", 2000));
+        if (stopwatch.ElapsedMilliseconds >= slowThreshold)
+        {
+            logger.LogWarning(
+                "Slow interactive DynReport table query {ReportId}/{DatasetId}/{VisualId}: {DurationMs} ms, {RowCount}/{TotalRows} rows",
+                package.Manifest.ReportId,
+                dataSet.Id,
+                visual.Id,
+                stopwatch.ElapsedMilliseconds,
+                rows.Count,
+                totalRows);
+        }
+
         await metadata.WriteAuditAsync(
             new DynAuditEvent(
                 Guid.NewGuid(),
