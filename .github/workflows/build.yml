@@ -24,6 +24,14 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Validate Blazor app base path
+        shell: pwsh
+        run: |
+          $app = Get-Content src/DynReportSystem/Components/App.razor -Raw
+          if ($app -notmatch '<base\s+href="/"\s*/>') {
+            throw 'App.razor must contain <base href="/" /> so relative Blazor framework endpoints resolve at the site root.'
+          }
+
       - name: Vendor chart assets
         shell: pwsh
         run: |
@@ -59,9 +67,9 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: DynReportSystem-Server-Setup-0.7.8-win-x64
+          name: DynReportSystem-Server-Setup-0.7.9-win-x64
           path: |
-            artifacts/setup/DynReportSystem-Server-Setup-0.7.8-win-x64.exe
+            artifacts/setup/DynReportSystem-Server-Setup-0.7.9-win-x64.exe
             artifacts/setup/001-dynreport-metadata-schema.sql
             artifacts/setup/002-fix-audit-and-reportgrant-index.sql
             artifacts/setup/010-runtime-principal-template.sql
