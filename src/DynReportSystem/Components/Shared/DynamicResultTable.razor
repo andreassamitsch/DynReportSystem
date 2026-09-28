@@ -392,7 +392,8 @@
             "DynReportCharts.downloadCsv",
             $"{safe}_{DateTime.Now:yyyyMMdd_HHmm}.csv",
             DisplayColumns,
-            rows);
+            rows,
+            DisplayColumns.Select(Header).ToArray());
     }
 
     private void Previous()
