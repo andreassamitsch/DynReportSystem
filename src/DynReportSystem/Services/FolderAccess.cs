@@ -62,6 +62,7 @@ public sealed class FolderAccess(
     private readonly string _overridePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
         "DynReportSystem",
+        "Config",
         "permissions-overrides.json");
     private readonly object _lock = new();
     private PlatformCatalog? _catalog;
