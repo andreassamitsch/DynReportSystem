@@ -334,11 +334,28 @@ public sealed class FolderAccess(
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
         ?? throw new InvalidDataException($"ACL-Datei '{path}' ist leer.");
 
-    private static PermissionOverrideDocument ReadOverrides(string path) =>
-        JsonSerializer.Deserialize<PermissionOverrideDocument>(
-            File.ReadAllText(path),
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-        ?? new PermissionOverrideDocument();
+    private static PermissionOverrideDocument ReadOverrides(string path)
+    {
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
+
+        try
+        {
+            return JsonSerializer.Deserialize<PermissionOverrideDocument>(
+                File.ReadAllText(path),
+                options)
+                ?? new PermissionOverrideDocument();
+        }
+        catch (JsonException) when (File.Exists(path + ".bak"))
+        {
+            return JsonSerializer.Deserialize<PermissionOverrideDocument>(
+                File.ReadAllText(path + ".bak"),
+                options)
+                ?? new PermissionOverrideDocument();
+        }
+    }
 
     private static void ApplyOverrides(
         PlatformCatalog target,
