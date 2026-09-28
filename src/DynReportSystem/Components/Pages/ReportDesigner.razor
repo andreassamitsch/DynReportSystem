@@ -610,7 +610,11 @@ else
                                                     <div class="designer-metric-editor">
                                                         <div class="designer-metric-editor-head">
                                                             <strong>@(string.IsNullOrWhiteSpace(column.Header) ? column.Field : column.Header)</strong>
-                                                            <button class="danger" @onclick="() => RemoveTableColumn(column)">×</button>
+                                                            <div class="designer-inspector-actions">
+                                                                <button title="nach oben" @onclick="() => MoveTableColumn(column, -1)">↑</button>
+                                                                <button title="nach unten" @onclick="() => MoveTableColumn(column, 1)">↓</button>
+                                                                <button class="danger" @onclick="() => RemoveTableColumn(column)">×</button>
+                                                            </div>
                                                         </div>
 
                                                         <label>
@@ -1396,6 +1400,22 @@ else
     private void RemoveTableColumn(DynTableColumn column)
     {
         SelectedComponent?.Table?.Columns.Remove(column);
+    }
+
+    private void MoveTableColumn(DynTableColumn column, int offset)
+    {
+        if (SelectedComponent?.Table is null || offset == 0)
+            return;
+
+        var columns = SelectedComponent.Table.Columns;
+        var current = columns.IndexOf(column);
+        var target = current + offset;
+
+        if (current < 0 || target < 0 || target >= columns.Count)
+            return;
+
+        columns.RemoveAt(current);
+        columns.Insert(target, column);
     }
 
     private static string TableColumnsText(DynTableDefinition table) =>
