@@ -142,8 +142,8 @@
             return requested is null || requested.Length == 0
                 ? Result.Columns
                 : requested
-                    .Select(field => Result.Columns.FirstOrDefault(column =>
-                        column.Equals(field, StringComparison.OrdinalIgnoreCase)))
+                    .Select(requestedField => Result.Columns.FirstOrDefault(column =>
+                        column.Equals(requestedField, StringComparison.OrdinalIgnoreCase)))
                     .Where(column => !string.IsNullOrWhiteSpace(column))
                     .Cast<string>()
                     .Distinct(StringComparer.OrdinalIgnoreCase)
