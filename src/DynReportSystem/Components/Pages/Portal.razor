@@ -60,6 +60,13 @@
             <a class="ghost-btn portal-import-btn" href="/reports/import">
                 + Berichtsdatei importieren
             </a>
+
+            @if (user is not null && Access.CanManageAny(user))
+            {
+                <a class="ghost-btn portal-permissions-btn" href="/permissions">
+                    Berechtigungen
+                </a>
+            }
         </div>
 
         @if (!string.IsNullOrWhiteSpace(search))
