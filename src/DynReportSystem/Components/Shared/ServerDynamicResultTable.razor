@@ -460,19 +460,20 @@
 
         var rows = result.Rows
             .Select(row => DisplayColumns.ToDictionary(
-                column => Header(column),
+                column => column,
                 column => (object?)Cell(row, column)))
             .ToArray();
 
-        var headers = DisplayColumns.Select(Header).ToArray();
+        var labels = DisplayColumns.Select(Header).ToArray();
         var safe = string.Concat(ExportName.Select(ch =>
             Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
 
         await JS.InvokeVoidAsync(
             "DynReportCharts.downloadCsv",
             $"{safe}_{DateTime.Now:yyyyMMdd_HHmm}.csv",
-            headers,
-            rows);
+            DisplayColumns,
+            rows,
+            labels);
     }
 
     public ValueTask DisposeAsync()
