@@ -1090,8 +1090,7 @@ else
             ?? [];
     }
 
-    private static bool ComponentUsesDataset(string type) =>
-        !type.Equals("heading", StringComparison.OrdinalIgnoreCase);
+    private static bool ComponentUsesDataset(string type) => true;
 
     private static bool ExpressionUsesField(string op) =>
         !op.Equals("count", StringComparison.OrdinalIgnoreCase);
@@ -1168,9 +1167,11 @@ else
             .Select(ch => char.IsLetterOrDigit(ch) ? ch : '-')
             .ToArray();
 
-        return new string(chars)
+        var id = new string(chars)
             .Replace("--", "-", StringComparison.Ordinal)
             .Trim('-');
+
+        return string.IsNullOrWhiteSpace(id) ? "item" : id;
     }
 
     private static string ComponentDisplayName(string type) => type.ToLowerInvariant() switch
