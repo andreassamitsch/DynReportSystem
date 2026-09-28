@@ -26,6 +26,7 @@ builder.Services.AddRazorComponents().AddInteractiveServerComponents(options =>
     options.DisconnectedCircuitMaxRetained = 250;
 });
 builder.Services.AddSingleton<FolderAccess>();
+builder.Services.AddSingleton<PermissionAdministrationService>();
 builder.Services.AddSingleton<RdlCatalog>();
 builder.Services.AddSingleton<RdlStyleCatalog>();
 builder.Services.AddSingleton<DashboardCatalog>();
