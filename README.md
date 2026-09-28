@@ -2,6 +2,30 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
+## Version 0.12.0
+
+Version 0.12.0 adds server-side analytical tables and moves the Kundencockpit onto the generic native runtime whenever its package is installed.
+
+Changes:
+
+- native tables support semantic `PresentationMode=Rows|Grouped|Pivot`
+- grouped mode performs configured dimensions + Sum/Avg/Min/Max/Count/DistinctCount in SQL Server
+- grouped results are sorted and paged on the server
+- pivot mode aggregates in SQL Server and shapes only the bounded aggregate result into a renderer-neutral matrix
+- pivot limits are bounded independently through maximum rows, cells and semantic columns
+- `DataMode=Auto` now actually selects server execution when safe
+- aggregate/pivot tables use server execution automatically when their SQL is composable, even if the same dataset also feeds a chart/KPI
+- the designer can configure grouped measures, pivot row fields, pivot column field, measures, column order and limits
+- the designer explains whether Auto/Server execution is available for the selected dataset
+- aggregate/pivot values retain semantic format/unit metadata in the current server renderer
+- the historic `/reports/kundencockpit` URL redirects to the installed native `kundencockpit` package; the old hand-written Razor/RDL page is now only a fallback
+- the legacy fallback loads overview datasets with bounded parallelism (default 4) rather than sequentially
+- ADR-0008 documents the renderer-neutral server aggregate/pivot contract
+- `docs/reports/kundencockpit-modernization-0.12.md` records the Kundencockpit migration baseline and protects later September business logic from being replaced by the older July RDL
+- no DynReport metadata SQL schema migration is required
+
+The next interaction enhancement is expandable hierarchical group navigation. The optional MIT Tabulator renderer can now consume the same server query API without changing report definitions.
+
 ## Version 0.11.0
 
 Version 0.11.0 adds the first server-side interactive table execution path for large native reports.
