@@ -19,7 +19,7 @@
 - rollback: activation pointer can return to the preceding validated report revision
 - installer deployment: preserve production configuration and report storage
 
-## Report revision rollback in 0.7.1
+## Report revision rollback in 0.8.0
 
 The in-application rollback is for a **single native report revision**. It does not replace a full
 SQL/configuration disaster-recovery restore.
@@ -42,9 +42,10 @@ current runtime. SQL report metadata, grants and the active revision pointer are
 transaction. If that SQL transaction fails after the local package was replaced, DynReport attempts
 to restore the previous local package automatically.
 
-A process or machine failure at exactly the boundary between local file replacement and SQL
-activation cannot be made atomic without making the SQL revision store the authoritative runtime
-source. This is one reason the 0.7.1 rollback must be validated on APP-01 before that later cutover.
+Designer saves, package imports and revision restores now compensate the local package if the
+required SQL metadata mutation fails. The filesystem and SQL catalog are still separate durable
+stores, so infrastructure-level disaster recovery must continue to protect both. The successful
+APP-01 rollback validation is the baseline for the later cutover to an SQL-authoritative catalog.
 
 ## Restore test checklist
 

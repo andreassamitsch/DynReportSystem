@@ -29,7 +29,7 @@
   },
   "Metadata": {
     "ConnectionString": "",
-    "FailPublishWhenUnavailable": false
+    "FailPublishWhenUnavailable": true
   },
   "Runtime": {
     "MaxConcurrentQueries": 8,
