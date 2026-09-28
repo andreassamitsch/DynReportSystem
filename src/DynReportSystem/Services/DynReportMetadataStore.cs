@@ -330,6 +330,99 @@ public sealed class DynReportMetadataStore(
         }
     }
 
+    public async Task<DynHistoricalRevisionImportResult> ImportHistoricalRevisionAsync(
+        LoadedDynReportPackage package,
+        ReadOnlyMemory<byte> packageBytes,
+        DateTime createdUtc,
+        string? importedBy,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured)
+            throw new InvalidOperationException(
+                "Die DynReport-Metadatenbank ist nicht konfiguriert.");
+
+        var hash = Convert.ToHexString(SHA256.HashData(packageBytes.Span)).ToLowerInvariant();
+
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction =
+            (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            const string reportExistsSql = """
+                SELECT COUNT_BIG(*)
+                FROM dyn.Report
+                WHERE ReportId = @ReportId;
+                """;
+
+            await using (var reportExists = new SqlCommand(
+                reportExistsSql,
+                connection,
+                transaction))
+            {
+                reportExists.CommandTimeout = 10;
+                reportExists.Parameters.AddWithValue("@ReportId", package.Manifest.ReportId);
+
+                var count = Convert.ToInt64(
+                    await reportExists.ExecuteScalarAsync(cancellationToken)
+                    ?? 0L);
+
+                if (count != 1)
+                {
+                    throw new InvalidOperationException(
+                        $"Der aktive Bericht '{package.Manifest.ReportId}' muss vor historischen Revisionen im SQL-Katalog registriert sein.");
+                }
+            }
+
+            var existingRevision = await FindRevisionByHashAsync(
+                connection,
+                transaction,
+                package.Manifest.ReportId,
+                hash,
+                cancellationToken);
+
+            if (existingRevision.HasValue)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return new DynHistoricalRevisionImportResult(
+                    existingRevision.Value,
+                    Inserted: false);
+            }
+
+            var revisionId = Guid.NewGuid();
+
+            await InsertRevisionAsync(
+                connection,
+                transaction,
+                revisionId,
+                package,
+                packageBytes,
+                hash,
+                importedBy,
+                DateTime.SpecifyKind(createdUtc, DateTimeKind.Utc),
+                "Validated and migrated from local transition revision by DynReport 0.8.0",
+                cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+
+            logger.LogInformation(
+                "Migrated local DynReport revision {RevisionId} for {ReportId} version {Version}",
+                revisionId,
+                package.Manifest.ReportId,
+                package.Manifest.Version);
+
+            return new DynHistoricalRevisionImportResult(
+                revisionId,
+                Inserted: true);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
     public async Task WriteAuditAsync(
         DynAuditEvent audit,
         CancellationToken cancellationToken = default)
@@ -518,6 +611,27 @@ public sealed class DynReportMetadataStore(
         return value is Guid id ? id : null;
     }
 
+    private static Task InsertRevisionAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        Guid revisionId,
+        LoadedDynReportPackage package,
+        ReadOnlyMemory<byte> packageBytes,
+        string hash,
+        string? userName,
+        CancellationToken cancellationToken) =>
+        InsertRevisionAsync(
+            connection,
+            transaction,
+            revisionId,
+            package,
+            packageBytes,
+            hash,
+            userName,
+            DateTime.UtcNow,
+            "Validated by DynReport runtime before publish",
+            cancellationToken);
+
     private static async Task InsertRevisionAsync(
         SqlConnection connection,
         SqlTransaction transaction,
@@ -526,6 +640,8 @@ public sealed class DynReportMetadataStore(
         ReadOnlyMemory<byte> packageBytes,
         string hash,
         string? userName,
+        DateTime createdUtc,
+        string validationSummary,
         CancellationToken cancellationToken)
     {
         const string sql = """
@@ -533,13 +649,13 @@ public sealed class DynReportMetadataStore(
             (
                 RevisionId, ReportId, PackageVersion, FormatVersion,
                 ContentHash, PackageContent, PackageLength,
-                CreatedBy, IsValidated, ValidationSummary
+                CreatedUtc, CreatedBy, IsValidated, ValidationSummary
             )
             VALUES
             (
                 @RevisionId, @ReportId, @PackageVersion, @FormatVersion,
                 @ContentHash, @PackageContent, @PackageLength,
-                @CreatedBy, 1, N'Validated by DynReport runtime before publish'
+                @CreatedUtc, @CreatedBy, 1, @ValidationSummary
             );
             """;
 
@@ -552,7 +668,9 @@ public sealed class DynReportMetadataStore(
         command.Parameters.Add("@PackageContent", System.Data.SqlDbType.VarBinary, -1).Value =
             packageBytes.ToArray();
         command.Parameters.AddWithValue("@PackageLength", packageBytes.Length);
+        command.Parameters.AddWithValue("@CreatedUtc", createdUtc);
         command.Parameters.AddWithValue("@CreatedBy", Db(userName));
+        command.Parameters.AddWithValue("@ValidationSummary", validationSummary);
 
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -616,6 +734,10 @@ public sealed class DynReportMetadataStore(
     private static object Db(string? value) =>
         string.IsNullOrWhiteSpace(value) ? DBNull.Value : value;
 }
+
+public sealed record DynHistoricalRevisionImportResult(
+    Guid RevisionId,
+    bool Inserted);
 
 public sealed record DynReportStoredRevision(
     Guid RevisionId,
