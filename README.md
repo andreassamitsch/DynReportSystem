@@ -2,6 +2,20 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
+## Version 0.7.3
+
+Version 0.7.3 fixes a native report designer load failure that could show
+`Operation is not valid due to the current state of the object.`.
+
+The cause was an optional `DynExpr.Value` represented by an uninitialized
+`JsonElement`. Expressions that do not need a constant value (for example
+field, aggregate or function expressions) therefore loaded correctly at runtime
+but could fail when the designer cloned the document through JSON serialization.
+
+The model now initializes an omitted expression value as JSON `null`, which
+preserves the existing expression semantics while making designer cloning and
+package re-serialization safe for existing 2.0 packages.
+
 ## Version 0.7.2
 
 Version 0.7.2 fixes the SQL metadata bootstrap issue found during the first APP-01 rollout.
@@ -319,7 +333,7 @@ connection-string fallback exists only for the migration phase and must not cont
 
 ## Installation / update
 
-GitHub Actions builds DynReportSystem-Server-Setup-0.7.2-win-x64.exe.
+GitHub Actions builds DynReportSystem-Server-Setup-0.7.3-win-x64.exe.
 
 For an SSRS migration, keep the setup EXE, MigrationBundle.zip and the optimized Kundencockpit.rdl (when updating it) next to each other. The setup performs an in-place update and preserves the existing production appsettings, local DynReport permissions and IIS/HTTPS bindings.
 
