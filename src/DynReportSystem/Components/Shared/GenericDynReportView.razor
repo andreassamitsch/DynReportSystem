@@ -92,7 +92,7 @@ else
 
         if (visual.Type.Equals("table", StringComparison.OrdinalIgnoreCase))
         {
-            if (visual.Table?.DataMode.Equals("Server", StringComparison.OrdinalIgnoreCase) == true)
+            if (string.Equals(visual.Table?.DataMode, "Server", StringComparison.OrdinalIgnoreCase))
             {
                 builder.OpenComponent<ServerDynamicResultTable>(sequence++);
                 builder.AddAttribute(sequence++, "Package", Package);
