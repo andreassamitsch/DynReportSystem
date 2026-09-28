@@ -2,6 +2,29 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
+## Version 0.11.0
+
+Version 0.11.0 adds the first server-side interactive table execution path for large native reports.
+
+Changes:
+
+- native tables can select `DataMode=Server` in the visual designer
+- server-mode tables no longer require the full dataset to be materialized during the normal report run when no other visual consumes that dataset
+- a renderer-neutral table query contract carries offset/limit, global search, column filters, sort definitions and report parameters
+- SQL Server performs filtering, sorting and `OFFSET/FETCH` paging
+- `COUNT_BIG() OVER()` returns the total result count without a separate count query
+- configured row-group fields are prepended to the server sort order so group headers remain deterministic across pages
+- filter values are parameterized and requested fields are restricted to trusted dataset/table schema fields
+- server-mode SQL is intentionally limited to a composable single read-only `SELECT`; complex logic should sit behind a view/table-valued function/read model
+- the current Blazor renderer uses the server query service directly
+- an authenticated/authorized JSON endpoint exposes the same contract for the planned optional Tabulator heavy-data renderer
+- interactive query count, duration and returned-row metrics are recorded separately
+- `Runtime:MaxInteractivePageSize` bounds page size (default 1000)
+- ADR-0007 documents the server-side interactive query architecture
+- no SQL metadata schema migration is required
+
+This is the backend scalability boundary for large tables. A future free Tabulator renderer can now be attached without changing existing `.dynreport` table definitions or duplicating SQL/query behavior.
+
 ## Version 0.10.0
 
 Version 0.10.0 establishes the renderer-neutral, zero-license-cost visual contract for native DynReport reports.
