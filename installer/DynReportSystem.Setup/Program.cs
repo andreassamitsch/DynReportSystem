@@ -214,13 +214,13 @@ if (Test-Path 'IIS:\AppPools\{AppPool}') {{ Remove-WebAppPool -Name '{AppPool}' 
 
 void StopExistingIisForUpdate()
 {
-    // IIS app-pool shutdown is asynchronous. Native ANCM files such as
-    // aspnetcorev2_inprocess.dll can remain mapped for several seconds after
-    // Stop-WebAppPool returns. Wait for the pool/worker to disappear and, if
-    // necessary, terminate only the DynReport w3wp process.
+    // IIS/ANCM shutdown is asynchronous. Support both hosting models while
+    // upgrading: older releases ran in w3wp (in-process), 0.7.6+ runs the
+    // DynReportSystem.exe Kestrel child process behind IIS (out-of-process).
     RunPowerShell($@"
 $ProgressPreference = 'SilentlyContinue'
 Import-Module WebAdministration -ErrorAction SilentlyContinue
+$dynExe = Join-Path $env:ProgramFiles 'DynReportSystem\DynReportSystem.exe'
 
 if (Test-Path 'IIS:\Sites\{SiteName}') {{
   Stop-Website -Name '{SiteName}' -ErrorAction SilentlyContinue
@@ -231,10 +231,18 @@ if (Test-Path 'IIS:\AppPools\{AppPool}') {{
 }}
 
 function Get-DynReportWorkers {{
-  @(Get-CimInstance Win32_Process -Filter ""Name='w3wp.exe'"" -ErrorAction SilentlyContinue |
+  $iisWorkers = @(Get-CimInstance Win32_Process -Filter ""Name='w3wp.exe'"" -ErrorAction SilentlyContinue |
     Where-Object {{
       $_.CommandLine -match '-ap\s+""?{AppPool}""?'
     }})
+
+  $kestrelWorkers = @(Get-CimInstance Win32_Process -Filter ""Name='DynReportSystem.exe'"" -ErrorAction SilentlyContinue |
+    Where-Object {{
+      $_.ExecutablePath -and
+      $_.ExecutablePath.Equals($dynExe, [System.StringComparison]::OrdinalIgnoreCase)
+    }})
+
+  @($iisWorkers + $kestrelWorkers)
 }}
 
 for ($i = 0; $i -lt 40; $i++) {{
