@@ -8,7 +8,14 @@
         {
           "PrincipalType": "User",
           "Principal": "__INSTALLER_USER__",
-          "Permissions": [ "View", "Run", "Edit", "Publish", "Manage" ]
+          "Permissions": [
+            "View",
+            "Run",
+            "EditLayout",
+            "Edit",
+            "Publish",
+            "Manage"
+          ]
         }
       ]
     },
@@ -16,19 +23,58 @@
       "Id": "produktion",
       "Title": "Produktion",
       "ParentId": null,
-      "Grants": []
+      "Grants": [
+        {
+          "PrincipalType": "User",
+          "Principal": "__INSTALLER_USER__",
+          "Permissions": [
+            "View",
+            "Run",
+            "EditLayout",
+            "Edit",
+            "Publish",
+            "Manage"
+          ]
+        }
+      ]
     },
     {
       "Id": "kalkulation",
       "Title": "Kalkulation",
       "ParentId": null,
-      "Grants": []
+      "Grants": [
+        {
+          "PrincipalType": "User",
+          "Principal": "__INSTALLER_USER__",
+          "Permissions": [
+            "View",
+            "Run",
+            "EditLayout",
+            "Edit",
+            "Publish",
+            "Manage"
+          ]
+        }
+      ]
     },
     {
       "Id": "geschaeftsfuehrung",
       "Title": "Geschäftsführung",
       "ParentId": null,
-      "Grants": []
+      "Grants": [
+        {
+          "PrincipalType": "User",
+          "Principal": "__INSTALLER_USER__",
+          "Permissions": [
+            "View",
+            "Run",
+            "EditLayout",
+            "Edit",
+            "Publish",
+            "Manage"
+          ]
+        }
+      ]
     }
   ],
   "Reports": [
