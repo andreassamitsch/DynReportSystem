@@ -2,6 +2,26 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
+## Version 0.10.0
+
+Version 0.10.0 establishes the renderer-neutral, zero-license-cost visual contract for native DynReport reports.
+
+Changes:
+
+- native `table` and `chart` components now have explicit semantic configuration models
+- table definitions support visible columns, headers, formats, grouping, default sorting, search/filter/sort capabilities and page size
+- chart definitions support chart type, category field, series grouping, measures, aggregation, stacking, legend/labels, point limits and height
+- the designer edits these semantic properties directly; no ECharts- or grid-vendor-specific settings are stored in `.dynreport`
+- the native table renderer consumes the semantic table contract while remaining backward compatible with older packages
+- the current ECharts runtime maps semantic chart definitions into ECharts options behind the rendering boundary
+- existing native reports without `Table`/`Chart` configuration continue to use the previous automatic behavior
+- the report JSON Schema documents the new table/chart contract
+- ADR-0005 makes renderer/framework neutrality a binding architecture rule
+- ADR-0006 fixes the zero-license-cost renderer strategy: Apache ECharts for charts, the native lightweight table for standard reports, and a future MIT-licensed Tabulator adapter for heavy-data tables
+- no SQL schema migration is required
+
+The next heavy-data step is to add server-side paging/filtering/grouping to the DynReport Query Runtime and then attach the optional Tabulator renderer without changing report definitions.
+
 ## Version 0.9.0
 
 Version 0.9.0 introduces the first visual, schema-native DynReport designer workbench.
