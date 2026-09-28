@@ -122,6 +122,8 @@ void Install()
         Console.WriteLine($"Erstadministrator: {installerUser}");
     }
 
+    EnsurePortalAdministrator(installDir);
+
     var setupDir = AppContext.BaseDirectory;
 
     var migrationBundle = Path.Combine(setupDir, "MigrationBundle.zip");
@@ -405,6 +407,116 @@ JsonObject EnsureObject(JsonObject parent, string propertyName)
     return created;
 }
 
+void EnsurePortalAdministrator(string installDir)
+{
+    var path = Path.Combine(installDir, "config", "permissions.json");
+    if (!File.Exists(path))
+        return;
+
+    var installerUser = WindowsIdentity.GetCurrent().Name;
+    var node = JsonNode.Parse(File.ReadAllText(path)) as JsonObject;
+    var folders = node?["Folders"] as JsonArray;
+
+    if (folders is null)
+        return;
+
+    var rootFolders = folders
+        .OfType<JsonObject>()
+        .Where(folder => folder["ParentId"] is null)
+        .ToArray();
+
+    var alreadyRootAdmin = rootFolders.Any(folder =>
+        (folder["Grants"] as JsonArray)?
+            .OfType<JsonObject>()
+            .Any(grant =>
+                string.Equals(
+                    grant["Principal"]?.GetValue<string>(),
+                    installerUser,
+                    StringComparison.OrdinalIgnoreCase)
+                && (grant["Permissions"] as JsonArray)?
+                    .Select(permission => permission?.GetValue<string>() ?? "")
+                    .Contains("Manage", StringComparer.OrdinalIgnoreCase) == true)
+        == true);
+
+    // Upgrades must not turn the Windows account that merely launches Setup
+    // into a reporting administrator. Only extend an account that is already
+    // a root-folder Manage principal in the preserved configuration.
+    if (!alreadyRootAdmin)
+        return;
+
+    var desired = new[]
+    {
+        "View",
+        "Run",
+        "EditLayout",
+        "Edit",
+        "Publish",
+        "Manage"
+    };
+    var changed = false;
+
+    foreach (var folder in rootFolders)
+    {
+        var grants = folder["Grants"] as JsonArray;
+        if (grants is null)
+        {
+            grants = new JsonArray();
+            folder["Grants"] = grants;
+        }
+
+        var grant = grants
+            .OfType<JsonObject>()
+            .FirstOrDefault(item => string.Equals(
+                item["Principal"]?.GetValue<string>(),
+                installerUser,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (grant is null)
+        {
+            grants.Add(new JsonObject
+            {
+                ["PrincipalType"] = "User",
+                ["Principal"] = installerUser,
+                ["Permissions"] = new JsonArray(
+                    desired.Select(permission => JsonValue.Create(permission)).ToArray())
+            });
+            changed = true;
+            continue;
+        }
+
+        var permissions = grant["Permissions"] as JsonArray;
+        if (permissions is null)
+        {
+            permissions = new JsonArray();
+            grant["Permissions"] = permissions;
+        }
+
+        var existing = permissions
+            .Select(permission => permission?.GetValue<string>() ?? "")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var permission in desired)
+        {
+            if (existing.Add(permission))
+            {
+                permissions.Add(permission);
+                changed = true;
+            }
+        }
+    }
+
+    if (!changed)
+        return;
+
+    File.WriteAllText(
+        path,
+        node!.ToJsonString(new JsonSerializerOptions { WriteIndented = true }),
+        new UTF8Encoding(false));
+
+    Console.WriteLine(
+        $"Bestehender Reporting-Administrator auf Root-Ordner erweitert: {installerUser}");
+}
+
 void EnsureMigrationAdministrator(string installDir)
 {
     var path = Path.Combine(installDir, "migration", "permissions.json");
@@ -447,7 +559,7 @@ void EnsureMigrationAdministrator(string installDir)
         {
             ["PrincipalType"] = "User",
             ["Principal"] = installerUser,
-            ["Permissions"] = new JsonArray("View", "Run", "Edit", "Publish", "Manage")
+            ["Permissions"] = new JsonArray("View", "Run", "EditLayout", "Edit", "Publish", "Manage")
         });
     }
 
