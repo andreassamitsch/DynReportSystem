@@ -2,6 +2,24 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
+## Version 0.7.7
+
+Version 0.7.7 adds deep Blazor/SignalR startup tracing after APP-01 showed a
+valid manual negotiate response while the framework itself still failed with
+`Unexpected end of JSON input`.
+
+- starts Blazor explicitly through the supported `Blazor.start()` path
+- captures and displays the `Blazor.start()` promise failure
+- injects a SignalR logger into the Blazor circuit startup
+- wraps browser `fetch` before Blazor loads and records every `/_blazor`
+  request including method, status, content type, body length and a short body preview
+- wraps WebSocket creation and records open/error/close events and close codes
+- redacts ephemeral connection IDs/tokens from diagnostics before display/copy
+- keeps the existing independent health/manual-negotiate probes as a comparison
+  against the real framework requests
+
+This release is diagnostic-first: it does not change report logic or SQL metadata.
+
 ## Version 0.7.6
 
 Version 0.7.6 changes the IIS hosting boundary for DynReport Interactive Server.
@@ -381,7 +399,7 @@ connection-string fallback exists only for the migration phase and must not cont
 
 ## Installation / update
 
-GitHub Actions builds DynReportSystem-Server-Setup-0.7.6-win-x64.exe.
+GitHub Actions builds DynReportSystem-Server-Setup-0.7.7-win-x64.exe.
 
 For an SSRS migration, keep the setup EXE, MigrationBundle.zip and the optimized Kundencockpit.rdl (when updating it) next to each other. The setup performs an in-place update and preserves the existing production appsettings, local DynReport permissions and IIS/HTTPS bindings.
 
