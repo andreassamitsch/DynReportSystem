@@ -20,7 +20,12 @@ BEGIN TRY
     BEGIN TRANSACTION;
 
     IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = N'dyn')
-        EXEC(N'CREATE SCHEMA dyn AUTHORIZATION dbo');
+        THROW 50001, 'DynReport schema dyn is missing. Run 001-dynreport-metadata-schema.sql first.', 1;
+
+    IF OBJECT_ID(N'dyn.Report', N'U') IS NULL
+       OR OBJECT_ID(N'dyn.ReportGrant', N'U') IS NULL
+       OR OBJECT_ID(N'dyn.ReportRevision', N'U') IS NULL
+        THROW 50002, 'DynReport core metadata tables are missing. Run 001-dynreport-metadata-schema.sql first.', 1;
 
     IF OBJECT_ID(N'dyn.SchemaVersion', N'U') IS NULL
     BEGIN
