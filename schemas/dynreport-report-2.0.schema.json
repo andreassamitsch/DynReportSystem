@@ -282,6 +282,29 @@
             "Client",
             "Server"
           ]
+        },
+        "Aggregates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/tableAggregate"
+          }
+        },
+        "Pivot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/tablePivot"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "PresentationMode": {
+          "enum": [
+            "Rows",
+            "Grouped",
+            "Pivot"
+          ]
         }
       }
     },
@@ -452,6 +475,74 @@
             {
               "type": "null"
             }
+          ]
+        }
+      }
+    },
+    "tableAggregate": {
+      "type": "object",
+      "required": [
+        "Function"
+      ],
+      "properties": {
+        "Field": {
+          "type": "string"
+        },
+        "Function": {
+          "enum": [
+            "Sum",
+            "Avg",
+            "Min",
+            "Max",
+            "Count",
+            "DistinctCount"
+          ]
+        },
+        "Alias": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "Label": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "Format": {
+          "type": "string"
+        },
+        "Unit": {
+          "type": "string"
+        }
+      }
+    },
+    "tablePivot": {
+      "type": "object",
+      "properties": {
+        "RowFields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ColumnField": {
+          "type": "string"
+        },
+        "Measures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/tableAggregate"
+          }
+        },
+        "MaxColumns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        },
+        "ColumnSort": {
+          "enum": [
+            "Asc",
+            "Desc",
+            "asc",
+            "desc"
           ]
         }
       }
