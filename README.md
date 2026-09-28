@@ -2,6 +2,30 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
+## Version 0.13.0
+
+Version 0.13.0 adds portal-based permission administration for report folders and reports.
+
+Changes:
+
+- a new `/permissions` administration page is linked directly from the reporting portal for users with effective `Manage` rights
+- administrators can manage direct rights for folders and reports without editing JSON or rebuilding packages
+- folder rights continue to inherit to child folders and reports
+- direct and inherited grants are shown separately so inheritance stays visible
+- supported principals are Windows users, groups and Windows principals
+- supported permissions are `View`, `Run`, `EditLayout`, `Edit`, `Publish` and `Manage`
+- saving a target creates an authoritative portal override for its direct grants
+- **Quellrechte wiederherstellen** removes the override and immediately restores bootstrap/SSRS/package source grants
+- portal overrides are applied after package and migration rights, so later package imports cannot silently overwrite production access decisions
+- permission changes are audited through the existing DynReport audit stream when SQL metadata is available
+- permission overrides are stored upgrade-safe in `C:\ProgramData\DynReportSystem\Config\permissions-overrides.json`
+- writes are serialized, normalized, backed up to `.bak` and replaced atomically
+- the installer creates the dedicated ProgramData Config directory and grants the DynReport IIS app pool Modify rights only there
+- backup/recovery documentation now explicitly includes the portal permission store
+- ADR-0009 documents the permission source/override and inheritance contract
+
+The current permission model remains explicit-allow only. No implicit access or explicit deny rule is introduced.
+
 ## Version 0.12.0
 
 Version 0.12.0 adds server-side analytical tables and moves the Kundencockpit onto the generic native runtime whenever its package is installed.
