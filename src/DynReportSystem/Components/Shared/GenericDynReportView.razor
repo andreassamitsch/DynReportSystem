@@ -92,7 +92,16 @@ else
 
         if (visual.Type.Equals("table", StringComparison.OrdinalIgnoreCase))
         {
-            if (Run.Results.TryGetValue(visual.Dataset, out var table))
+            if (visual.Table?.DataMode.Equals("Server", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                builder.OpenComponent<ServerDynamicResultTable>(sequence++);
+                builder.AddAttribute(sequence++, "Package", Package);
+                builder.AddAttribute(sequence++, "Visual", visual);
+                builder.AddAttribute(sequence++, "ParameterValues", ParameterValues);
+                builder.AddAttribute(sequence++, "ExportName", Package.Manifest.Title);
+                builder.CloseComponent();
+            }
+            else if (Run.Results.TryGetValue(visual.Dataset, out var table))
             {
                 builder.OpenComponent<DynamicResultTable>(sequence++);
                 builder.AddAttribute(sequence++, "Result", table);
