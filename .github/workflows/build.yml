@@ -67,9 +67,9 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: DynReportSystem-Server-Setup-0.11.0-win-x64
+          name: DynReportSystem-Server-Setup-0.12.0-win-x64
           path: |
-            artifacts/setup/DynReportSystem-Server-Setup-0.11.0-win-x64.exe
+            artifacts/setup/DynReportSystem-Server-Setup-0.12.0-win-x64.exe
             artifacts/setup/001-dynreport-metadata-schema.sql
             artifacts/setup/002-fix-audit-and-reportgrant-index.sql
             artifacts/setup/010-runtime-principal-template.sql
