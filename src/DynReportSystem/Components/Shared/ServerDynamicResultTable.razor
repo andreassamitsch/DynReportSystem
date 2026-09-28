@@ -152,7 +152,9 @@
                 return result?.Columns ?? [];
 
             return configured
-                .Where(field => result?.Columns.Contains(field, StringComparer.OrdinalIgnoreCase) != false)
+                .Where(requestedColumn =>
+                    result?.Columns.Any(column =>
+                        column.Equals(requestedColumn, StringComparison.OrdinalIgnoreCase)) != false)
                 .ToArray();
         }
     }
