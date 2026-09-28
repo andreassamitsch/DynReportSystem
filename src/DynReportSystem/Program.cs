@@ -1,5 +1,6 @@
 using DynReportSystem.Components;
 using DynReportSystem.Services;
+using DynReportSystem.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Server.IISIntegration;
@@ -133,6 +134,45 @@ app.MapGet("/api/packages/{reportId}/download",
             package.FilePath,
             "application/vnd.dynreport+zip",
             $"{safeTitle}.dynreport");
+    })
+    .RequireAuthorization();
+
+app.MapPost("/api/packages/{reportId}/tables/{visualId}/query",
+    async (
+        string reportId,
+        string visualId,
+        DynTableQueryRequest request,
+        HttpContext context,
+        DynReportPackageStore packages,
+        DynReportPackageExecutionService executor,
+        FolderAccess access) =>
+    {
+        if (!access.CanAll(context.User, reportId, "View", "Run"))
+            return Results.Forbid();
+
+        var package = packages.Get(reportId);
+        if (package is null)
+            return Results.NotFound();
+
+        try
+        {
+            var result = await executor.QueryTableAsync(
+                package,
+                visualId,
+                request,
+                context.User.Identity?.Name,
+                context.RequestAborted);
+
+            return Results.Ok(result);
+        }
+        catch (InvalidDataException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+        catch (NotSupportedException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
     })
     .RequireAuthorization();
 
