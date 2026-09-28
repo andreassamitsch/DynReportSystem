@@ -2,6 +2,37 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
+## Version 0.7.9
+
+Version 0.7.9 fixes the confirmed root cause of the DynReport Interactive Server
+startup failure on nested routes such as `/designer/{reportId}`.
+
+The browser test on APP-01 proved that `document.baseURI` was the full designer
+URL because `App.razor` did not contain a `<base href="/" />` element.
+
+.NET 10 Blazor loads the server JavaScript initializers through the relative URL
+`_blazor/initializers`. Without an app base URL, the browser therefore resolved
+that request as:
+
+`/designer/_blazor/initializers` -> HTTP 404 with an empty response body
+
+instead of:
+
+`/_blazor/initializers` -> HTTP 200 with `[]`
+
+Blazor then called `response.json()` on the empty 404 body, producing the exact
+observed error `SyntaxError: Unexpected end of JSON input`.
+
+Changes:
+
+- add `<base href="/" />` to the document head
+- restore normal Interactive Server prerendering for `Routes` and `HeadOutlet`
+- remove the temporary 0.7.8 no-prerender startup placeholder
+- make client diagnostics resolve relative Blazor URLs against `document.baseURI`
+- add a CI guard that fails the build if the required root base element is removed
+
+No IIS, SignalR, SQL metadata, or report-package migration is required for this fix.
+
 ## Version 0.7.8
 
 Version 0.7.8 disables prerendering for the top-level Interactive Server
@@ -420,7 +451,7 @@ connection-string fallback exists only for the migration phase and must not cont
 
 ## Installation / update
 
-GitHub Actions builds DynReportSystem-Server-Setup-0.7.8-win-x64.exe.
+GitHub Actions builds DynReportSystem-Server-Setup-0.7.9-win-x64.exe.
 
 For an SSRS migration, keep the setup EXE, MigrationBundle.zip and the optimized Kundencockpit.rdl (when updating it) next to each other. The setup performs an in-place update and preserves the existing production appsettings, local DynReport permissions and IIS/HTTPS bindings.
 
