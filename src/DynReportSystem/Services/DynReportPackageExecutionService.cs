@@ -822,8 +822,7 @@ public sealed class DynReportPackageExecutionService(
             return false;
 
         return consumers.All(component =>
-            component.Type.Equals("table", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(component.Table?.DataMode, "Server", StringComparison.OrdinalIgnoreCase));
+            DynReportInteractiveQueryRules.ShouldUseServerMode(package, component));
     }
 
     private static string QuoteIdentifier(string field) =>
