@@ -791,6 +791,25 @@ public sealed class DynReportPackageExecutionService(
             rows.Add(row);
         }
 
+        if (pivotMode)
+        {
+            var shaped = ShapePivotRows(
+                rows,
+                pivotRowFields,
+                pivotMeasures,
+                pivotMaxColumns,
+                limit);
+
+            rows = shaped.Rows;
+            columns = shaped.Columns;
+            totalRows = rows.Count;
+            offset = 0;
+        }
+        else if (totalRows == 0 && rows.Count > 0)
+        {
+            totalRows = rows.Count;
+        }
+
         stopwatch.Stop();
 
         metrics.InteractiveTableQueries.Add(
@@ -839,7 +858,8 @@ public sealed class DynReportPackageExecutionService(
                     Limit = limit,
                     TotalRows = totalRows,
                     FilterCount = request.Filters.Count,
-                    SortCount = effectiveSort.Length,
+                    SortCount = request.Sort.Count,
+                    PresentationMode = presentationMode,
                     Search = !string.IsNullOrWhiteSpace(request.Search)
                 })),
             cancellationToken);
@@ -1055,6 +1075,163 @@ public sealed class DynReportPackageExecutionService(
     }
 
 
+    private static IReadOnlyList<ResolvedTableAggregate> ResolveAggregates(
+        IEnumerable<DynTableAggregate> definitions,
+        IReadOnlySet<string> configuredFields)
+    {
+        var result = new List<ResolvedTableAggregate>();
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var definition in definitions.Take(16))
+        {
+            var function = (definition.Function ?? "Sum").Trim();
+            if (function.Length == 0)
+                function = "Sum";
+
+            var normalizedFunction = function.ToLowerInvariant() switch
+            {
+                "sum" => "Sum",
+                "avg" or "average" => "Avg",
+                "min" => "Min",
+                "max" => "Max",
+                "count" => "Count",
+                "distinctcount" or "countdistinct" => "DistinctCount",
+                _ => ""
+            };
+
+            if (normalizedFunction.Length == 0)
+                continue;
+
+            var fieldName = (definition.Field ?? "").Trim();
+            if (!normalizedFunction.Equals("Count", StringComparison.OrdinalIgnoreCase)
+                && (fieldName.Length == 0 || !configuredFields.Contains(fieldName)))
+                continue;
+
+            if (fieldName.Length > 0 && !configuredFields.Contains(fieldName))
+                continue;
+
+            var baseName = !string.IsNullOrWhiteSpace(definition.Alias)
+                ? definition.Alias.Trim()
+                : !string.IsNullOrWhiteSpace(definition.Label)
+                    ? definition.Label.Trim()
+                    : fieldName.Length == 0
+                        ? normalizedFunction
+                        : $"{normalizedFunction}_{fieldName}";
+
+            if (baseName.Length > 120)
+                baseName = baseName[..120];
+
+            var outputName = baseName;
+            var suffix = 2;
+            while (!names.Add(outputName))
+                outputName = $"{baseName}_{suffix++}";
+
+            result.Add(new ResolvedTableAggregate(
+                fieldName,
+                normalizedFunction,
+                outputName,
+                string.IsNullOrWhiteSpace(definition.Label)
+                    ? outputName
+                    : definition.Label.Trim(),
+                definition.Format ?? "",
+                definition.Unit ?? ""));
+        }
+
+        return result;
+    }
+
+    private static string AggregateSelectSql(ResolvedTableAggregate aggregate)
+    {
+        var output = QuoteIdentifier(aggregate.OutputName);
+
+        if (aggregate.Function.Equals("Count", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.IsNullOrWhiteSpace(aggregate.Field)
+                ? $"COUNT_BIG(1) AS {output}"
+                : $"COUNT_BIG(src.{QuoteIdentifier(aggregate.Field)}) AS {output}";
+        }
+
+        var field = $"src.{QuoteIdentifier(aggregate.Field)}";
+
+        return aggregate.Function switch
+        {
+            "DistinctCount" => $"COUNT_BIG(DISTINCT {field}) AS {output}",
+            "Avg" => $"AVG(TRY_CONVERT(decimal(38,6), {field})) AS {output}",
+            "Min" => $"MIN({field}) AS {output}",
+            "Max" => $"MAX({field}) AS {output}",
+            _ => $"SUM(TRY_CONVERT(decimal(38,6), {field})) AS {output}"
+        };
+    }
+
+    private static PivotShape ShapePivotRows(
+        IReadOnlyList<Dictionary<string, object?>> sourceRows,
+        IReadOnlyList<string> rowFields,
+        IReadOnlyList<ResolvedTableAggregate> measures,
+        int maxColumns,
+        int maxRows)
+    {
+        var pivotValues = sourceRows
+            .Select(row => Convert.ToString(
+                QueryResult.Get(row, "__dyn_pivot_column"),
+                CultureInfo.GetCultureInfo("de-AT")) ?? "")
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .Take(Math.Max(1, maxColumns))
+            .ToArray();
+
+        var groups = sourceRows
+            .GroupBy(
+                row => string.Join(
+                    "\u001f",
+                    rowFields.Select(field =>
+                        Convert.ToString(
+                            QueryResult.Get(row, field),
+                            CultureInfo.InvariantCulture) ?? "")),
+                StringComparer.Ordinal)
+            .Take(Math.Max(1, maxRows))
+            .ToArray();
+
+        var columns = new List<string>(rowFields);
+
+        foreach (var pivotValue in pivotValues)
+        {
+            foreach (var measure in measures)
+                columns.Add($"{pivotValue} · {measure.Label}");
+        }
+
+        var rows = new List<Dictionary<string, object?>>(groups.Length);
+
+        foreach (var group in groups)
+        {
+            var first = group.First();
+            var shaped = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var field in rowFields)
+                shaped[field] = QueryResult.Get(first, field);
+
+            foreach (var pivotValue in pivotValues)
+            {
+                var cell = group.FirstOrDefault(row =>
+                    string.Equals(
+                        Convert.ToString(
+                            QueryResult.Get(row, "__dyn_pivot_column"),
+                            CultureInfo.GetCultureInfo("de-AT")) ?? "",
+                        pivotValue,
+                        StringComparison.CurrentCultureIgnoreCase));
+
+                foreach (var measure in measures)
+                {
+                    shaped[$"{pivotValue} · {measure.Label}"] =
+                        cell is null ? null : QueryResult.Get(cell, measure.OutputName);
+                }
+            }
+
+            rows.Add(shaped);
+        }
+
+        return new PivotShape(columns, rows);
+    }
+
     private static bool ShouldDeferDataSet(
         LoadedDynReportPackage package,
         string dataSetId)
@@ -1176,6 +1353,18 @@ public sealed class DynReportPackageExecutionService(
             };
         }
     }
+
+    private sealed record ResolvedTableAggregate(
+        string Field,
+        string Function,
+        string OutputName,
+        string Label,
+        string Format,
+        string Unit);
+
+    private sealed record PivotShape(
+        IReadOnlyList<string> Columns,
+        List<Dictionary<string, object?>> Rows);
 
     private static string ReplaceSqlParameter(
         string sql,
