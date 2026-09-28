@@ -37,6 +37,18 @@ public sealed class ReportGrant
     public List<string> Permissions { get; set; } = [];
 }
 
+public sealed class PermissionOverrideDocument
+{
+    public List<PermissionTargetOverride> Folders { get; set; } = [];
+    public List<PermissionTargetOverride> Reports { get; set; } = [];
+}
+
+public sealed class PermissionTargetOverride
+{
+    public string Id { get; set; } = "";
+    public List<ReportGrant> Grants { get; set; } = [];
+}
+
 /// <summary>
 /// Explicit allow only. Rights are inherited from ancestor folders.
 /// The local config can be extended by an imported SSRS migration ACL.
@@ -47,10 +59,15 @@ public sealed class FolderAccess(
 {
     private readonly string _path = Path.Combine(host.ContentRootPath, "config", "permissions.json");
     private readonly string _migrationPath = Path.Combine(host.ContentRootPath, "migration", "permissions.json");
+    private readonly string _overridePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        "DynReportSystem",
+        "permissions-overrides.json");
     private readonly object _lock = new();
     private PlatformCatalog? _catalog;
     private DateTime _mtime;
     private DateTime _migrationMtime;
+    private DateTime _overrideMtime;
     private long _packageGeneration = -1;
     private Dictionary<string, ReportItem> _reportsById =
         new(StringComparer.OrdinalIgnoreCase);
@@ -71,6 +88,9 @@ public sealed class FolderAccess(
                 ? File.GetLastWriteTimeUtc(_migrationPath)
                 : DateTime.MinValue;
 
+            var overrideTime = File.Exists(_overridePath)
+                ? File.GetLastWriteTimeUtc(_overridePath)
+                : DateTime.MinValue;
             var packageGeneration = packageStore.Generation;
 
             lock (_lock)
@@ -78,6 +98,7 @@ public sealed class FolderAccess(
                 if (_catalog is not null
                     && time == _mtime
                     && migrationTime == _migrationMtime
+                    && overrideTime == _overrideMtime
                     && packageGeneration == _packageGeneration)
                     return _catalog;
             }
@@ -93,6 +114,7 @@ public sealed class FolderAccess(
                 if (_catalog is not null
                     && time == _mtime
                     && migrationTime == _migrationMtime
+                    && overrideTime == _overrideMtime
                     && packageGeneration == _packageGeneration)
                     return _catalog;
 
@@ -102,6 +124,10 @@ public sealed class FolderAccess(
                     Merge(config, Read(_migrationPath));
 
                 MergePackages(config, packages);
+
+                if (File.Exists(_overridePath))
+                    ApplyOverrides(config, ReadOverrides(_overridePath));
+
                 Validate(config);
 
                 _catalog = config;
@@ -113,6 +139,7 @@ public sealed class FolderAccess(
                     StringComparer.OrdinalIgnoreCase);
                 _mtime = time;
                 _migrationMtime = migrationTime;
+                _overrideMtime = overrideTime;
                 _packageGeneration = packageGeneration;
                 return config;
             }
@@ -210,11 +237,147 @@ public sealed class FolderAccess(
             && Can(user, r.Id, "View")
             && Can(user, r.Id, "Run"));
 
+    public string PermissionsOverridePath => _overridePath;
+
+    public bool CanFolder(
+        ClaimsPrincipal user,
+        string folderId,
+        string permission)
+    {
+        if (user.Identity?.IsAuthenticated != true)
+            return false;
+
+        _ = Catalog;
+
+        var currentId = folderId;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (!string.IsNullOrWhiteSpace(currentId) && visited.Add(currentId))
+        {
+            if (!_foldersById.TryGetValue(currentId, out var folder))
+                return false;
+
+            if (Allowed(folder.Grants, user, permission))
+                return true;
+
+            currentId = folder.ParentId ?? "";
+        }
+
+        return false;
+    }
+
+    public bool CanManageAny(ClaimsPrincipal user) =>
+        Catalog.Reports.Any(report => Can(user, report.Id, "Manage"))
+        || Catalog.Folders.Any(folder => CanFolder(user, folder.Id, "Manage"));
+
+    public IReadOnlyList<ReportGrant> InheritedFolderGrants(string folderId)
+    {
+        _ = Catalog;
+
+        if (!_foldersById.TryGetValue(folderId, out var folder))
+            return [];
+
+        var result = new List<ReportGrant>();
+        var currentId = folder.ParentId ?? "";
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (!string.IsNullOrWhiteSpace(currentId) && visited.Add(currentId))
+        {
+            if (!_foldersById.TryGetValue(currentId, out var parent))
+                break;
+
+            result.AddRange(CloneGrants(parent.Grants));
+            currentId = parent.ParentId ?? "";
+        }
+
+        return result;
+    }
+
+    public IReadOnlyList<ReportGrant> InheritedReportGrants(string reportId)
+    {
+        _ = Catalog;
+
+        if (!_reportsById.TryGetValue(reportId, out var report))
+            return [];
+
+        var result = new List<ReportGrant>();
+        var currentId = report.FolderId;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (!string.IsNullOrWhiteSpace(currentId) && visited.Add(currentId))
+        {
+            if (!_foldersById.TryGetValue(currentId, out var folder))
+                break;
+
+            result.AddRange(CloneGrants(folder.Grants));
+            currentId = folder.ParentId ?? "";
+        }
+
+        return result;
+    }
+
+    public void Invalidate()
+    {
+        lock (_lock)
+        {
+            _catalog = null;
+            _reportsById.Clear();
+            _foldersById.Clear();
+            _principalMatchCache.Clear();
+        }
+    }
+
     private static PlatformCatalog Read(string path) =>
         JsonSerializer.Deserialize<PlatformCatalog>(
             File.ReadAllText(path),
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
         ?? throw new InvalidDataException($"ACL-Datei '{path}' ist leer.");
+
+    private static PermissionOverrideDocument ReadOverrides(string path) =>
+        JsonSerializer.Deserialize<PermissionOverrideDocument>(
+            File.ReadAllText(path),
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+        ?? new PermissionOverrideDocument();
+
+    private static void ApplyOverrides(
+        PlatformCatalog target,
+        PermissionOverrideDocument overrides)
+    {
+        foreach (var folderOverride in overrides.Folders)
+        {
+            var folder = target.Folders.FirstOrDefault(x =>
+                x.Id.Equals(folderOverride.Id, StringComparison.OrdinalIgnoreCase));
+
+            if (folder is not null)
+                folder.Grants = CloneGrants(folderOverride.Grants);
+        }
+
+        foreach (var reportOverride in overrides.Reports)
+        {
+            var report = target.Reports.FirstOrDefault(x =>
+                x.Id.Equals(reportOverride.Id, StringComparison.OrdinalIgnoreCase));
+
+            if (report is not null)
+                report.Grants = CloneGrants(reportOverride.Grants);
+        }
+    }
+
+    private static List<ReportGrant> CloneGrants(
+        IEnumerable<ReportGrant> grants) =>
+        grants
+            .Where(grant => !string.IsNullOrWhiteSpace(grant.Principal))
+            .Select(grant => new ReportGrant
+            {
+                PrincipalType = string.IsNullOrWhiteSpace(grant.PrincipalType)
+                    ? "Group"
+                    : grant.PrincipalType,
+                Principal = grant.Principal.Trim(),
+                Permissions = grant.Permissions
+                    .Where(permission => !string.IsNullOrWhiteSpace(permission))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+            })
+            .ToList();
 
     private static void Merge(PlatformCatalog target, PlatformCatalog imported)
     {
