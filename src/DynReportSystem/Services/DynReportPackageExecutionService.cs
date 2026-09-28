@@ -410,42 +410,12 @@ public sealed class DynReportPackageExecutionService(
             }
         }
 
-        var requestedSort = table.Sortable
-            ? request.Sort
-                .Where(x => allowedColumns.Contains(x.Field))
-                .Where(x => table.Columns.FirstOrDefault(c =>
-                    c.Field.Equals(x.Field, StringComparison.OrdinalIgnoreCase))?.Sortable != false)
-                .Take(8)
-                .ToArray()
-            : [];
+        var presentationMode = string.IsNullOrWhiteSpace(table.PresentationMode)
+            ? "Rows"
+            : table.PresentationMode.Trim();
 
-        var chosenSort = requestedSort.Length > 0
-            ? requestedSort
-            : table.DefaultSort
-                .Where(x => allowedColumns.Contains(x.Field))
-                .Take(8)
-                .ToArray();
-
-        var effectiveSort = table.GroupBy
-            .Where(configuredFields.Contains)
-            .Select(groupField => new DynSortDefinition { Field = groupField, Direction = "Asc" })
-            .Concat(chosenSort)
-            .GroupBy(x => x.Field, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .Take(8)
-            .ToArray();
-
-        var fallbackSortField = table.Columns
-            .Where(x => !x.Hidden && configuredFields.Contains(x.Field))
-            .Select(x => x.Field)
-            .FirstOrDefault()
-            ?? dataSet.Fields.FirstOrDefault(configuredFields.Contains)
-            ?? configuredFields.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).First();
-
-        var orderBy = effectiveSort.Length > 0
-            ? string.Join(", ", effectiveSort.Select(x =>
-                $"src.{QuoteIdentifier(x.Field)} {(x.Direction.Equals("Desc", StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC")}"))
-            : $"src.{QuoteIdentifier(fallbackSortField)} ASC";
+        var groupedMode = presentationMode.Equals("Grouped", StringComparison.OrdinalIgnoreCase);
+        var pivotMode = presentationMode.Equals("Pivot", StringComparison.OrdinalIgnoreCase);
 
         var maxPageSize = Math.Clamp(
             config.GetValue("Runtime:MaxInteractivePageSize", 1000),
@@ -456,19 +426,296 @@ public sealed class DynReportPackageExecutionService(
             1,
             maxPageSize);
         var offset = Math.Max(0, request.Offset);
+        var whereClause = where.Count > 0
+            ? "WHERE " + string.Join(" AND ", where)
+            : "";
 
-        var finalSql = $"""
-            SELECT src.*, COUNT_BIG(1) OVER() AS [__dyn_total]
-            FROM (
-            {sql}
-            ) AS src
-            {(where.Count > 0 ? "WHERE " + string.Join(" AND ", where) : "")}
-            ORDER BY {orderBy}
-            OFFSET @__dyn_offset ROWS FETCH NEXT @__dyn_limit ROWS ONLY
-            """;
+        var resolvedAggregates = ResolveAggregates(
+            table.Aggregates,
+            configuredFields);
 
-        sqlParameters.Add(new SqlParameter("@__dyn_offset", SqlDbType.Int) { Value = offset });
-        sqlParameters.Add(new SqlParameter("@__dyn_limit", SqlDbType.Int) { Value = limit });
+        string finalSql;
+        IReadOnlyList<string> pivotRowFields = [];
+        IReadOnlyList<ResolvedTableAggregate> pivotMeasures = [];
+        var pivotMaxColumns = 0;
+
+        if (pivotMode)
+        {
+            var pivot = table.Pivot
+                ?? throw new InvalidDataException(
+                    $"Tabelle '{visual.Id}' benötigt für die Pivot-Darstellung eine Pivot-Definition.");
+
+            pivotRowFields = pivot.RowFields
+                .Where(configuredFields.Contains)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(6)
+                .ToArray();
+
+            if (pivotRowFields.Count == 0)
+            {
+                throw new InvalidDataException(
+                    $"Tabelle '{visual.Id}' benötigt mindestens ein Pivot-Zeilenfeld.");
+            }
+
+            if (string.IsNullOrWhiteSpace(pivot.ColumnField)
+                || !configuredFields.Contains(pivot.ColumnField))
+            {
+                throw new InvalidDataException(
+                    $"Pivot-Spaltenfeld '{pivot.ColumnField}' ist im Dataset '{dataSet.Id}' nicht vorhanden.");
+            }
+
+            pivotMeasures = ResolveAggregates(
+                pivot.Measures.Count > 0 ? pivot.Measures : table.Aggregates,
+                configuredFields);
+
+            if (pivotMeasures.Count == 0)
+            {
+                throw new InvalidDataException(
+                    $"Tabelle '{visual.Id}' benötigt mindestens eine Pivot-Kennzahl.");
+            }
+
+            pivotMaxColumns = Math.Clamp(pivot.MaxColumns, 1, 60);
+            var maxPivotRows = Math.Clamp(
+                config.GetValue("Runtime:MaxInteractivePivotRows", 250),
+                10,
+                2000);
+            var pivotRows = Math.Min(limit, maxPivotRows);
+            var maxPivotCells = Math.Clamp(
+                config.GetValue("Runtime:MaxInteractivePivotCells", 5000),
+                100,
+                50000);
+            var pivotCells = Math.Min(maxPivotCells, pivotRows * pivotMaxColumns);
+
+            sqlParameters.Add(new SqlParameter("@__dyn_pivot_columns", SqlDbType.Int)
+            {
+                Value = pivotMaxColumns
+            });
+            sqlParameters.Add(new SqlParameter("@__dyn_pivot_cells", SqlDbType.Int)
+            {
+                Value = pivotCells
+            });
+
+            var pivotColumnSql = $"src.{QuoteIdentifier(pivot.ColumnField)}";
+            var rowSelect = string.Join(
+                ", ",
+                pivotRowFields.Select(field =>
+                    $"src.{QuoteIdentifier(field)} AS {QuoteIdentifier(field)}"));
+            var groupSql = string.Join(
+                ", ",
+                pivotRowFields
+                    .Select(field => $"src.{QuoteIdentifier(field)}")
+                    .Append(pivotColumnSql));
+            var orderSql = string.Join(
+                ", ",
+                pivotRowFields
+                    .Select(field => $"src.{QuoteIdentifier(field)} ASC")
+                    .Append(
+                        $"src.{QuoteIdentifier(pivot.ColumnField)} " +
+                        (pivot.ColumnSort.Equals("Desc", StringComparison.OrdinalIgnoreCase)
+                            ? "DESC"
+                            : "ASC")));
+            var measureSql = string.Join(
+                ", ",
+                pivotMeasures.Select(AggregateSelectSql));
+
+            var pivotWhere = string.IsNullOrWhiteSpace(whereClause)
+                ? $"WHERE {pivotColumnSql} IS NOT NULL"
+                : $"{whereClause} AND {pivotColumnSql} IS NOT NULL";
+
+            finalSql = $"""
+                WITH base AS (
+                {sql}
+                ),
+                pivot_values AS (
+                    SELECT TOP (@__dyn_pivot_columns)
+                        src.{QuoteIdentifier(pivot.ColumnField)} AS [__dyn_pivot_value]
+                    FROM base AS src
+                    {pivotWhere}
+                    GROUP BY src.{QuoteIdentifier(pivot.ColumnField)}
+                    ORDER BY src.{QuoteIdentifier(pivot.ColumnField)}
+                        {(pivot.ColumnSort.Equals("Desc", StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC")}
+                )
+                SELECT TOP (@__dyn_pivot_cells)
+                    {rowSelect},
+                    TRY_CONVERT(nvarchar(4000), {pivotColumnSql}) AS [__dyn_pivot_column],
+                    {measureSql}
+                FROM base AS src
+                INNER JOIN pivot_values AS pv
+                    ON src.{QuoteIdentifier(pivot.ColumnField)} = pv.[__dyn_pivot_value]
+                {whereClause}
+                GROUP BY {groupSql}
+                ORDER BY {orderSql}
+                """;
+
+            offset = 0;
+            limit = pivotRows;
+        }
+        else if (groupedMode)
+        {
+            var groupFields = table.GroupBy
+                .Where(configuredFields.Contains)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(8)
+                .ToArray();
+
+            if (groupFields.Length == 0)
+            {
+                throw new InvalidDataException(
+                    $"Tabelle '{visual.Id}' benötigt für die aggregierte Darstellung mindestens ein Gruppierungsfeld.");
+            }
+
+            if (resolvedAggregates.Count == 0)
+            {
+                throw new InvalidDataException(
+                    $"Tabelle '{visual.Id}' benötigt für die aggregierte Darstellung mindestens eine Kennzahl.");
+            }
+
+            var outputFields = groupFields
+                .Concat(resolvedAggregates.Select(x => x.OutputName))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var requestedSort = table.Sortable
+                ? request.Sort
+                    .Where(x => outputFields.Contains(x.Field))
+                    .Take(8)
+                    .ToArray()
+                : [];
+
+            var defaultSort = table.DefaultSort
+                .Where(x => outputFields.Contains(x.Field))
+                .Take(8)
+                .ToArray();
+
+            var chosenSort = requestedSort.Length > 0
+                ? requestedSort
+                : defaultSort.Length > 0
+                    ? defaultSort
+                    : groupFields
+                        .Select(field => new DynSortDefinition
+                        {
+                            Field = field,
+                            Direction = "Asc"
+                        })
+                        .ToArray();
+
+            var selectGroups = string.Join(
+                ", ",
+                groupFields.Select(field =>
+                    $"src.{QuoteIdentifier(field)} AS {QuoteIdentifier(field)}"));
+            var aggregateSql = string.Join(
+                ", ",
+                resolvedAggregates.Select(AggregateSelectSql));
+            var groupBySql = string.Join(
+                ", ",
+                groupFields.Select(field => $"src.{QuoteIdentifier(field)}"));
+            var orderBySql = string.Join(
+                ", ",
+                chosenSort.Select(sort =>
+                {
+                    var expression = groupFields.Contains(
+                        sort.Field,
+                        StringComparer.OrdinalIgnoreCase)
+                            ? $"src.{QuoteIdentifier(sort.Field)}"
+                            : QuoteIdentifier(sort.Field);
+
+                    return expression + " " +
+                        (sort.Direction.Equals("Desc", StringComparison.OrdinalIgnoreCase)
+                            ? "DESC"
+                            : "ASC");
+                }));
+
+            finalSql = $"""
+                SELECT
+                    {selectGroups},
+                    {aggregateSql},
+                    COUNT_BIG(1) OVER() AS [__dyn_total]
+                FROM (
+                {sql}
+                ) AS src
+                {whereClause}
+                GROUP BY {groupBySql}
+                ORDER BY {orderBySql}
+                OFFSET @__dyn_offset ROWS FETCH NEXT @__dyn_limit ROWS ONLY
+                """;
+
+            sqlParameters.Add(new SqlParameter("@__dyn_offset", SqlDbType.Int)
+            {
+                Value = offset
+            });
+            sqlParameters.Add(new SqlParameter("@__dyn_limit", SqlDbType.Int)
+            {
+                Value = limit
+            });
+        }
+        else
+        {
+            var requestedSort = table.Sortable
+                ? request.Sort
+                    .Where(x => allowedColumns.Contains(x.Field))
+                    .Where(x => table.Columns.FirstOrDefault(column =>
+                        column.Field.Equals(x.Field, StringComparison.OrdinalIgnoreCase))?.Sortable != false)
+                    .Take(8)
+                    .ToArray()
+                : [];
+
+            var chosenSort = requestedSort.Length > 0
+                ? requestedSort
+                : table.DefaultSort
+                    .Where(x => allowedColumns.Contains(x.Field))
+                    .Take(8)
+                    .ToArray();
+
+            var effectiveSort = table.GroupBy
+                .Where(configuredFields.Contains)
+                .Select(groupField => new DynSortDefinition
+                {
+                    Field = groupField,
+                    Direction = "Asc"
+                })
+                .Concat(chosenSort)
+                .GroupBy(x => x.Field, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .Take(8)
+                .ToArray();
+
+            var fallbackSortField = table.Columns
+                .Where(x => !x.Hidden && configuredFields.Contains(x.Field))
+                .Select(x => x.Field)
+                .FirstOrDefault()
+                ?? dataSet.Fields.FirstOrDefault(configuredFields.Contains)
+                ?? configuredFields
+                    .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                    .First();
+
+            var orderBy = effectiveSort.Length > 0
+                ? string.Join(
+                    ", ",
+                    effectiveSort.Select(x =>
+                        $"src.{QuoteIdentifier(x.Field)} " +
+                        (x.Direction.Equals("Desc", StringComparison.OrdinalIgnoreCase)
+                            ? "DESC"
+                            : "ASC")))
+                : $"src.{QuoteIdentifier(fallbackSortField)} ASC";
+
+            finalSql = $"""
+                SELECT src.*, COUNT_BIG(1) OVER() AS [__dyn_total]
+                FROM (
+                {sql}
+                ) AS src
+                {whereClause}
+                ORDER BY {orderBy}
+                OFFSET @__dyn_offset ROWS FETCH NEXT @__dyn_limit ROWS ONLY
+                """;
+
+            sqlParameters.Add(new SqlParameter("@__dyn_offset", SqlDbType.Int)
+            {
+                Value = offset
+            });
+            sqlParameters.Add(new SqlParameter("@__dyn_limit", SqlDbType.Int)
+            {
+                Value = limit
+            });
+        }
 
         var timeout = Math.Clamp(
             package.Document.Settings.CommandTimeoutSeconds > 0
