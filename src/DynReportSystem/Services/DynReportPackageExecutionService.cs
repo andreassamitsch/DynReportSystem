@@ -332,7 +332,7 @@ public sealed class DynReportPackageExecutionService(
                 var searchName = "@__dyn_search";
                 var pieces = searchColumns
                     .Select(field =>
-                        $"TRY_CONVERT(nvarchar(4000), src.{QuoteIdentifier(field)}) LIKE {searchName}")
+                        $"TRY_CONVERT(nvarchar(4000), src.{QuoteIdentifier(field)}) LIKE {searchName} ESCAPE '\\'")
                     .ToArray();
 
                 where.Add("(" + string.Join(" OR ", pieces) + ")");
@@ -419,12 +419,21 @@ public sealed class DynReportPackageExecutionService(
                 .ToArray()
             : [];
 
-        var effectiveSort = requestedSort.Length > 0
+        var chosenSort = requestedSort.Length > 0
             ? requestedSort
             : table.DefaultSort
                 .Where(x => allowedColumns.Contains(x.Field))
                 .Take(8)
                 .ToArray();
+
+        var effectiveSort = table.GroupBy
+            .Where(allowedColumns.Contains)
+            .Select(groupField => new DynSortDefinition { Field = groupField, Direction = "Asc" })
+            .Concat(chosenSort)
+            .GroupBy(x => x.Field, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Take(8)
+            .ToArray();
 
         var orderBy = effectiveSort.Length > 0
             ? string.Join(", ", effectiveSort.Select(x =>
