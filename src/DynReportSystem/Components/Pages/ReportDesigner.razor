@@ -593,11 +593,82 @@ else
                                                     </label>
                                                 </div>
 
-                                                <label>
-                                                    <span>Sichtbare Spalten (; getrennt)</span>
-                                                    <input value="@TableColumnsText(selected.Table)"
-                                                           @onchange="e => SetTableColumns(selected, e.Value?.ToString())" />
-                                                </label>
+                                                <div class="designer-inspector-section-head">
+                                                    <strong>Spalten</strong>
+                                                    <button @onclick="AddTableColumn">+ Spalte</button>
+                                                </div>
+
+                                                @if (selected.Table.Columns.Count == 0)
+                                                {
+                                                    <small>
+                                                        Keine expliziten Spalten konfiguriert – die Runtime zeigt alle Dataset-Felder.
+                                                    </small>
+                                                }
+
+                                                @foreach (var column in selected.Table.Columns.ToArray())
+                                                {
+                                                    <div class="designer-metric-editor">
+                                                        <div class="designer-metric-editor-head">
+                                                            <strong>@(string.IsNullOrWhiteSpace(column.Header) ? column.Field : column.Header)</strong>
+                                                            <button class="danger" @onclick="() => RemoveTableColumn(column)">×</button>
+                                                        </div>
+
+                                                        <label>
+                                                            <span>Feld</span>
+                                                            <select @bind="column.Field">
+                                                                <option value="">– Feld –</option>
+                                                                @foreach (var fieldName in FieldsFor(selected.Dataset))
+                                                                {
+                                                                    <option value="@fieldName">@fieldName</option>
+                                                                }
+                                                            </select>
+                                                        </label>
+
+                                                        <label>
+                                                            <span>Überschrift</span>
+                                                            <input @bind="column.Header" />
+                                                        </label>
+
+                                                        <label>
+                                                            <span>Datentyp</span>
+                                                            <select @bind="column.DataType">
+                                                                <option value="Auto">Automatisch</option>
+                                                                <option value="String">Text</option>
+                                                                <option value="Integer">Ganzzahl</option>
+                                                                <option value="Decimal">Zahl</option>
+                                                                <option value="Date">Datum</option>
+                                                                <option value="DateTime">Datum + Uhrzeit</option>
+                                                                <option value="Boolean">Ja/Nein</option>
+                                                            </select>
+                                                        </label>
+
+                                                        <div class="designer-inspector-grid">
+                                                            <label>
+                                                                <span>Format</span>
+                                                                <input @bind="column.Format" />
+                                                            </label>
+                                                            <label>
+                                                                <span>Einheit</span>
+                                                                <input @bind="column.Unit" />
+                                                            </label>
+                                                        </div>
+
+                                                        <div class="designer-inspector-grid">
+                                                            <label class="designer-check">
+                                                                <input type="checkbox" @bind="column.Filterable" />
+                                                                <span>filterbar</span>
+                                                            </label>
+                                                            <label class="designer-check">
+                                                                <input type="checkbox" @bind="column.Sortable" />
+                                                                <span>sortierbar</span>
+                                                            </label>
+                                                            <label class="designer-check">
+                                                                <input type="checkbox" @bind="column.Hidden" />
+                                                                <span>ausgeblendet</span>
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                }
 
                                                 <label>
                                                     <span>Gruppierung (; getrennt)</span>
@@ -1297,6 +1368,34 @@ else
     private void RemoveChartSeries(DynChartSeries series)
     {
         SelectedComponent?.Chart?.Series.Remove(series);
+    }
+
+    private void AddTableColumn()
+    {
+        if (SelectedComponent?.Table is null)
+            return;
+
+        var fields = FieldsFor(SelectedComponent.Dataset).ToArray();
+        var used = SelectedComponent.Table.Columns
+            .Select(x => x.Field)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var fieldName = fields.FirstOrDefault(x => !used.Contains(x))
+            ?? fields.FirstOrDefault()
+            ?? "";
+
+        SelectedComponent.Table.Columns.Add(new DynTableColumn
+        {
+            Field = fieldName,
+            Header = fieldName,
+            DataType = "Auto",
+            Filterable = true,
+            Sortable = true
+        });
+    }
+
+    private void RemoveTableColumn(DynTableColumn column)
+    {
+        SelectedComponent?.Table?.Columns.Remove(column);
     }
 
     private static string TableColumnsText(DynTableDefinition table) =>
