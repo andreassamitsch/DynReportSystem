@@ -801,7 +801,7 @@ public sealed class DynReportPackageExecutionService(
                 limit);
 
             rows = shaped.Rows;
-            columns = shaped.Columns;
+            columns = shaped.Columns.ToList();
             totalRows = rows.Count;
             offset = 0;
         }
