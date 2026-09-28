@@ -12,6 +12,22 @@
 </head>
 <body>
     <Routes @rendermode="InteractiveServer" />
+    <div id="dynreport-client-error" class="client-error-panel" hidden>
+        <div class="client-error-card">
+            <div>
+                <strong id="dynreport-client-error-title">DynReport ist nicht interaktiv verbunden.</strong>
+                <p id="dynreport-client-error-message">
+                    Buttons und Register können ohne Blazor-Verbindung nicht verwendet werden.
+                </p>
+            </div>
+            <pre id="dynreport-client-error-details"></pre>
+            <div class="client-error-actions">
+                <button id="dynreport-client-retry" type="button">Seite neu laden</button>
+                <button id="dynreport-client-copy" type="button">Diagnose kopieren</button>
+            </div>
+        </div>
+    </div>
+
     <div id="components-reconnect-modal" class="reconnect-modal">
         <div class="reconnect-card">
             <strong>Verbindung zu DynReport wird wiederhergestellt …</strong>
@@ -20,6 +36,7 @@
         </div>
     </div>
 
+    <script src="/js/dynreport-client-diagnostics.js"></script>
     <script src="/vendor/echarts.min.js"></script>
     <script src="/js/dynreport-charts.js"></script>
     <script src="/_framework/blazor.web.js"></script>
