@@ -8,7 +8,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Win32;
 
 const string ProductName = "DynReport System";
-const string Version = "0.7.7";
+const string Version = "0.7.8";
 const string SiteName = "DynReportSystem";
 const string AppPool = "DynReportSystem";
 const int DefaultPort = 47131;
@@ -215,7 +215,7 @@ if (Test-Path 'IIS:\AppPools\{AppPool}') {{ Remove-WebAppPool -Name '{AppPool}' 
 void StopExistingIisForUpdate()
 {
     // IIS/ANCM shutdown is asynchronous. Support both hosting models while
-    // upgrading: older releases ran in w3wp (in-process), 0.7.7+ runs the
+    // upgrading: older releases ran in w3wp (in-process), 0.7.8+ runs the
     // DynReportSystem.exe Kestrel child process behind IIS (out-of-process).
     RunPowerShell($@"
 $ProgressPreference = 'SilentlyContinue'
