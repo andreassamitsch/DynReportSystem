@@ -40,6 +40,11 @@ public sealed class DynReportPackageStore(
         "DynReportSystem",
         "Revisions");
 
+    private readonly string _revisionMigrationMarker = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        "DynReportSystem",
+        "migration-local-revisions-v1.complete");
+
     private Dictionary<string, LoadedDynReportPackage>? _cache;
     private DateTime _directoryStamp;
     private long _generation;
@@ -87,6 +92,7 @@ public sealed class DynReportPackageStore(
         Directory.CreateDirectory(_revisionsRoot);
 
         var temp = Path.Combine(_root, $".import-{Guid.NewGuid():N}.dynreport");
+        string? rollbackTemp = null;
 
         try
         {
@@ -101,15 +107,35 @@ public sealed class DynReportPackageStore(
 
             var loaded = LoadFile(temp);
             var target = Path.Combine(_root, SafeFileName(loaded.Manifest.ReportId) + ".dynreport");
+            rollbackTemp = target + ".rollback-import";
 
+            byte[]? previousBytes = null;
             if (File.Exists(target))
+            {
+                previousBytes = await File.ReadAllBytesAsync(target, cancellationToken);
                 CreateRevision(target, loaded.Manifest.ReportId);
+            }
 
             File.Move(temp, target, true);
             Invalidate();
 
-            var installed = LoadFile(target);
-            await MirrorToMetadataAsync(installed, importedBy, cancellationToken);
+            LoadedDynReportPackage installed;
+
+            try
+            {
+                installed = LoadFile(target);
+                await MirrorToMetadataAsync(installed, importedBy, cancellationToken);
+            }
+            catch
+            {
+                await CompensateLocalPackageAsync(
+                    target,
+                    previousBytes,
+                    rollbackTemp,
+                    loaded.Manifest.ReportId,
+                    "import");
+                throw;
+            }
 
             metrics.PackagePublishes.Add(
                 1,
@@ -124,10 +150,11 @@ public sealed class DynReportPackageStore(
 
             return installed;
         }
-        catch
+        finally
         {
             TryDelete(temp);
-            throw;
+            if (rollbackTemp is not null)
+                TryDelete(rollbackTemp);
         }
     }
 
@@ -139,6 +166,7 @@ public sealed class DynReportPackageStore(
         using var mutation = await EnterMutationAsync(cancellationToken);
 
         var path = Path.Combine(_root, SafeFileName(package.Manifest.ReportId) + ".dynreport");
+        var rollbackTemp = path + ".rollback-save";
         Directory.CreateDirectory(_root);
 
         if (File.Exists(path))
@@ -156,52 +184,79 @@ public sealed class DynReportPackageStore(
             }
         }
 
+        byte[]? previousBytes = null;
+        if (File.Exists(path))
+            previousBytes = await File.ReadAllBytesAsync(path, cancellationToken);
+
         package.Manifest.ModifiedUtc = DateTime.UtcNow;
 
         var temp = path + ".tmp";
-        if (File.Exists(temp))
-            File.Delete(temp);
+        TryDelete(temp);
+        TryDelete(rollbackTemp);
 
-        await using (var file = File.Create(temp))
-        using (var archive = new ZipArchive(file, ZipArchiveMode.Create, leaveOpen: false))
+        try
         {
-            await WriteJsonEntryAsync(archive, ManifestEntry, package.Manifest, cancellationToken);
-            await WriteJsonEntryAsync(archive, ReportEntry, package.Document, cancellationToken);
-
-            foreach (var item in package.TextFiles)
+            await using (var file = File.Create(temp))
+            using (var archive = new ZipArchive(file, ZipArchiveMode.Create, leaveOpen: false))
             {
-                if (item.Key.Equals(ManifestEntry, StringComparison.OrdinalIgnoreCase)
-                    || item.Key.Equals(ReportEntry, StringComparison.OrdinalIgnoreCase))
-                    continue;
+                await WriteJsonEntryAsync(archive, ManifestEntry, package.Manifest, cancellationToken);
+                await WriteJsonEntryAsync(archive, ReportEntry, package.Document, cancellationToken);
 
-                await WriteTextEntryAsync(archive, item.Key, item.Value, cancellationToken);
+                foreach (var item in package.TextFiles)
+                {
+                    if (item.Key.Equals(ManifestEntry, StringComparison.OrdinalIgnoreCase)
+                        || item.Key.Equals(ReportEntry, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    await WriteTextEntryAsync(archive, item.Key, item.Value, cancellationToken);
+                }
             }
+
+            // Validate the complete package before touching the currently published
+            // report. A broken designer save must never replace the last good version.
+            _ = LoadFile(temp);
+
+            if (File.Exists(path))
+                CreateRevision(path, package.Manifest.ReportId);
+
+            File.Move(temp, path, true);
+            Invalidate();
+
+            LoadedDynReportPackage installed;
+
+            try
+            {
+                installed = LoadFile(path);
+                await MirrorToMetadataAsync(installed, editedBy, cancellationToken);
+            }
+            catch
+            {
+                await CompensateLocalPackageAsync(
+                    path,
+                    previousBytes,
+                    rollbackTemp,
+                    package.Manifest.ReportId,
+                    "designer-save");
+                throw;
+            }
+
+            metrics.PackagePublishes.Add(
+                1,
+                new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
+                new KeyValuePair<string, object?>("publish.kind", "designer"));
+
+            logger.LogInformation(
+                "DynReport package {ReportId} saved by designer user {User}",
+                package.Manifest.ReportId,
+                editedBy);
+
+            return installed;
         }
-
-        // Validate the complete package before touching the currently published
-        // report. A broken designer save must never replace the last good version.
-        _ = LoadFile(temp);
-
-        if (File.Exists(path))
-            CreateRevision(path, package.Manifest.ReportId);
-
-        File.Move(temp, path, true);
-        Invalidate();
-
-        var installed = LoadFile(path);
-        await MirrorToMetadataAsync(installed, editedBy, cancellationToken);
-
-        metrics.PackagePublishes.Add(
-            1,
-            new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
-            new KeyValuePair<string, object?>("publish.kind", "designer"));
-
-        logger.LogInformation(
-            "DynReport package {ReportId} saved by designer user {User}",
-            package.Manifest.ReportId,
-            editedBy);
-
-        return installed;
+        finally
+        {
+            TryDelete(temp);
+            TryDelete(rollbackTemp);
+        }
     }
 
     public IReadOnlyList<DynReportRevision> Revisions(string reportId)
@@ -229,6 +284,138 @@ public sealed class DynReportPackageStore(
         return revisions
             .OrderByDescending(x => x.CreatedUtc)
             .ToArray();
+    }
+
+
+    public async Task<DynLocalRevisionMigrationResult> MigrateLocalRevisionsToMetadataAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!metadata.IsConfigured)
+            return new DynLocalRevisionMigrationResult(true, 0, 0, 0, 0);
+
+        if (File.Exists(_revisionMigrationMarker))
+            return new DynLocalRevisionMigrationResult(true, 0, 0, 0, 0);
+
+        using var mutation = await EnterMutationAsync(cancellationToken);
+
+        if (File.Exists(_revisionMigrationMarker))
+            return new DynLocalRevisionMigrationResult(true, 0, 0, 0, 0);
+
+        EnsureLoaded();
+
+        LoadedDynReportPackage[] currentPackages;
+        lock (_gate)
+            currentPackages = _cache!.Values.ToArray();
+
+        var reports = 0;
+        var imported = 0;
+        var duplicates = 0;
+        var failed = 0;
+
+        foreach (var current in currentPackages)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var currentBytes = await File.ReadAllBytesAsync(
+                current.FilePath,
+                cancellationToken);
+
+            // Register the current filesystem package first. This creates the
+            // report row when needed and deliberately establishes the active
+            // SQL revision before any historical packages are inserted.
+            await metadata.PublishPackageAsync(
+                current,
+                currentBytes,
+                "system:local-revision-migration",
+                cancellationToken);
+
+            reports++;
+
+            var revisionDir = Path.Combine(
+                _revisionsRoot,
+                SafeFileName(current.Manifest.ReportId));
+
+            if (!Directory.Exists(revisionDir))
+                continue;
+
+            foreach (var revisionFile in Directory
+                .EnumerateFiles(revisionDir, "*.dynreport")
+                .OrderBy(File.GetCreationTimeUtc))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    var historical = LoadFile(revisionFile);
+
+                    if (!historical.Manifest.ReportId.Equals(
+                            current.Manifest.ReportId,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new InvalidDataException(
+                            $"Lokale Revision '{revisionFile}' gehört nicht zu Bericht '{current.Manifest.ReportId}'.");
+                    }
+
+                    var historicalBytes = await File.ReadAllBytesAsync(
+                        revisionFile,
+                        cancellationToken);
+
+                    var result = await metadata.ImportHistoricalRevisionAsync(
+                        historical,
+                        historicalBytes,
+                        File.GetCreationTimeUtc(revisionFile),
+                        "system:local-revision-migration",
+                        cancellationToken);
+
+                    if (result.Inserted)
+                        imported++;
+                    else
+                        duplicates++;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    logger.LogError(
+                        ex,
+                        "Could not migrate local DynReport revision {RevisionFile}",
+                        revisionFile);
+                }
+            }
+        }
+
+        await metadata.WriteAuditAsync(
+            new DynAuditEvent(
+                Guid.NewGuid(),
+                "report.revision.local-migration",
+                failed == 0 ? "success" : "partial",
+                "system:local-revision-migration",
+                DetailsJson: DynAuditEvent.Details(new
+                {
+                    Reports = reports,
+                    Imported = imported,
+                    Duplicates = duplicates,
+                    Failed = failed
+                })),
+            cancellationToken);
+
+        if (failed == 0)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_revisionMigrationMarker)!);
+            await File.WriteAllTextAsync(
+                _revisionMigrationMarker,
+                $"completedUtc={DateTime.UtcNow:O}{Environment.NewLine}" +
+                $"reports={reports}{Environment.NewLine}" +
+                $"imported={imported}{Environment.NewLine}" +
+                $"duplicates={duplicates}{Environment.NewLine}",
+                cancellationToken);
+        }
+
+        return new DynLocalRevisionMigrationResult(
+            CompletedPreviously: false,
+            reports,
+            imported,
+            duplicates,
+            failed);
     }
 
     public async Task<LoadedDynReportPackage> RestoreRevisionAsync(
@@ -742,6 +929,45 @@ public sealed class DynReportPackageStore(
             throw new InvalidDataException($"Ungültiger Paketpfad '{name}'.");
     }
 
+    private async Task CompensateLocalPackageAsync(
+        string target,
+        byte[]? previousBytes,
+        string rollbackTemp,
+        string reportId,
+        string operation)
+    {
+        try
+        {
+            if (previousBytes is null)
+            {
+                TryDelete(target);
+            }
+            else
+            {
+                await File.WriteAllBytesAsync(
+                    rollbackTemp,
+                    previousBytes,
+                    CancellationToken.None);
+                File.Move(rollbackTemp, target, true);
+            }
+
+            Invalidate();
+
+            logger.LogWarning(
+                "Compensated local DynReport package after failed {Operation} for {ReportId}",
+                operation,
+                reportId);
+        }
+        catch (Exception rollbackEx)
+        {
+            logger.LogCritical(
+                rollbackEx,
+                "DynReport local package compensation failed after {Operation} for {ReportId}",
+                operation,
+                reportId);
+        }
+    }
+
     private async Task MirrorToMetadataAsync(
         LoadedDynReportPackage package,
         string? userName,
@@ -776,9 +1002,9 @@ public sealed class DynReportPackageStore(
         }
         catch (Exception ex)
         {
-            // During the transition the filesystem remains the runtime source.
-            // Metadata failures are surfaced in logs/readiness but do not corrupt
-            // the already validated local package.
+            // In soft-fail mode the filesystem can still serve as the transition
+            // runtime source. In hard-fail mode the caller compensates the local
+            // package so SQL and the active filesystem package stay consistent.
             logger.LogError(
                 ex,
                 "Could not mirror DynReport package {ReportId} to metadata database",
@@ -831,4 +1057,12 @@ public sealed class DynReportPackageStore(
         }
         catch { }
     }
+
 }
+
+public sealed record DynLocalRevisionMigrationResult(
+    bool CompletedPreviously,
+    int Reports,
+    int Imported,
+    int Duplicates,
+    int Failed);
