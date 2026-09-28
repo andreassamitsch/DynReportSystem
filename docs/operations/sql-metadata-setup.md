@@ -52,9 +52,12 @@ Version 2 must exist.
 ## 3. Runtime identity
 
 Prefer a dedicated Windows service identity/gMSA for the DynReport IIS application pool
-when the infrastructure supports it.
+when the infrastructure supports it. SQL authentication is also supported when an existing
+dedicated least-privilege SQL login is required by the environment.
 
-Use `sql/010-runtime-principal-template.sql` as a reviewed template.
+Use `sql/010-runtime-principal-template.sql` as a reviewed template for Windows identities.
+For SQL authentication, grant the dedicated SQL database user the same narrowly scoped
+rights on `DynReport` and do not reuse broad administrative credentials.
 
 The runtime identity must not be:
 
@@ -159,10 +162,17 @@ FROM dyn.ReportRevision
 ORDER BY CreatedUtc DESC;
 ```
 
-## Transition behavior in 0.7
+## Revision behavior in 0.8
 
-The local package store remains the active runtime source so existing installations keep
-working. When the metadata DB is configured, validated publishes are mirrored into SQL.
+The local package store remains the active runtime source, while every validated publish is
+registered in the SQL revision catalog. Production installations with a validated metadata
+connection should run with `Metadata:FailPublishWhenUnavailable=true`.
 
-A later architecture milestone will switch catalog/active-revision resolution to SQL as the
-authoritative source after restore/rollback and concurrency behavior have been validated.
+DynReport 0.8.0 performs a one-time idempotent backfill of local transition revisions into
+`dyn.ReportRevision`. Historical revisions are imported as inactive revisions and are
+deduplicated by content hash. The currently installed package is registered first and remains
+the active revision.
+
+When hard-fail publishing is enabled, a failed SQL publish causes DynReport to compensate the
+local package back to the previously active file. This prevents a failed designer save/import
+from silently advancing only the filesystem side.
