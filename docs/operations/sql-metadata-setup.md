@@ -18,13 +18,26 @@ Do not place DynReport metadata tables inside the Oxaion or Syncos application s
 
 ## 2. Apply the schema
 
-Run:
+For a new database, run these scripts in order:
 
 ```text
 sql/001-dynreport-metadata-schema.sql
+sql/002-fix-audit-and-reportgrant-index.sql
 ```
 
 against the new `DynReport` database.
+
+If the original 0.7.1 `001` script was already executed and produced the
+`RowCount` syntax error / ReportGrant 1260-byte clustered-key warning, **do not
+drop the database**. Run only:
+
+```text
+sql/002-fix-audit-and-reportgrant-index.sql
+```
+
+The repair migration is idempotent and completes the missing `dyn.AuditEvent`
+table while replacing the over-wide clustered ReportGrant primary key with a
+small surrogate clustered key plus a logical unique nonclustered index.
 
 Verify:
 
@@ -34,7 +47,7 @@ FROM dyn.SchemaVersion
 ORDER BY VersionNumber DESC;
 ```
 
-Version 1 must exist.
+Version 2 must exist.
 
 ## 3. Runtime identity
 
