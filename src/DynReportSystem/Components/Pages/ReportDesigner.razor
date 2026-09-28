@@ -1575,6 +1575,12 @@ else
             ? value
             : "Rows";
 
+        if (!table.PresentationMode.Equals("Rows", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(table.DataMode, "Client", StringComparison.OrdinalIgnoreCase))
+        {
+            table.DataMode = "Auto";
+        }
+
         if (table.PresentationMode.Equals("Pivot", StringComparison.OrdinalIgnoreCase))
             table.Pivot ??= new DynTablePivotDefinition();
     }
@@ -1749,13 +1755,27 @@ else
             return (false, $"SQL-Datei '{dataSet.QueryFile}' fehlt oder ist leer.");
         }
 
-        return DynReportInteractiveQueryRules.TryNormalizeComposableSelect(
-            dataSet,
-            sql,
-            out _,
-            out var compatibilityError)
-                ? (true, "Die Dataset-Abfrage ist für serverseitiges Filtern, Sortieren und Paging geeignet.")
-                : (false, compatibilityError);
+        if (!DynReportInteractiveQueryRules.TryNormalizeComposableSelect(
+                dataSet,
+                sql,
+                out _,
+                out var compatibilityError))
+        {
+            return (false, compatibilityError);
+        }
+
+        var automaticServer = DynReportInteractiveQueryRules.ShouldUseServerMode(
+            draft,
+            visual);
+
+        if (string.Equals(visual.Table?.DataMode, "Auto", StringComparison.OrdinalIgnoreCase))
+        {
+            return automaticServer
+                ? (true, "Auto wählt für diese Tabelle den serverseitigen Query-Pfad.")
+                : (true, "SQL ist serverfähig; Auto hält Detailzeilen lokal, solange dasselbe Dataset auch von Nicht-Tabellen-Komponenten verwendet wird.");
+        }
+
+        return (true, "Die Dataset-Abfrage ist für serverseitiges Filtern, Sortieren, Gruppieren und Pivot geeignet.");
     }
 
     private IEnumerable<string> FieldsFor(string datasetId)
