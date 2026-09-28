@@ -2,14 +2,15 @@ using DynReportSystem.Components;
 using DynReportSystem.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.AspNetCore.Server.IIS;
+using Microsoft.AspNetCore.Server.IISIntegration;
+using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
 if (!OperatingSystem.IsWindows())
     throw new PlatformNotSupportedException("DynReport System requires Windows/IIS for this SSO pilot.");
 
-builder.Services.AddAuthentication(IISServerDefaults.AuthenticationScheme);
+builder.Services.AddAuthentication(IISDefaults.AuthenticationScheme);
 builder.Services.AddAuthorization(options =>
     options.FallbackPolicy = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
@@ -80,7 +81,9 @@ app.UseAntiforgery();
 app.MapGet("/health/live", () => Results.Ok(new
 {
     status = "ok",
-    service = "DynReportSystem"
+    service = "DynReportSystem",
+    process = Process.GetCurrentProcess().ProcessName,
+    hosting = "IIS out-of-process / Kestrel"
 })).AllowAnonymous();
 
 app.MapHealthChecks("/health/ready", new HealthCheckOptions

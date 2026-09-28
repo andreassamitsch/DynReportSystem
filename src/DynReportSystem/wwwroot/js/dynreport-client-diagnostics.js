@@ -7,6 +7,9 @@
         frameworkStatus: null,
         healthStatus: null,
         negotiateStatus: null,
+        negotiateContentType: null,
+        negotiateBodyLength: null,
+        negotiateBodyPreview: null,
         error: null
     };
 
@@ -23,6 +26,9 @@
             'Framework-Asset HTTP: ' + (state.frameworkStatus ?? 'nicht geprüft'),
             'Health HTTP: ' + (state.healthStatus ?? 'nicht geprüft'),
             'Blazor negotiate HTTP: ' + (state.negotiateStatus ?? 'nicht geprüft'),
+            'Negotiate Content-Type: ' + (state.negotiateContentType ?? 'nicht geprüft'),
+            'Negotiate Body-Länge: ' + (state.negotiateBodyLength ?? 'nicht geprüft'),
+            state.negotiateBodyPreview ? 'Negotiate Body: ' + state.negotiateBodyPreview : '',
             'Browser: ' + navigator.userAgent,
             state.error ? 'Fehler: ' + state.error : ''
         ].filter(Boolean).join('\n');
@@ -80,6 +86,12 @@
                 cache: 'no-store'
             });
             state.negotiateStatus = negotiate.status;
+            state.negotiateContentType = negotiate.headers.get('content-type') || '(leer)';
+            const negotiateBody = await negotiate.text();
+            state.negotiateBodyLength = negotiateBody.length;
+            state.negotiateBodyPreview = negotiateBody.length > 0
+                ? negotiateBody.slice(0, 500)
+                : '(leer)';
         } catch (e) {
             state.negotiateStatus = 'Fehler';
             state.error = String(e);
