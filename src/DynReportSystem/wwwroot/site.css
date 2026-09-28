@@ -1122,3 +1122,73 @@ button.filter-chip{cursor:pointer}
     padding: 0.65rem 0.95rem;
     cursor: pointer;
 }
+
+
+/* DynReport client startup diagnostics */
+.client-error-panel[hidden] {
+    display: none !important;
+}
+
+.client-error-panel {
+    position: fixed;
+    inset: 16px 16px auto 16px;
+    z-index: 10000;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.client-error-card {
+    width: min(960px, 100%);
+    padding: 1rem 1.15rem;
+    border: 1px solid #d79b9b;
+    border-radius: 14px;
+    background: #fff5f5;
+    box-shadow: 0 14px 40px rgba(15, 23, 42, 0.18);
+    pointer-events: auto;
+}
+
+.client-error-card strong {
+    display: block;
+    color: #8f1d1d;
+    font-size: 1rem;
+}
+
+.client-error-card p {
+    margin: 0.35rem 0 0.8rem;
+    color: #5f2626;
+}
+
+.client-error-card pre {
+    max-height: 220px;
+    overflow: auto;
+    margin: 0;
+    padding: 0.75rem;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.8);
+    color: #29333a;
+    font: 0.78rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.client-error-actions {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: 0.8rem;
+    flex-wrap: wrap;
+}
+
+.client-error-actions button {
+    border: 1px solid #b9c5cb;
+    border-radius: 9px;
+    padding: 0.55rem 0.85rem;
+    background: white;
+    cursor: pointer;
+}
+
+.client-error-actions button:first-child {
+    border-color: #006479;
+    background: #006479;
+    color: white;
+}
