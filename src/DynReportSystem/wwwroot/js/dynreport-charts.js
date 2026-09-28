@@ -278,13 +278,16 @@
         }
     }
 
-    function downloadCsv(fileName, columns, rows) {
+    function downloadCsv(fileName, columns, rows, labels) {
         const esc = value => {
             const s = value == null ? "" : String(value);
             return '"' + s.replaceAll('"', '""') + '"';
         };
 
-        const lines = [columns.map(esc).join(";")];
+        const headers = Array.isArray(labels) && labels.length === columns.length
+            ? labels
+            : columns;
+        const lines = [headers.map(esc).join(";")];
         for (const row of rows) {
             lines.push(columns.map(c => esc(row[c])).join(";"));
         }
