@@ -239,6 +239,30 @@ public sealed class PermissionAdministrationService(
         }
         catch (JsonException ex)
         {
+            var backup = path + ".bak";
+            if (File.Exists(backup))
+            {
+                try
+                {
+                    logger.LogWarning(
+                        ex,
+                        "Permission override file {Path} is invalid. Falling back to {Backup}.",
+                        path,
+                        backup);
+
+                    return JsonSerializer.Deserialize<PermissionOverrideDocument>(
+                        File.ReadAllText(backup),
+                        _json)
+                        ?? new PermissionOverrideDocument();
+                }
+                catch (JsonException backupEx)
+                {
+                    throw new InvalidDataException(
+                        $"Portal-Berechtigungsdatei und Sicherung sind ungültig: '{path}'.",
+                        backupEx);
+                }
+            }
+
             throw new InvalidDataException(
                 $"Die Portal-Berechtigungsdatei '{path}' ist ungültig.",
                 ex);
