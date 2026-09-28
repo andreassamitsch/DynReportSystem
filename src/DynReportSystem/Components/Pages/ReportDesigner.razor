@@ -335,6 +335,16 @@ else
                                                 {
                                                     <small>@canvasComponent.Metrics.Count Kennzahl(en)</small>
                                                 }
+                                                @if (canvasComponent.Type.Equals("table", StringComparison.OrdinalIgnoreCase)
+                                                     && canvasComponent.Table is not null)
+                                                {
+                                                    <small>@(canvasComponent.Table.Columns.Count == 0 ? "alle" : canvasComponent.Table.Columns.Count) Spalte(n)</small>
+                                                }
+                                                @if (canvasComponent.Type.Equals("chart", StringComparison.OrdinalIgnoreCase)
+                                                     && canvasComponent.Chart is not null)
+                                                {
+                                                    <small>@canvasComponent.Chart.ChartType · @canvasComponent.Chart.Series.Count Datenreihe(n)</small>
+                                                }
                                                 @if (canvasComponent.Type.Equals("grouped-board", StringComparison.OrdinalIgnoreCase)
                                                      && canvasComponent.Board is not null)
                                                 {
@@ -537,6 +547,174 @@ else
                                                         </div>
                                                     </div>
                                                 }
+                                            </div>
+                                        }
+
+                                        @if (selected.Type.Equals("table", StringComparison.OrdinalIgnoreCase)
+                                             && selected.Table is not null)
+                                        {
+                                            <div class="designer-inspector-section">
+                                                <strong>Tabellenverhalten</strong>
+
+                                                <div class="designer-inspector-grid">
+                                                    <label>
+                                                        <span>Zeilen / Seite</span>
+                                                        <input type="number" min="1" max="5000" @bind="selected.Table.PageSize" />
+                                                    </label>
+                                                    <label class="designer-check">
+                                                        <input type="checkbox" @bind="selected.Table.Searchable" />
+                                                        <span>Suche</span>
+                                                    </label>
+                                                    <label class="designer-check">
+                                                        <input type="checkbox" @bind="selected.Table.Filterable" />
+                                                        <span>Filter</span>
+                                                    </label>
+                                                    <label class="designer-check">
+                                                        <input type="checkbox" @bind="selected.Table.Sortable" />
+                                                        <span>Sortierung</span>
+                                                    </label>
+                                                </div>
+
+                                                <label>
+                                                    <span>Sichtbare Spalten (; getrennt)</span>
+                                                    <input value="@TableColumnsText(selected.Table)"
+                                                           @onchange="e => SetTableColumns(selected, e.Value?.ToString())" />
+                                                </label>
+
+                                                <label>
+                                                    <span>Gruppierung (; getrennt)</span>
+                                                    <input value="@string.Join("; ", selected.Table.GroupBy)"
+                                                           @onchange="e => SetStringList(selected.Table.GroupBy, e.Value?.ToString())" />
+                                                </label>
+
+                                                <label>
+                                                    <span>Standard-Sortierung</span>
+                                                    <input value="@SortText(selected.Table.DefaultSort)"
+                                                           @onchange="e => SetSortList(selected.Table.DefaultSort, e.Value?.ToString())"
+                                                           placeholder="Feld:asc; Umsatz:desc" />
+                                                </label>
+
+                                                <small>
+                                                    Die Definition bleibt renderer-neutral. Die Runtime kann später je nach
+                                                    Datenmenge einen leichten oder einen Heavy-Data-Renderer verwenden.
+                                                </small>
+                                            </div>
+                                        }
+
+                                        @if (selected.Type.Equals("chart", StringComparison.OrdinalIgnoreCase)
+                                             && selected.Chart is not null)
+                                        {
+                                            <div class="designer-inspector-section">
+                                                <div class="designer-inspector-section-head">
+                                                    <strong>Diagramm</strong>
+                                                    <button @onclick="AddChartSeries">+ Datenreihe</button>
+                                                </div>
+
+                                                <label>
+                                                    <span>Diagrammtyp</span>
+                                                    <select @bind="selected.Chart.ChartType">
+                                                        <option value="Auto">Automatisch</option>
+                                                        <option value="Bar">Säulen / Balken</option>
+                                                        <option value="Line">Linie</option>
+                                                        <option value="Area">Fläche</option>
+                                                        <option value="Donut">Donut</option>
+                                                    </select>
+                                                </label>
+
+                                                <label>
+                                                    <span>Kategorie / X-Achse</span>
+                                                    <select @bind="selected.Chart.CategoryField">
+                                                        <option value="">– automatisch –</option>
+                                                        @foreach (var field in FieldsFor(selected.Dataset))
+                                                        {
+                                                            <option value="@field">@field</option>
+                                                        }
+                                                    </select>
+                                                </label>
+
+                                                <label>
+                                                    <span>Serien gruppieren nach</span>
+                                                    <select @bind="selected.Chart.SeriesByField">
+                                                        <option value="">– keine –</option>
+                                                        @foreach (var field in FieldsFor(selected.Dataset))
+                                                        {
+                                                            <option value="@field">@field</option>
+                                                        }
+                                                    </select>
+                                                </label>
+
+                                                <div class="designer-inspector-grid">
+                                                    <label>
+                                                        <span>Max. Punkte</span>
+                                                        <input type="number" min="1" max="5000" @bind="selected.Chart.MaxPoints" />
+                                                    </label>
+                                                    <label>
+                                                        <span>Höhe px</span>
+                                                        <input type="number" min="180" max="1200" @bind="selected.Chart.Height" />
+                                                    </label>
+                                                    <label class="designer-check">
+                                                        <input type="checkbox" @bind="selected.Chart.Stacked" />
+                                                        <span>gestapelt</span>
+                                                    </label>
+                                                    <label class="designer-check">
+                                                        <input type="checkbox" @bind="selected.Chart.ShowLegend" />
+                                                        <span>Legende</span>
+                                                    </label>
+                                                    <label class="designer-check">
+                                                        <input type="checkbox" @bind="selected.Chart.ShowLabels" />
+                                                        <span>Werte anzeigen</span>
+                                                    </label>
+                                                </div>
+
+                                                @foreach (var series in selected.Chart.Series.ToArray())
+                                                {
+                                                    <div class="designer-metric-editor">
+                                                        <div class="designer-metric-editor-head">
+                                                            <strong>@(string.IsNullOrWhiteSpace(series.Label) ? series.Field : series.Label)</strong>
+                                                            <button class="danger" @onclick="() => RemoveChartSeries(series)">×</button>
+                                                        </div>
+                                                        <label>
+                                                            <span>Feld</span>
+                                                            <select @bind="series.Field">
+                                                                <option value="">– Feld –</option>
+                                                                @foreach (var field in FieldsFor(selected.Dataset))
+                                                                {
+                                                                    <option value="@field">@field</option>
+                                                                }
+                                                            </select>
+                                                        </label>
+                                                        <label>
+                                                            <span>Bezeichnung</span>
+                                                            <input @bind="series.Label" />
+                                                        </label>
+                                                        <label>
+                                                            <span>Aggregation</span>
+                                                            <select @bind="series.Aggregation">
+                                                                <option value="Sum">Summe</option>
+                                                                <option value="Avg">Durchschnitt</option>
+                                                                <option value="Min">Minimum</option>
+                                                                <option value="Max">Maximum</option>
+                                                                <option value="Count">Anzahl</option>
+                                                                <option value="First">Erster Wert</option>
+                                                            </select>
+                                                        </label>
+                                                        <div class="designer-inspector-grid">
+                                                            <label>
+                                                                <span>Format</span>
+                                                                <input @bind="series.Format" />
+                                                            </label>
+                                                            <label>
+                                                                <span>Einheit</span>
+                                                                <input @bind="series.Unit" />
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                }
+
+                                                <small>
+                                                    Der Designer speichert nur DynReport-Semantik. ECharts bleibt ein austauschbarer
+                                                    Runtime-Adapter.
+                                                </small>
                                             </div>
                                         }
 
@@ -945,6 +1123,26 @@ else
             });
         }
 
+        if (type.Equals("table", StringComparison.OrdinalIgnoreCase))
+        {
+            component.Table = new DynTableDefinition
+            {
+                Columns = dataset?.Fields
+                    .Select(field => new DynTableColumn { Field = field, Header = field })
+                    .ToList()
+                    ?? []
+            };
+        }
+
+        if (type.Equals("chart", StringComparison.OrdinalIgnoreCase))
+        {
+            component.Chart = new DynChartDefinition
+            {
+                ChartType = "Auto",
+                CategoryField = firstField
+            };
+        }
+
         if (type.Equals("grouped-board", StringComparison.OrdinalIgnoreCase))
         {
             component.Board = new DynGroupedBoard();
@@ -1055,6 +1253,86 @@ else
             return;
 
         SelectedComponent.Value = null;
+    }
+
+    private void AddChartSeries()
+    {
+        if (SelectedComponent?.Chart is null)
+            return;
+
+        var fields = FieldsFor(SelectedComponent.Dataset).ToArray();
+        var used = SelectedComponent.Chart.Series
+            .Select(x => x.Field)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var field = fields.FirstOrDefault(x => !used.Contains(x))
+            ?? fields.FirstOrDefault()
+            ?? "";
+
+        SelectedComponent.Chart.Series.Add(new DynChartSeries
+        {
+            Field = field,
+            Label = field,
+            Aggregation = "Sum"
+        });
+    }
+
+    private void RemoveChartSeries(DynChartSeries series)
+    {
+        SelectedComponent?.Chart?.Series.Remove(series);
+    }
+
+    private static string TableColumnsText(DynTableDefinition table) =>
+        string.Join("; ", table.Columns.Where(x => !x.Hidden).Select(x => x.Field));
+
+    private void SetTableColumns(DynVisual visual, string? value)
+    {
+        if (visual.Table is null)
+            return;
+
+        var fields = string.IsNullOrWhiteSpace(value)
+            ? FieldsFor(visual.Dataset).ToArray()
+            : value.Split(
+                ';',
+                StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        var existing = visual.Table.Columns
+            .ToDictionary(x => x.Field, StringComparer.OrdinalIgnoreCase);
+
+        visual.Table.Columns = fields
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(field => existing.TryGetValue(field, out var column)
+                ? column
+                : new DynTableColumn { Field = field, Header = field })
+            .ToList();
+    }
+
+    private static string SortText(IEnumerable<DynSortDefinition> sorts) =>
+        string.Join("; ", sorts.Select(x => $"{x.Field}:{x.Direction.ToLowerInvariant()}"));
+
+    private static void SetSortList(List<DynSortDefinition> target, string? value)
+    {
+        target.Clear();
+
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+
+        foreach (var part in value.Split(
+                     ';',
+                     StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pieces = part.Split(':', 2, StringSplitOptions.TrimEntries);
+            if (string.IsNullOrWhiteSpace(pieces[0]))
+                continue;
+
+            target.Add(new DynSortDefinition
+            {
+                Field = pieces[0],
+                Direction = pieces.Length > 1
+                    && pieces[1].Equals("desc", StringComparison.OrdinalIgnoreCase)
+                        ? "Desc"
+                        : "Asc"
+            });
+        }
     }
 
     private void AddMetric()
