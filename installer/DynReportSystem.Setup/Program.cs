@@ -8,7 +8,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Win32;
 
 const string ProductName = "DynReport System";
-const string Version = "0.7.9";
+const string Version = "0.8.0";
 const string SiteName = "DynReportSystem";
 const string AppPool = "DynReportSystem";
 const int DefaultPort = 47131;
@@ -61,6 +61,7 @@ void Install()
 
     var existingProd = Path.Combine(installDir, "appsettings.Production.json");
     var existingAcl = Path.Combine(installDir, "config", "permissions.json");
+    var installedVersion = GetInstalledVersion();
 
     string? prodBackup = File.Exists(existingProd) ? File.ReadAllText(existingProd) : null;
     string? aclBackup = File.Exists(existingAcl) ? File.ReadAllText(existingAcl) : null;
@@ -83,15 +84,27 @@ void Install()
     CopyDirectory(payloadDir, installDir);
     Directory.CreateDirectory(reportsDir);
 
+    var exampleConfig = Path.Combine(installDir, "appsettings.Production.json.example");
+
     if (prodBackup is not null)
     {
-        File.WriteAllText(existingProd, prodBackup, new UTF8Encoding(false));
+        var backupPath = existingProd + ".backup-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        File.WriteAllText(backupPath, prodBackup, new UTF8Encoding(false));
+
+        var merged = File.Exists(exampleConfig)
+            ? MergeProductionConfiguration(
+                prodBackup,
+                File.ReadAllText(exampleConfig),
+                installedVersion)
+            : prodBackup;
+
+        File.WriteAllText(existingProd, merged, new UTF8Encoding(false));
+        Console.WriteLine($"Produktionskonfiguration gesichert: {backupPath}");
+        Console.WriteLine("Neue Konfigurationsschlüssel wurden ergänzt; vorhandene Werte und ConnectionStrings blieben erhalten.");
     }
-    else
+    else if (File.Exists(exampleConfig))
     {
-        var example = Path.Combine(installDir, "appsettings.Production.json.example");
-        if (File.Exists(example))
-            File.Copy(example, existingProd, true);
+        File.Copy(exampleConfig, existingProd, true);
     }
 
     if (aclBackup is not null)
@@ -275,6 +288,121 @@ for ($i = 0; $i -lt 20; $i++) {{
 ", throwOnError: false);
 
     Thread.Sleep(500);
+}
+
+System.Version? GetInstalledVersion()
+{
+    try
+    {
+        using var key = Registry.LocalMachine.OpenSubKey(
+            @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\DynReportSystem");
+
+        var value = key?.GetValue("DisplayVersion")?.ToString();
+        return System.Version.TryParse(value, out var version)
+            ? version
+            : null;
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+string MergeProductionConfiguration(
+    string existingJson,
+    string templateJson,
+    System.Version? installedVersion)
+{
+    var existing = JsonNode.Parse(existingJson) as JsonObject
+        ?? throw new InvalidDataException("Bestehende appsettings.Production.json ist kein JSON-Objekt.");
+
+    var template = JsonNode.Parse(templateJson) as JsonObject
+        ?? throw new InvalidDataException("appsettings.Production.json.example ist kein JSON-Objekt.");
+
+    MergeMissingConfiguration(existing, template);
+
+    // 0.8.0 closes the metadata publish path after the SQL revision catalog has
+    // been validated. Apply this once when upgrading a pre-0.8 installation
+    // that already contains a real metadata connection. Future upgrades preserve
+    // an administrator's explicit setting.
+    var upgradingFromPre080 =
+        installedVersion is null || installedVersion < new System.Version(0, 8, 0);
+
+    if (upgradingFromPre080 && HasRealMetadataConnection(existing))
+    {
+        var metadata = EnsureObject(existing, "Metadata");
+        metadata["FailPublishWhenUnavailable"] = true;
+        Console.WriteLine(
+            "SQL-Revisionskatalog erkannt: Metadata:FailPublishWhenUnavailable wurde auf true gehärtet.");
+    }
+
+    return existing.ToJsonString(new JsonSerializerOptions
+    {
+        WriteIndented = true
+    });
+}
+
+void MergeMissingConfiguration(JsonObject target, JsonObject defaults)
+{
+    foreach (var property in defaults)
+    {
+        // Never introduce environment-specific connection strings from the
+        // shipped example into an existing production installation.
+        if (property.Key.Equals("ConnectionString", StringComparison.OrdinalIgnoreCase))
+            continue;
+
+        if (!target.TryGetPropertyValue(property.Key, out var current) || current is null)
+        {
+            if (property.Value is JsonObject defaultObject)
+            {
+                var newObject = new JsonObject();
+                target[property.Key] = newObject;
+                MergeMissingConfiguration(newObject, defaultObject);
+            }
+            else
+            {
+                target[property.Key] = property.Value?.DeepClone();
+            }
+
+            continue;
+        }
+
+        if (current is JsonObject currentObject && property.Value is JsonObject templateObject)
+            MergeMissingConfiguration(currentObject, templateObject);
+    }
+}
+
+bool HasRealMetadataConnection(JsonObject root)
+{
+    var metadataConnection =
+        root["Metadata"]?["ConnectionString"]?.GetValue<string>();
+
+    if (IsRealConnectionString(metadataConnection))
+        return true;
+
+    var dataSourceConnection =
+        root["DataSources"]?["DynReportMetadata"]?["ConnectionString"]?.GetValue<string>();
+
+    return IsRealConnectionString(dataSourceConnection);
+}
+
+bool IsRealConnectionString(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+        return false;
+
+    return !value.Contains("SQL_SERVER", StringComparison.OrdinalIgnoreCase)
+        && !value.Contains("DATABASE_NAME", StringComparison.OrdinalIgnoreCase);
+}
+
+JsonObject EnsureObject(JsonObject parent, string propertyName)
+{
+    if (parent[propertyName] is JsonObject existing)
+        return existing;
+
+    var created = new JsonObject();
+    parent[propertyName] = created;
+    return created;
 }
 
 void EnsureMigrationAdministrator(string installDir)
