@@ -565,7 +565,7 @@ else
                                                     </select>
                                                 </label>
 
-                                                @if (selected.Table.DataMode.Equals("Server", StringComparison.OrdinalIgnoreCase))
+                                                @if (string.Equals(selected.Table.DataMode, "Server", StringComparison.OrdinalIgnoreCase))
                                                 {
                                                     <small>
                                                         Servermodus benötigt eine komponierbare SQL-SELECT-Abfrage ohne abschließendes
