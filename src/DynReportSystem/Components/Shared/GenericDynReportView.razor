@@ -97,6 +97,7 @@ else
                 builder.OpenComponent<DynamicResultTable>(sequence++);
                 builder.AddAttribute(sequence++, "Result", table);
                 builder.AddAttribute(sequence++, "ExportName", Package.Manifest.Title);
+                builder.AddAttribute(sequence++, "Definition", visual.Table);
                 builder.CloseComponent();
             }
 
@@ -107,13 +108,16 @@ else
         if (visual.Type.Equals("chart", StringComparison.OrdinalIgnoreCase)
             && Run.Results.TryGetValue(visual.Dataset, out var chartResult))
         {
-            var chart = Visuals.Build(chartResult, "Auto");
+            var chart = Visuals.Build(chartResult, visual.Chart);
             if (chart is not null)
             {
                 builder.OpenComponent<EChart>(sequence++);
                 builder.AddAttribute(sequence++, "ChartKey", $"pkg-{Package.Manifest.ReportId}-{visual.Id}");
                 builder.AddAttribute(sequence++, "Options", chart.Options);
-                builder.AddAttribute(sequence++, "Height", "360px");
+                builder.AddAttribute(
+                    sequence++,
+                    "Height",
+                    $"{Math.Clamp(visual.Chart?.Height ?? 360, 180, 1200)}px");
                 builder.CloseComponent();
             }
 
