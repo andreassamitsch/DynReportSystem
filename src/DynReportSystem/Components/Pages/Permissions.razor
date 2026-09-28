@@ -271,8 +271,13 @@ else
     private string search = "";
     private PermissionTargetState? state;
     private readonly List<ReportGrant> editableGrants = [];
+    private PlatformCatalog catalogSnapshot = new();
+    private Dictionary<string, ReportFolder> foldersById =
+        new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, string> folderPaths =
+        new(StringComparer.OrdinalIgnoreCase);
 
-    private PlatformCatalog Catalog => Access.Catalog;
+    private PlatformCatalog Catalog => catalogSnapshot;
 
     private List<ReportFolder> VisibleFolders =>
         user is null
@@ -314,6 +319,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         user = (await Authentication.GetAuthenticationStateAsync()).User;
+        RefreshCatalog();
         initialized = true;
 
         if (user is null || !Access.CanManageAny(user))
@@ -416,6 +422,7 @@ else
                     user,
                     state.Id,
                     editableGrants);
+                RefreshCatalog();
                 state = PermissionAdmin.GetFolderState(state.Id);
             }
             else
@@ -424,6 +431,7 @@ else
                     user,
                     state.Id,
                     editableGrants);
+                RefreshCatalog();
                 state = PermissionAdmin.GetReportState(state.Id);
             }
 
@@ -458,11 +466,13 @@ else
             if (type == "Folder")
             {
                 await PermissionAdmin.ResetFolderAsync(user, id);
+                RefreshCatalog();
                 state = PermissionAdmin.GetFolderState(id);
             }
             else
             {
                 await PermissionAdmin.ResetReportAsync(user, id);
+                RefreshCatalog();
                 state = PermissionAdmin.GetReportState(id);
             }
 
@@ -480,19 +490,29 @@ else
         }
     }
 
-    private string FolderPath(string folderId)
+    private void RefreshCatalog()
     {
-        var folders = Catalog.Folders.ToDictionary(
+        catalogSnapshot = Access.Catalog;
+        foldersById = catalogSnapshot.Folders.ToDictionary(
             folder => folder.Id,
             StringComparer.OrdinalIgnoreCase);
 
+        folderPaths = new Dictionary<string, string>(
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var folder in catalogSnapshot.Folders)
+            folderPaths[folder.Id] = ResolveFolderPath(folder.Id);
+    }
+
+    private string ResolveFolderPath(string folderId)
+    {
         var parts = new List<string>();
         var current = folderId;
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         while (!string.IsNullOrWhiteSpace(current) && visited.Add(current))
         {
-            if (!folders.TryGetValue(current, out var folder))
+            if (!foldersById.TryGetValue(current, out var folder))
                 break;
 
             parts.Add(folder.Title);
@@ -502,6 +522,11 @@ else
         parts.Reverse();
         return "/" + string.Join("/", parts);
     }
+
+    private string FolderPath(string folderId) =>
+        folderPaths.TryGetValue(folderId, out var path)
+            ? path
+            : "/" + folderId;
 
     private string ReportPath(ReportItem report)
     {
