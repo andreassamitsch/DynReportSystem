@@ -140,6 +140,42 @@ app.MapRazorComponents<App>()
    .AddInteractiveServerRenderMode()
    .RequireAuthorization();
 
+var metadataStore = app.Services.GetRequiredService<DynReportMetadataStore>();
+if (metadataStore.IsConfigured)
+{
+    try
+    {
+        var packageStore = app.Services.GetRequiredService<DynReportPackageStore>();
+        var migration = await packageStore.MigrateLocalRevisionsToMetadataAsync();
+
+        if (!migration.CompletedPreviously)
+        {
+            app.Logger.LogInformation(
+                "Local DynReport revision migration completed. Reports={Reports}, Imported={Imported}, Duplicates={Duplicates}, Failed={Failed}",
+                migration.Reports,
+                migration.Imported,
+                migration.Duplicates,
+                migration.Failed);
+        }
+
+        if (migration.Failed > 0)
+        {
+            app.Logger.LogWarning(
+                "Local DynReport revision migration has {Failed} failed file(s). The migration marker was not written and the migration will retry on the next restart.",
+                migration.Failed);
+        }
+    }
+    catch (Exception ex)
+    {
+        // Do not make the web process unavailable because an optional historical
+        // backfill failed. Readiness still reports SQL availability, and the
+        // idempotent migration retries on the next restart until it succeeds.
+        app.Logger.LogError(
+            ex,
+            "Local DynReport revision migration failed and will retry on the next restart.");
+    }
+}
+
 app.Run();
 
 public partial class Program { }
