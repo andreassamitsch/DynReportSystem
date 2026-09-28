@@ -565,7 +565,17 @@ else
                                                     </select>
                                                 </label>
 
-                                                @if (string.Equals(selected.Table.DataMode, "Server", StringComparison.OrdinalIgnoreCase))
+                                                <label>
+                                                    <span>Darstellung</span>
+                                                    <select value="@selected.Table.PresentationMode"
+                                                            @onchange="e => SetTablePresentationMode(selected.Table, e.Value?.ToString())">
+                                                        <option value="Rows">Detailzeilen</option>
+                                                        <option value="Grouped">Aggregierte Gruppen</option>
+                                                        <option value="Pivot">Pivot-Matrix</option>
+                                                    </select>
+                                                </label>
+
+                                                @if (!string.Equals(selected.Table.DataMode, "Client", StringComparison.OrdinalIgnoreCase))
                                                 {
                                                     var serverStatus = ServerQueryStatus(selected);
                                                     <div class="notice @(serverStatus.Compatible ? "info" : "warn") compact-notice">
@@ -677,8 +687,70 @@ else
                                                 <label>
                                                     <span>Gruppierung (; getrennt)</span>
                                                     <input value="@string.Join("; ", selected.Table.GroupBy)"
-                                                           @onchange="e => SetStringList(selected.Table.GroupBy, e.Value?.ToString())" />
+                                                           @onchange="e => SetStringList(selected.Table.GroupBy, e.Value?.ToString())"
+                                                           placeholder="Geschäftsbereich; Kunde" />
                                                 </label>
+
+                                                @if (selected.Table.PresentationMode.Equals("Grouped", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <div class="designer-inspector-section-head">
+                                                        <strong>Kennzahlen</strong>
+                                                        <button @onclick="() => AddTableAggregate(false)">+ Kennzahl</button>
+                                                    </div>
+
+                                                    @foreach (var aggregate in selected.Table.Aggregates.ToArray())
+                                                    {
+                                                        @AggregateEditor(aggregate, false)
+                                                    }
+                                                }
+
+                                                @if (selected.Table.PresentationMode.Equals("Pivot", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    var pivot = selected.Table.Pivot ??= new DynTablePivotDefinition();
+
+                                                    <div class="designer-metric-editor">
+                                                        <strong>Pivot-Struktur</strong>
+                                                        <label>
+                                                            <span>Zeilenfelder (; getrennt)</span>
+                                                            <input value="@string.Join("; ", pivot.RowFields)"
+                                                                   @onchange="e => SetStringList(pivot.RowFields, e.Value?.ToString())"
+                                                                   placeholder="Kunde; Geschäftsbereich" />
+                                                        </label>
+                                                        <label>
+                                                            <span>Spaltenfeld</span>
+                                                            <select @bind="pivot.ColumnField">
+                                                                <option value="">– Feld –</option>
+                                                                @foreach (var fieldName in FieldsFor(selected.Dataset))
+                                                                {
+                                                                    <option value="@fieldName">@fieldName</option>
+                                                                }
+                                                            </select>
+                                                        </label>
+                                                        <div class="designer-inspector-grid">
+                                                            <label>
+                                                                <span>Max. Pivot-Spalten</span>
+                                                                <input type="number" min="1" max="60" @bind="pivot.MaxColumns" />
+                                                            </label>
+                                                            <label>
+                                                                <span>Spaltenreihenfolge</span>
+                                                                <select @bind="pivot.ColumnSort">
+                                                                    <option value="Asc">Aufsteigend</option>
+                                                                    <option value="Desc">Absteigend</option>
+                                                                </select>
+                                                            </label>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="designer-inspector-section-head">
+                                                        <strong>Pivot-Kennzahlen</strong>
+                                                        <button @onclick="() => AddTableAggregate(true)">+ Kennzahl</button>
+                                                    </div>
+
+                                                    @foreach (var aggregate in pivot.Measures.ToArray())
+                                                    {
+                                                        @AggregateEditor(aggregate, true)
+                                                    }
+                                                }
 
                                                 <label>
                                                     <span>Standard-Sortierung</span>
@@ -1372,6 +1444,172 @@ else
     private void RemoveChartSeries(DynChartSeries series)
     {
         SelectedComponent?.Chart?.Series.Remove(series);
+    }
+
+    private RenderFragment AggregateEditor(
+        DynTableAggregate aggregate,
+        bool pivotMeasure) => builder =>
+    {
+        var sequence = 0;
+
+        builder.OpenElement(sequence++, "div");
+        builder.AddAttribute(sequence++, "class", "designer-metric-editor");
+
+        builder.OpenElement(sequence++, "div");
+        builder.AddAttribute(sequence++, "class", "designer-metric-editor-head");
+        builder.OpenElement(sequence++, "strong");
+        builder.AddContent(
+            sequence++,
+            string.IsNullOrWhiteSpace(aggregate.Label)
+                ? aggregate.Function
+                : aggregate.Label);
+        builder.CloseElement();
+
+        builder.OpenElement(sequence++, "button");
+        builder.AddAttribute(sequence++, "class", "danger");
+        builder.AddAttribute(
+            sequence++,
+            "onclick",
+            EventCallback.Factory.Create(
+                this,
+                () => RemoveTableAggregate(aggregate, pivotMeasure)));
+        builder.AddContent(sequence++, "×");
+        builder.CloseElement();
+        builder.CloseElement();
+
+        builder.OpenElement(sequence++, "label");
+        builder.OpenElement(sequence++, "span");
+        builder.AddContent(sequence++, "Feld");
+        builder.CloseElement();
+        builder.OpenElement(sequence++, "select");
+        builder.AddAttribute(
+            sequence++,
+            "value",
+            BindConverter.FormatValue(aggregate.Field));
+        builder.AddAttribute(
+            sequence++,
+            "onchange",
+            EventCallback.Factory.CreateBinder<string?>(
+                this,
+                value => aggregate.Field = value ?? "",
+                aggregate.Field));
+        builder.OpenElement(sequence++, "option");
+        builder.AddAttribute(sequence++, "value", "");
+        builder.AddContent(sequence++, "– kein Feld / Zeilen zählen –");
+        builder.CloseElement();
+        foreach (var fieldName in FieldsFor(SelectedComponent?.Dataset ?? ""))
+        {
+            builder.OpenElement(sequence++, "option");
+            builder.AddAttribute(sequence++, "value", fieldName);
+            builder.AddContent(sequence++, fieldName);
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+        builder.CloseElement();
+
+        builder.OpenElement(sequence++, "label");
+        builder.OpenElement(sequence++, "span");
+        builder.AddContent(sequence++, "Aggregation");
+        builder.CloseElement();
+        builder.OpenElement(sequence++, "select");
+        builder.AddAttribute(
+            sequence++,
+            "value",
+            BindConverter.FormatValue(aggregate.Function));
+        builder.AddAttribute(
+            sequence++,
+            "onchange",
+            EventCallback.Factory.CreateBinder<string?>(
+                this,
+                value => aggregate.Function = value ?? "Sum",
+                aggregate.Function));
+        foreach (var item in new[]
+        {
+            ("Sum", "Summe"),
+            ("Avg", "Durchschnitt"),
+            ("Min", "Minimum"),
+            ("Max", "Maximum"),
+            ("Count", "Anzahl"),
+            ("DistinctCount", "Eindeutige Anzahl")
+        })
+        {
+            builder.OpenElement(sequence++, "option");
+            builder.AddAttribute(sequence++, "value", item.Item1);
+            builder.AddContent(sequence++, item.Item2);
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+        builder.CloseElement();
+
+        foreach (var item in new[]
+        {
+            ("Bezeichnung", aggregate.Label, (Action<string>)(value => aggregate.Label = value)),
+            ("Alias", aggregate.Alias, (Action<string>)(value => aggregate.Alias = value)),
+            ("Format", aggregate.Format, (Action<string>)(value => aggregate.Format = value)),
+            ("Einheit", aggregate.Unit, (Action<string>)(value => aggregate.Unit = value))
+        })
+        {
+            builder.OpenElement(sequence++, "label");
+            builder.OpenElement(sequence++, "span");
+            builder.AddContent(sequence++, item.Item1);
+            builder.CloseElement();
+            builder.OpenElement(sequence++, "input");
+            builder.AddAttribute(sequence++, "value", item.Item2);
+            builder.AddAttribute(
+                sequence++,
+                "onchange",
+                EventCallback.Factory.CreateBinder<string?>(
+                    this,
+                    value => item.Item3(value ?? ""),
+                    item.Item2));
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+    };
+
+    private void SetTablePresentationMode(DynTableDefinition table, string? value)
+    {
+        table.PresentationMode = value is "Grouped" or "Pivot"
+            ? value
+            : "Rows";
+
+        if (table.PresentationMode.Equals("Pivot", StringComparison.OrdinalIgnoreCase))
+            table.Pivot ??= new DynTablePivotDefinition();
+    }
+
+    private void AddTableAggregate(bool pivotMeasure)
+    {
+        if (SelectedComponent?.Table is null)
+            return;
+
+        var fields = FieldsFor(SelectedComponent.Dataset).ToArray();
+        var target = pivotMeasure
+            ? (SelectedComponent.Table.Pivot ??= new DynTablePivotDefinition()).Measures
+            : SelectedComponent.Table.Aggregates;
+        var fieldName = fields.FirstOrDefault() ?? "";
+
+        target.Add(new DynTableAggregate
+        {
+            Field = fieldName,
+            Function = "Sum",
+            Label = fieldName,
+            Alias = fieldName
+        });
+    }
+
+    private void RemoveTableAggregate(
+        DynTableAggregate aggregate,
+        bool pivotMeasure)
+    {
+        if (SelectedComponent?.Table is null)
+            return;
+
+        if (pivotMeasure)
+            SelectedComponent.Table.Pivot?.Measures.Remove(aggregate);
+        else
+            SelectedComponent.Table.Aggregates.Remove(aggregate);
     }
 
     private void AddTableColumn()
