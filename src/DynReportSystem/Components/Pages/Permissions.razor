@@ -1,0 +1,583 @@
+@page "/permissions"
+@attribute [Authorize]
+@inject FolderAccess Access
+@inject PermissionAdministrationService PermissionAdmin
+@inject AuthenticationStateProvider Authentication
+
+<PageTitle>Berechtigungen · DynReport System</PageTitle>
+
+@if (!initialized)
+{
+    <div class="page-loading">
+        <div class="loading-ring"></div>
+        <span>Berechtigungen werden geladen …</span>
+    </div>
+}
+else if (user is null || !Access.CanManageAny(user))
+{
+    <div class="shell">
+        <main class="main-area permission-page">
+            <div class="notice error">
+                Für die Berechtigungsverwaltung ist mindestens ein vererbtes oder direktes
+                <strong>Manage</strong>-Recht erforderlich.
+            </div>
+            <a class="ghost-btn" href="/">← Reporting</a>
+        </main>
+    </div>
+}
+else
+{
+    <div class="shell">
+        <header class="topbar">
+            <div class="brand-mark">D</div>
+            <div class="brand-text">
+                <strong>Berechtigungsverwaltung</strong>
+                <span>Ordner · Berichte · Windows-Benutzer und Gruppen</span>
+            </div>
+            <div class="topbar-tag">Windows SSO · @user.Identity?.Name</div>
+        </header>
+
+        <main class="main-area permission-page">
+            <div class="heading-line">
+                <div>
+                    <p class="eyebrow">ADMINISTRATION</p>
+                    <h1>Reporting-Berechtigungen</h1>
+                    <p class="subtitle">
+                        Direkte Rechte werden im Portal gepflegt. Rechte von übergeordneten
+                        Ordnern werden automatisch vererbt.
+                    </p>
+                </div>
+                <a class="ghost-btn" href="/">← Reporting</a>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(message))
+            {
+                <div class="notice @(success ? "info" : "error")">@message</div>
+            }
+
+            <div class="permission-layout">
+                <aside class="panel permission-targets">
+                    <label class="permission-search">
+                        <span>Ordner / Bericht suchen</span>
+                        <input type="search"
+                               placeholder="Name oder Pfad …"
+                               @bind="search"
+                               @bind:event="oninput" />
+                    </label>
+
+                    <div class="permission-target-section">
+                        <div class="permission-target-heading">
+                            <strong>Ordner</strong>
+                            <span>@VisibleFolders.Count</span>
+                        </div>
+
+                        @foreach (var folder in VisibleFolders)
+                        {
+                            <button class="permission-target @(IsSelected("Folder", folder.Id) ? "active" : "")"
+                                    @onclick="() => SelectFolder(folder.Id)">
+                                <span class="permission-target-icon">▰</span>
+                                <span>
+                                    <strong>@folder.Title</strong>
+                                    <small>@FolderPath(folder.Id)</small>
+                                </span>
+                            </button>
+                        }
+                    </div>
+
+                    <div class="permission-target-section">
+                        <div class="permission-target-heading">
+                            <strong>Berichte</strong>
+                            <span>@VisibleReports.Count</span>
+                        </div>
+
+                        @foreach (var report in VisibleReports)
+                        {
+                            <button class="permission-target @(IsSelected("Report", report.Id) ? "active" : "")"
+                                    @onclick="() => SelectReport(report.Id)">
+                                <span class="permission-target-icon">▦</span>
+                                <span>
+                                    <strong>@report.Title</strong>
+                                    <small>@ReportPath(report)</small>
+                                </span>
+                            </button>
+                        }
+                    </div>
+                </aside>
+
+                <section class="panel permission-editor">
+                    @if (state is null)
+                    {
+                        <div class="empty">
+                            Links einen Ordner oder Bericht auswählen.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="permission-editor-head">
+                            <div>
+                                <p class="eyebrow">@TargetLabel(state.TargetType)</p>
+                                <h2>@state.Title</h2>
+                                <small>@TargetPath</small>
+                            </div>
+                            @if (state.HasOverride)
+                            {
+                                <span class="permission-override-badge">Portal-Override aktiv</span>
+                            }
+                            else
+                            {
+                                <span class="permission-source-badge">Quellrechte</span>
+                            }
+                        </div>
+
+                        <div class="permission-explainer">
+                            <strong>Direkte Rechte</strong>
+                            <span>
+                                Diese Einträge gelten direkt für @TargetObjectWord.
+                                @if (state.TargetType == "Folder")
+                                {
+                                    <text> Sie werden an Unterordner und Berichte vererbt.</text>
+                                }
+                            </span>
+                        </div>
+
+                        @if (editableGrants.Count == 0)
+                        {
+                            <div class="permission-empty-grants">
+                                Keine direkten Rechte. Zugriff kann trotzdem über einen übergeordneten Ordner geerbt werden.
+                            </div>
+                        }
+
+                        <div class="permission-grants">
+                            @foreach (var grant in editableGrants.ToArray())
+                            {
+                                <article class="permission-grant">
+                                    <div class="permission-grant-principal">
+                                        <label>
+                                            <span>Typ</span>
+                                            <select @bind="grant.PrincipalType">
+                                                <option value="User">Benutzer</option>
+                                                <option value="Group">Gruppe</option>
+                                                <option value="WindowsPrincipal">Windows-Prinzipal</option>
+                                            </select>
+                                        </label>
+
+                                        <label class="permission-principal-name">
+                                            <span>Windows-Benutzer / Gruppe</span>
+                                            <input @bind="grant.Principal"
+                                                   placeholder="DOMÄNE\Benutzer oder DOMÄNE\Gruppe" />
+                                        </label>
+
+                                        <button class="ghost-btn danger permission-remove"
+                                                title="Eintrag entfernen"
+                                                @onclick="() => RemoveGrant(grant)">
+                                            ×
+                                        </button>
+                                    </div>
+
+                                    <div class="permission-right-grid">
+                                        @foreach (var permission in PermissionAdministrationService.SupportedPermissions)
+                                        {
+                                            <label class="permission-right">
+                                                <input type="checkbox"
+                                                       checked="@HasPermission(grant, permission)"
+                                                       @onchange="e => TogglePermission(grant, permission, e.Value)" />
+                                                <span>
+                                                    <strong>@PermissionTitle(permission)</strong>
+                                                    <small>@PermissionDescription(permission)</small>
+                                                </span>
+                                            </label>
+                                        }
+                                    </div>
+                                </article>
+                            }
+                        </div>
+
+                        <div class="permission-editor-actions">
+                            <button class="ghost-btn" disabled="@busy" @onclick="AddGrant">
+                                + Benutzer / Gruppe
+                            </button>
+
+                            <div class="permission-editor-actions-right">
+                                @if (state.HasOverride)
+                                {
+                                    <button class="ghost-btn"
+                                            disabled="@busy"
+                                            @onclick="ResetOverrideAsync">
+                                        Quellrechte wiederherstellen
+                                    </button>
+                                }
+
+                                <button class="primary-btn"
+                                        disabled="@busy"
+                                        @onclick="SaveAsync">
+                                    @(busy ? "Speichert …" : "Rechte speichern")
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="permission-warning">
+                            Änderungen gelten sofort. Wird dein eigenes <strong>Manage</strong>-Recht entfernt
+                            und nicht geerbt, kannst du diesen Bereich anschließend nicht mehr bearbeiten.
+                        </div>
+
+                        <div class="permission-inherited">
+                            <div class="permission-explainer">
+                                <strong>Geerbte Rechte</strong>
+                                <span>Nur lesbar · stammen aus übergeordneten Ordnern.</span>
+                            </div>
+
+                            @if (state.InheritedGrants.Count == 0)
+                            {
+                                <div class="permission-empty-grants">Keine geerbten Rechte.</div>
+                            }
+                            else
+                            {
+                                <div class="permission-inherited-list">
+                                    @foreach (var grant in MergeForDisplay(state.InheritedGrants))
+                                    {
+                                        <div class="permission-inherited-row">
+                                            <div>
+                                                <strong>@grant.Principal</strong>
+                                                <small>@PrincipalTypeTitle(grant.PrincipalType)</small>
+                                            </div>
+                                            <div class="permission-chip-list">
+                                                @foreach (var permission in grant.Permissions)
+                                                {
+                                                    <span>@PermissionTitle(permission)</span>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </section>
+            </div>
+
+            <footer>
+                DynReport System 0.12.0 · Berechtigungen werden upgrade-fest unter ProgramData gespeichert
+            </footer>
+        </main>
+    </div>
+}
+
+@code {
+    private ClaimsPrincipal? user;
+    private bool initialized;
+    private bool busy;
+    private bool success;
+    private string message = "";
+    private string search = "";
+    private PermissionTargetState? state;
+    private readonly List<ReportGrant> editableGrants = [];
+
+    private PlatformCatalog Catalog => Access.Catalog;
+
+    private List<ReportFolder> VisibleFolders =>
+        user is null
+            ? []
+            : Catalog.Folders
+                .Where(folder => Access.CanFolder(user, folder.Id, "Manage"))
+                .Where(folder =>
+                    string.IsNullOrWhiteSpace(search)
+                    || folder.Title.Contains(search, StringComparison.CurrentCultureIgnoreCase)
+                    || FolderPath(folder.Id).Contains(search, StringComparison.CurrentCultureIgnoreCase))
+                .OrderBy(FolderPath, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+    private List<ReportItem> VisibleReports =>
+        user is null
+            ? []
+            : Catalog.Reports
+                .Where(report => Access.Can(user, report.Id, "Manage"))
+                .Where(report =>
+                    string.IsNullOrWhiteSpace(search)
+                    || report.Title.Contains(search, StringComparison.CurrentCultureIgnoreCase)
+                    || ReportPath(report).Contains(search, StringComparison.CurrentCultureIgnoreCase))
+                .OrderBy(ReportPath, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+    private string TargetPath => state is null
+        ? ""
+        : state.TargetType == "Folder"
+            ? FolderPath(state.Id)
+            : Catalog.Reports
+                .Where(report => report.Id.Equals(state.Id, StringComparison.OrdinalIgnoreCase))
+                .Select(ReportPath)
+                .FirstOrDefault() ?? state.Id;
+
+    private string TargetObjectWord => state?.TargetType == "Folder"
+        ? "diesen Ordner"
+        : "diesen Bericht";
+
+    protected override async Task OnInitializedAsync()
+    {
+        user = (await Authentication.GetAuthenticationStateAsync()).User;
+        initialized = true;
+
+        if (user is null || !Access.CanManageAny(user))
+            return;
+
+        var firstReport = VisibleReports.FirstOrDefault();
+        if (firstReport is not null)
+        {
+            SelectReport(firstReport.Id);
+            return;
+        }
+
+        var firstFolder = VisibleFolders.FirstOrDefault();
+        if (firstFolder is not null)
+            SelectFolder(firstFolder.Id);
+    }
+
+    private bool IsSelected(string targetType, string id) =>
+        state is not null
+        && state.TargetType.Equals(targetType, StringComparison.OrdinalIgnoreCase)
+        && state.Id.Equals(id, StringComparison.OrdinalIgnoreCase);
+
+    private void SelectFolder(string id)
+    {
+        state = PermissionAdmin.GetFolderState(id);
+        LoadEditableGrants();
+        message = "";
+    }
+
+    private void SelectReport(string id)
+    {
+        state = PermissionAdmin.GetReportState(id);
+        LoadEditableGrants();
+        message = "";
+    }
+
+    private void LoadEditableGrants()
+    {
+        editableGrants.Clear();
+
+        if (state is null)
+            return;
+
+        editableGrants.AddRange(Clone(state.DirectGrants));
+    }
+
+    private void AddGrant()
+    {
+        editableGrants.Add(new ReportGrant
+        {
+            PrincipalType = "Group",
+            Principal = "",
+            Permissions = ["View", "Run"]
+        });
+    }
+
+    private void RemoveGrant(ReportGrant grant) =>
+        editableGrants.Remove(grant);
+
+    private static bool HasPermission(ReportGrant grant, string permission) =>
+        grant.Permissions.Contains(permission, StringComparer.OrdinalIgnoreCase);
+
+    private static void TogglePermission(
+        ReportGrant grant,
+        string permission,
+        object? value)
+    {
+        var enabled = value is bool boolean && boolean;
+
+        if (enabled)
+        {
+            if (!grant.Permissions.Contains(permission, StringComparer.OrdinalIgnoreCase))
+                grant.Permissions.Add(permission);
+        }
+        else
+        {
+            grant.Permissions.RemoveAll(x =>
+                x.Equals(permission, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (state is null || user is null || busy)
+            return;
+
+        busy = true;
+        success = false;
+        message = "";
+
+        try
+        {
+            if (editableGrants.Any(grant => string.IsNullOrWhiteSpace(grant.Principal)))
+                throw new InvalidOperationException(
+                    "Bitte bei jedem Berechtigungseintrag einen Windows-Benutzer oder eine Gruppe angeben.");
+
+            if (state.TargetType == "Folder")
+            {
+                await PermissionAdmin.SaveFolderAsync(
+                    user,
+                    state.Id,
+                    editableGrants);
+                state = PermissionAdmin.GetFolderState(state.Id);
+            }
+            else
+            {
+                await PermissionAdmin.SaveReportAsync(
+                    user,
+                    state.Id,
+                    editableGrants);
+                state = PermissionAdmin.GetReportState(state.Id);
+            }
+
+            LoadEditableGrants();
+            success = true;
+            message = "Berechtigungen wurden gespeichert und sind sofort aktiv.";
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task ResetOverrideAsync()
+    {
+        if (state is null || user is null || busy)
+            return;
+
+        busy = true;
+        success = false;
+        message = "";
+
+        try
+        {
+            var type = state.TargetType;
+            var id = state.Id;
+
+            if (type == "Folder")
+            {
+                await PermissionAdmin.ResetFolderAsync(user, id);
+                state = PermissionAdmin.GetFolderState(id);
+            }
+            else
+            {
+                await PermissionAdmin.ResetReportAsync(user, id);
+                state = PermissionAdmin.GetReportState(id);
+            }
+
+            LoadEditableGrants();
+            success = true;
+            message = "Portal-Override wurde entfernt. Die ursprünglichen Quellrechte gelten wieder.";
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private string FolderPath(string folderId)
+    {
+        var folders = Catalog.Folders.ToDictionary(
+            folder => folder.Id,
+            StringComparer.OrdinalIgnoreCase);
+
+        var parts = new List<string>();
+        var current = folderId;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (!string.IsNullOrWhiteSpace(current) && visited.Add(current))
+        {
+            if (!folders.TryGetValue(current, out var folder))
+                break;
+
+            parts.Add(folder.Title);
+            current = folder.ParentId ?? "";
+        }
+
+        parts.Reverse();
+        return "/" + string.Join("/", parts);
+    }
+
+    private string ReportPath(ReportItem report)
+    {
+        var folder = string.IsNullOrWhiteSpace(report.FolderId)
+            ? ""
+            : FolderPath(report.FolderId).TrimEnd('/');
+
+        return $"{folder}/{report.Title}";
+    }
+
+    private static IReadOnlyList<ReportGrant> MergeForDisplay(
+        IEnumerable<ReportGrant> grants) =>
+        grants
+            .GroupBy(
+                grant => $"{grant.PrincipalType}\u001f{grant.Principal}",
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var first = group.First();
+                return new ReportGrant
+                {
+                    PrincipalType = first.PrincipalType,
+                    Principal = first.Principal,
+                    Permissions = group
+                        .SelectMany(x => x.Permissions)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(permission =>
+                            Array.FindIndex(
+                                PermissionAdministrationService.SupportedPermissions,
+                                candidate => candidate.Equals(
+                                    permission,
+                                    StringComparison.OrdinalIgnoreCase)))
+                        .ToList()
+                };
+            })
+            .OrderBy(grant => grant.Principal, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
+    private static List<ReportGrant> Clone(
+        IEnumerable<ReportGrant> grants) =>
+        grants.Select(grant => new ReportGrant
+        {
+            PrincipalType = grant.PrincipalType,
+            Principal = grant.Principal,
+            Permissions = grant.Permissions.ToList()
+        }).ToList();
+
+    private static string TargetLabel(string type) =>
+        type == "Folder" ? "ORDNER" : "BERICHT";
+
+    private static string PrincipalTypeTitle(string type) =>
+        type.Equals("User", StringComparison.OrdinalIgnoreCase)
+            ? "Benutzer"
+            : type.Equals("WindowsPrincipal", StringComparison.OrdinalIgnoreCase)
+                ? "Windows-Prinzipal"
+                : "Gruppe";
+
+    private static string PermissionTitle(string permission) => permission switch
+    {
+        "View" => "Anzeigen",
+        "Run" => "Ausführen",
+        "EditLayout" => "Layout",
+        "Edit" => "Bearbeiten",
+        "Publish" => "Veröffentlichen",
+        "Manage" => "Verwalten",
+        _ => permission
+    };
+
+    private static string PermissionDescription(string permission) => permission switch
+    {
+        "View" => "Bericht im Portal sehen",
+        "Run" => "Datenabfragen ausführen",
+        "EditLayout" => "Designer/Layout ändern",
+        "Edit" => "Berichtsdefinition bearbeiten",
+        "Publish" => "Paket/Revision veröffentlichen",
+        "Manage" => "Berechtigungen und Verwaltung",
+        _ => ""
+    };
+}
