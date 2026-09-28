@@ -485,10 +485,13 @@ icacls '{escaped}' /grant 'IIS_IUSRS:(OI)(CI)(RX)' /T /C | Out-Null
 $dynRoot = Join-Path $env:ProgramData 'DynReportSystem'
 $packageDir = Join-Path $dynRoot 'Packages'
 $revisionDir = Join-Path $dynRoot 'Revisions'
+$configDir = Join-Path $dynRoot 'Config'
 New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
 New-Item -ItemType Directory -Force -Path $revisionDir | Out-Null
+New-Item -ItemType Directory -Force -Path $configDir | Out-Null
 icacls $packageDir /grant 'IIS AppPool\{AppPool}:(OI)(CI)(M)' /T /C | Out-Null
 icacls $revisionDir /grant 'IIS AppPool\{AppPool}:(OI)(CI)(M)' /T /C | Out-Null
+icacls $configDir /grant 'IIS AppPool\{AppPool}:(OI)(CI)(M)' /T /C | Out-Null
 
 Start-WebAppPool -Name '{AppPool}' -ErrorAction SilentlyContinue
 Start-Website -Name '{SiteName}' -ErrorAction SilentlyContinue
