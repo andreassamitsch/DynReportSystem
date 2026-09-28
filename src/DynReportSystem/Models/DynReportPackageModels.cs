@@ -123,11 +123,33 @@ public sealed class DynTableDefinition
     public List<DynTableColumn> Columns { get; set; } = [];
     public List<string> GroupBy { get; set; } = [];
     public List<DynSortDefinition> DefaultSort { get; set; } = [];
+    public List<DynTableAggregate> Aggregates { get; set; } = [];
+    public DynTablePivotDefinition? Pivot { get; set; }
     public bool Searchable { get; set; } = true;
     public bool Filterable { get; set; } = true;
     public bool Sortable { get; set; } = true;
     public int PageSize { get; set; } = 100;
     public string DataMode { get; set; } = "Auto";
+    public string PresentationMode { get; set; } = "Rows";
+}
+
+public sealed class DynTableAggregate
+{
+    public string Field { get; set; } = "";
+    public string Function { get; set; } = "Sum";
+    public string Alias { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string Format { get; set; } = "";
+    public string Unit { get; set; } = "";
+}
+
+public sealed class DynTablePivotDefinition
+{
+    public List<string> RowFields { get; set; } = [];
+    public string ColumnField { get; set; } = "";
+    public List<DynTableAggregate> Measures { get; set; } = [];
+    public int MaxColumns { get; set; } = 24;
+    public string ColumnSort { get; set; } = "Asc";
 }
 
 public sealed class DynTableColumn
