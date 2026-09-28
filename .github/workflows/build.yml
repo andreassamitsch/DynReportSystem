@@ -48,8 +48,8 @@ jobs:
           dotnet publish installer/DynReportSystem.Setup/DynReportSystem.Setup.csproj `
             -c Release -r win-x64 --self-contained true `
             -o artifacts/setup
-          Copy-Item sql/001-dynreport-metadata-schema.sql
-            sql/002-fix-audit-and-reportgrant-index.sql artifacts/setup/ -Force
+          Copy-Item sql/001-dynreport-metadata-schema.sql artifacts/setup/ -Force
+          Copy-Item sql/002-fix-audit-and-reportgrant-index.sql artifacts/setup/ -Force
           Copy-Item sql/010-runtime-principal-template.sql artifacts/setup/ -Force
           Copy-Item docs/operations/backup-recovery.md artifacts/setup/ -Force
           Copy-Item docs/operations/sql-metadata-setup.md artifacts/setup/ -Force
@@ -63,6 +63,7 @@ jobs:
           path: |
             artifacts/setup/DynReportSystem-Server-Setup-0.7.2-win-x64.exe
             artifacts/setup/001-dynreport-metadata-schema.sql
+            artifacts/setup/002-fix-audit-and-reportgrant-index.sql
             artifacts/setup/010-runtime-principal-template.sql
             artifacts/setup/backup-recovery.md
             artifacts/setup/sql-metadata-setup.md
