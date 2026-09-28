@@ -115,17 +115,20 @@ IF OBJECT_ID(N'dyn.ReportGrant', N'U') IS NULL
 BEGIN
     CREATE TABLE dyn.ReportGrant
     (
+        ReportGrantId bigint IDENTITY(1,1) NOT NULL
+            CONSTRAINT PK_dyn_ReportGrant PRIMARY KEY CLUSTERED,
         ReportId nvarchar(200) NOT NULL,
         PrincipalType nvarchar(50) NOT NULL,
         Principal nvarchar(300) NOT NULL,
         Permission nvarchar(80) NOT NULL,
         CreatedUtc datetime2(3) NOT NULL CONSTRAINT DF_dyn_ReportGrant_CreatedUtc DEFAULT SYSUTCDATETIME(),
 
-        CONSTRAINT PK_dyn_ReportGrant
-            PRIMARY KEY (ReportId, PrincipalType, Principal, Permission),
         CONSTRAINT FK_dyn_ReportGrant_Report
             FOREIGN KEY (ReportId) REFERENCES dyn.Report(ReportId)
     );
+
+    CREATE UNIQUE NONCLUSTERED INDEX UX_dyn_ReportGrant_Report_Principal_Permission
+        ON dyn.ReportGrant(ReportId, PrincipalType, Principal, Permission);
 
     CREATE INDEX IX_dyn_ReportGrant_Principal
         ON dyn.ReportGrant(PrincipalType, Principal);
@@ -146,7 +149,7 @@ BEGIN
         DataSourceId nvarchar(128) NULL,
         DatasetId nvarchar(200) NULL,
         DurationMs bigint NULL,
-        RowCount bigint NULL,
+        [RowCount] bigint NULL,
         Result nvarchar(40) NOT NULL,
         DetailsJson nvarchar(max) NULL
     );
