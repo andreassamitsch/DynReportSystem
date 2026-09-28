@@ -29,10 +29,18 @@
 
     function safeUrl(value) {
         try {
-            const url = new URL(value, location.origin);
+            const url = new URL(value, document.baseURI);
             return sanitize(url.pathname + url.search);
         } catch {
             return sanitize(value);
+        }
+    }
+
+    function isBlazorUrl(value) {
+        try {
+            return new URL(value, document.baseURI).pathname.includes('/_blazor');
+        } catch {
+            return String(value).includes('_blazor');
         }
     }
 
@@ -85,7 +93,7 @@
     }
 
     async function captureBlazorResponse(response, method, url, started) {
-        if (!url.includes('/_blazor'))
+        if (!isBlazorUrl(url))
             return;
 
         let body = '';
@@ -116,7 +124,7 @@
             await captureBlazorResponse(response, method, url, started);
             return response;
         } catch (e) {
-            if (url.includes('/_blazor')) {
+            if (isBlazorUrl(url)) {
                 addTimeline(
                     'FETCH-ERROR',
                     `${method} ${safeUrl(url)} -> ${e?.stack || e}`
@@ -211,8 +219,6 @@
             state.interactive = true;
             clearTimeout(timer);
             addTimeline('CIRCUIT', 'Interactive Server aktiv');
-            const startup = qs('dynreport-startup-indicator');
-            if (startup) startup.hidden = true;
             hide();
         },
         markStart() {
