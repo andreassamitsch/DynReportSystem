@@ -9,6 +9,8 @@ Version 0.11.0 adds the first server-side interactive table execution path for l
 Changes:
 
 - native tables can select `DataMode=Server` in the visual designer
+- the designer now validates whether the selected dataset SQL is compatible with server mode and shows the result immediately
+- table columns can be configured individually with field, header, data type, format, unit, visibility, filterability, sortability and display order
 - server-mode tables no longer require the full dataset to be materialized during the normal report run when no other visual consumes that dataset
 - a renderer-neutral table query contract carries offset/limit, global search, column filters, sort definitions and report parameters
 - SQL Server performs filtering, sorting and `OFFSET/FETCH` paging
