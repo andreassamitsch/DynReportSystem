@@ -92,7 +92,7 @@ else
 
         if (visual.Type.Equals("table", StringComparison.OrdinalIgnoreCase))
         {
-            if (string.Equals(visual.Table?.DataMode, "Server", StringComparison.OrdinalIgnoreCase))
+            if (DynReportInteractiveQueryRules.ShouldUseServerMode(Package, visual))
             {
                 builder.OpenComponent<ServerDynamicResultTable>(sequence++);
                 builder.AddAttribute(sequence++, "Package", Package);
