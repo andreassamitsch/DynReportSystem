@@ -121,11 +121,25 @@ Initial component types:
 - state/icon mapping
 - actual/target metric with conditional formatting
 
+## Renderer-neutral contract
+
+The `.dynreport` document stores semantic report behavior, not configuration objects from a concrete UI framework.
+
+Charts, tables, filtering, sorting, grouping, aggregation, drilldowns, conditional formatting, selection and responsive behavior are modeled as DynReport concepts. Concrete chart, grid, map or UI libraries are implementation details behind runtime renderer adapters.
+
+Framework-specific option bags such as ECharts options, AG Grid column definitions, Plotly traces or framework component names are not valid extensions of the native report contract.
+
+This permits different renderers to coexist or to be replaced later without migrating existing report definitions. Runtime execution may also choose client-side, server-side or SQL-assisted filtering/sorting/grouping according to dataset size and capability without changing the report semantics.
+
+The binding architecture and enforcement rules are defined in:
+
+- `docs/architecture/ADR-0005-renderer-neutral-report-model.md`
+
 ## Designer contract
 
 The runtime renders only schema-defined components. The designer edits only schema-defined components.
 
-Adding a report feature means extending the **generic schema + generic renderer + generic designer component**, not adding code for a specific report.
+Adding a report feature means extending the **generic schema + generic renderer abstraction + generic designer component**, not adding code for a specific report or leaking a third-party framework contract into the package.
 
 ## Revision behavior
 
