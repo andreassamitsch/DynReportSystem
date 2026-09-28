@@ -1,0 +1,453 @@
+@implements IAsyncDisposable
+@inject DynReportPackageExecutionService Executor
+@inject AuthenticationStateProvider Authentication
+@inject IJSRuntime JS
+
+<div class="dynamic-table-wrap">
+    <div class="table-toolbar">
+        @if (Definition.Searchable)
+        {
+            <label class="table-search">
+                <span>Suche</span>
+                <input type="search"
+                       placeholder="Serverseitig durchsuchen …"
+                       value="@search"
+                       @onchange="SearchChangedAsync" />
+            </label>
+        }
+
+        <div class="table-filter-summary">
+            @if (ActiveFilterCount > 0)
+            {
+                <span>@ActiveFilterCount Spaltenfilter</span>
+                <button class="text-btn" disabled="@busy" @onclick="ClearFiltersAsync">Filter löschen</button>
+            }
+            <span class="custom-report-meta">Server</span>
+        </div>
+
+        <label class="page-size">
+            <span>Zeilen</span>
+            <select value="@pageSize" @onchange="PageSizeChangedAsync" disabled="@busy">
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="250">250</option>
+                <option value="500">500</option>
+                <option value="1000">1000</option>
+            </select>
+        </label>
+
+        <button class="ghost-btn" disabled="@(busy || result is null)" @onclick="ExportPageAsync">CSV Seite</button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <div class="notice error compact-notice">@error</div>
+    }
+
+    @if (busy)
+    {
+        <div class="loading-strip"><span></span></div>
+    }
+
+    @if (result is not null)
+    {
+        <div class="table-scroll">
+            <table class="data-table">
+                <thead>
+                    <tr class="table-sort-row">
+                        @foreach (var column in DisplayColumns)
+                        {
+                            <th>
+                                @if (CanSort(column))
+                                {
+                                    <button class="column-sort" disabled="@busy" @onclick="() => SortAsync(column)">
+                                        <span>@Header(column)</span>
+                                        <span class="sort-indicator">@SortIndicator(column)</span>
+                                    </button>
+                                }
+                                else
+                                {
+                                    <span>@Header(column)</span>
+                                }
+                            </th>
+                        }
+                    </tr>
+                    @if (Definition.Filterable)
+                    {
+                        <tr class="table-filter-row">
+                            @foreach (var column in DisplayColumns)
+                            {
+                                <th>
+                                    @if (CanFilter(column))
+                                    {
+                                        <input class="column-filter"
+                                               value="@Filter(column)"
+                                               @onchange="e => FilterChangedAsync(column, e.Value?.ToString())"
+                                               placeholder="Filtern …"
+                                               disabled="@busy"
+                                               title="Text oder =, !=, >, >=, <, <=" />
+                                    }
+                                </th>
+                            }
+                        </tr>
+                    }
+                </thead>
+                <tbody>
+                    @foreach (var row in result.Rows)
+                    {
+                        <tr>
+                            @foreach (var column in DisplayColumns)
+                            {
+                                <td title="@Cell(row, column)">@Cell(row, column)</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination">
+            <span>
+                @result.TotalRows.ToString("N0", DeAt) Zeilen ·
+                @((result.Offset / Math.Max(1, result.Limit)) + 1) / @PageCount
+            </span>
+            <div>
+                <button disabled="@(busy || offset == 0)" @onclick="PreviousAsync">←</button>
+                <button disabled="@(busy || !result.HasMore)" @onclick="NextAsync">→</button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public LoadedDynReportPackage Package { get; set; } = null!;
+    [Parameter, EditorRequired] public DynVisual Visual { get; set; } = null!;
+    [Parameter] public IReadOnlyDictionary<string, DynReportParameterValue>? ParameterValues { get; set; }
+    [Parameter] public string ExportName { get; set; } = "DynReport";
+
+    private DynTableDefinition Definition => Visual.Table ?? new();
+    private static readonly CultureInfo DeAt = CultureInfo.GetCultureInfo("de-AT");
+    private readonly Dictionary<string, string> filters = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<DynSortDefinition> sort = [];
+    private DynTableQueryResult? result;
+    private CancellationTokenSource? queryCts;
+    private string signature = "";
+    private string search = "";
+    private string error = "";
+    private string? userName;
+    private bool busy;
+    private int offset;
+    private int pageSize = 100;
+
+    private IReadOnlyList<string> DisplayColumns
+    {
+        get
+        {
+            var configured = Definition.Columns
+                .Where(x => !x.Hidden && !string.IsNullOrWhiteSpace(x.Field))
+                .Select(x => x.Field)
+                .ToArray();
+
+            if (configured.Length == 0)
+                return result?.Columns ?? [];
+
+            return configured
+                .Where(field => result?.Columns.Contains(field, StringComparer.OrdinalIgnoreCase) != false)
+                .ToArray();
+        }
+    }
+
+    private int ActiveFilterCount => filters.Values.Count(x => !string.IsNullOrWhiteSpace(x));
+    private long PageCount => result is null
+        ? 1
+        : Math.Max(1, (long)Math.Ceiling(result.TotalRows / (double)Math.Max(1, result.Limit)));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var nextSignature = BuildSignature();
+        if (nextSignature == signature)
+            return;
+
+        signature = nextSignature;
+        offset = 0;
+        search = "";
+        filters.Clear();
+        sort.Clear();
+        pageSize = Math.Clamp(Definition.PageSize, 1, 1000);
+
+        var user = (await Authentication.GetAuthenticationStateAsync()).User;
+        userName = user.Identity?.Name;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        queryCts?.Cancel();
+        queryCts?.Dispose();
+        queryCts = new CancellationTokenSource();
+
+        busy = true;
+        error = "";
+
+        try
+        {
+            var request = new DynTableQueryRequest
+            {
+                Offset = offset,
+                Limit = pageSize,
+                Search = search,
+                Filters = filters
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Value))
+                    .Select(x => ParseFilter(x.Key, x.Value))
+                    .ToList(),
+                Sort = sort.Select(x => new DynSortDefinition
+                {
+                    Field = x.Field,
+                    Direction = x.Direction
+                }).ToList(),
+                Parameters = ParameterSnapshot()
+            };
+
+            result = await Executor.QueryTableAsync(
+                Package,
+                Visual.Id,
+                request,
+                userName,
+                queryCts.Token);
+
+            offset = result.Offset;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task SearchChangedAsync(ChangeEventArgs e)
+    {
+        search = e.Value?.ToString()?.Trim() ?? "";
+        offset = 0;
+        await LoadAsync();
+    }
+
+    private string Filter(string column) =>
+        filters.TryGetValue(column, out var value) ? value : "";
+
+    private async Task FilterChangedAsync(string column, string? value)
+    {
+        var text = value?.Trim() ?? "";
+        if (text.Length == 0)
+            filters.Remove(column);
+        else
+            filters[column] = text;
+
+        offset = 0;
+        await LoadAsync();
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        filters.Clear();
+        offset = 0;
+        await LoadAsync();
+    }
+
+    private async Task SortAsync(string column)
+    {
+        var existing = sort.FirstOrDefault(x =>
+            x.Field.Equals(column, StringComparison.OrdinalIgnoreCase));
+
+        sort.Clear();
+        sort.Add(new DynSortDefinition
+        {
+            Field = column,
+            Direction = existing?.Direction.Equals("Asc", StringComparison.OrdinalIgnoreCase) == true
+                ? "Desc"
+                : "Asc"
+        });
+
+        offset = 0;
+        await LoadAsync();
+    }
+
+    private async Task PageSizeChangedAsync(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var size))
+            return;
+
+        pageSize = Math.Clamp(size, 1, 1000);
+        offset = 0;
+        await LoadAsync();
+    }
+
+    private async Task PreviousAsync()
+    {
+        offset = Math.Max(0, offset - pageSize);
+        await LoadAsync();
+    }
+
+    private async Task NextAsync()
+    {
+        if (result?.HasMore != true)
+            return;
+
+        offset += pageSize;
+        await LoadAsync();
+    }
+
+    private string SortIndicator(string column)
+    {
+        var item = sort.FirstOrDefault(x =>
+            x.Field.Equals(column, StringComparison.OrdinalIgnoreCase));
+
+        return item is null ? "↕" :
+            item.Direction.Equals("Desc", StringComparison.OrdinalIgnoreCase) ? "▼" : "▲";
+    }
+
+    private DynTableColumn? ColumnDefinition(string column) =>
+        Definition.Columns.FirstOrDefault(x =>
+            x.Field.Equals(column, StringComparison.OrdinalIgnoreCase));
+
+    private string Header(string column)
+    {
+        var configured = ColumnDefinition(column)?.Header;
+        return string.IsNullOrWhiteSpace(configured) ? column : configured;
+    }
+
+    private bool CanSort(string column) =>
+        Definition.Sortable && ColumnDefinition(column)?.Sortable != false;
+
+    private bool CanFilter(string column) =>
+        Definition.Filterable && ColumnDefinition(column)?.Filterable != false;
+
+    private static DynTableQueryFilter ParseFilter(string fieldName, string expression)
+    {
+        var text = expression.Trim();
+
+        foreach (var item in new[]
+        {
+            (Prefix: ">=", Operator: "gte"),
+            (Prefix: "<=", Operator: "lte"),
+            (Prefix: "!=", Operator: "ne"),
+            (Prefix: "=", Operator: "eq"),
+            (Prefix: ">", Operator: "gt"),
+            (Prefix: "<", Operator: "lt")
+        })
+        {
+            if (text.StartsWith(item.Prefix, StringComparison.Ordinal))
+            {
+                return new DynTableQueryFilter
+                {
+                    Field = fieldName,
+                    Operator = item.Operator,
+                    Value = text[item.Prefix.Length..].Trim()
+                };
+            }
+        }
+
+        return new DynTableQueryFilter
+        {
+            Field = fieldName,
+            Operator = "contains",
+            Value = text
+        };
+    }
+
+    private Dictionary<string, List<string>> ParameterSnapshot()
+    {
+        var snapshot = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+        if (ParameterValues is null)
+            return snapshot;
+
+        foreach (var item in ParameterValues)
+            snapshot[item.Key] = item.Value.Values.ToList();
+
+        return snapshot;
+    }
+
+    private string BuildSignature()
+    {
+        var parameters = ParameterValues is null
+            ? ""
+            : string.Join("|", ParameterValues
+                .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(x => x.Key + "=" + string.Join(";", x.Value.Values)));
+
+        return $"{Package.Manifest.ReportId}|{Package.Manifest.Version}|{Visual.Id}|{parameters}";
+    }
+
+    private string Cell(IReadOnlyDictionary<string, object?> row, string key)
+    {
+        var value = QueryResult.Get(row, key);
+        if (value is null) return "";
+
+        var definition = ColumnDefinition(key);
+        if (!string.IsNullOrWhiteSpace(definition?.Format) && value is IFormattable formattable)
+        {
+            try
+            {
+                var formatted = formattable.ToString(definition.Format, DeAt) ?? "";
+                return string.IsNullOrWhiteSpace(definition.Unit)
+                    ? formatted
+                    : $"{formatted} {definition.Unit}";
+            }
+            catch (FormatException)
+            {
+            }
+        }
+
+        var text = value switch
+        {
+            DateTime date => date.ToString("dd.MM.yyyy HH:mm", DeAt),
+            DateTimeOffset dto => dto.ToString("dd.MM.yyyy HH:mm", DeAt),
+            decimal number => number.ToString("N2", DeAt),
+            double number => number.ToString("N2", DeAt),
+            float number => number.ToString("N2", DeAt),
+            _ => (Convert.ToString(value, DeAt) ?? "")
+                .Replace("\r\n", " · ")
+                .Replace("\n", " · ")
+                .Replace("\r", " · ")
+        };
+
+        return string.IsNullOrWhiteSpace(definition?.Unit)
+            ? text
+            : $"{text} {definition.Unit}";
+    }
+
+    private async Task ExportPageAsync()
+    {
+        if (result is null)
+            return;
+
+        var rows = result.Rows
+            .Select(row => DisplayColumns.ToDictionary(
+                column => Header(column),
+                column => (object?)Cell(row, column)))
+            .ToArray();
+
+        var headers = DisplayColumns.Select(Header).ToArray();
+        var safe = string.Concat(ExportName.Select(ch =>
+            Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
+
+        await JS.InvokeVoidAsync(
+            "DynReportCharts.downloadCsv",
+            $"{safe}_{DateTime.Now:yyyyMMdd_HHmm}.csv",
+            headers,
+            rows);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        queryCts?.Cancel();
+        queryCts?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}
