@@ -22,7 +22,7 @@ DynReport report.
 - schema/version contract
 - runtime/designer use the same model
 
-## Completed through 0.12.0
+## Completed through 0.13.0
 
 - central metadata schema and immutable SQL revisions
 - package/runtime security guardrails and least-privilege design
@@ -44,6 +44,9 @@ DynReport report.
 - renderer-neutral bounded pivot matrices with SQL-side aggregation
 - automatic server-mode selection for compatible tables
 - native Kundencockpit runtime prioritized over the legacy Razor/RDL fallback
+- portal-managed folder/report permissions with visible inheritance
+- upgrade-safe permission overrides stored outside the application directory
+- permission save/reset audit events and backup/recovery coverage
 
 ## P1 - product readiness
 
