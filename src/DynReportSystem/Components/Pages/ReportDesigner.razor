@@ -238,17 +238,17 @@ else
                 else
                 {
                     <div class="designer-page-tabs">
-                        @foreach (var page in draft.Document.Pages)
+                        @foreach (var pageTab in draft.Document.Pages)
                         {
-                            <button class="@(page.Id == activePageId ? "active" : "")"
-                                    @onclick="() => SelectPage(page.Id)">
-                                @(string.IsNullOrWhiteSpace(page.Title) ? page.Id : page.Title)
-                                <span>@page.Components.Count</span>
+                            <button class="@(pageTab.Id == activePageId ? "active" : "")"
+                                    @onclick="() => SelectPage(pageTab.Id)">
+                                @(string.IsNullOrWhiteSpace(pageTab.Title) ? pageTab.Id : pageTab.Title)
+                                <span>@(pageTab.Components.Count)</span>
                             </button>
                         }
                     </div>
 
-                    @if (CurrentPage is DynReportPage page)
+                    @if (CurrentPage is DynReportPage currentPage)
                     {
                         <div class="designer-workbench">
                             <aside class="designer-palette">
@@ -287,11 +287,11 @@ else
                                 <div class="designer-page-settings">
                                     <label>
                                         <span>Seitentitel</span>
-                                        <input @bind="page.Title" />
+                                        <input @bind="currentPage.Title" />
                                     </label>
                                     <label>
                                         <span>Spalten</span>
-                                        <input type="number" min="1" max="24" @bind="page.Columns" />
+                                        <input type="number" min="1" max="24" @bind="currentPage.Columns" />
                                     </label>
                                     <div class="designer-actions">
                                         @if (draft.Document.Pages.Count > 1)
@@ -304,46 +304,46 @@ else
                                 </div>
 
                                 <div class="designer-canvas"
-                                     style="@($"--designer-columns:{Math.Clamp(page.Columns, 1, 24)}")">
-                                    @if (page.Components.Count == 0)
+                                     style="@($"--designer-columns:{Math.Clamp(currentPage.Columns, 1, 24)}")">
+                                    @if (currentPage.Components.Count == 0)
                                     {
                                         <div class="designer-canvas-empty">
                                             Links eine Komponente auswählen.
                                         </div>
                                     }
 
-                                    @foreach (var component in page.Components)
+                                    @foreach (var canvasComponent in currentPage.Components)
                                     {
-                                        <article class="designer-canvas-component @(component.Id == selectedComponentId ? "selected" : "")"
-                                                 style="@($"--designer-span:{Math.Clamp(component.Span, 1, Math.Max(1, page.Columns))}")"
-                                                 @onclick="() => SelectComponent(component.Id)">
+                                        <article class="designer-canvas-component @(canvasComponent.Id == selectedComponentId ? "selected" : "")"
+                                                 style="@($"--designer-span:{Math.Clamp(canvasComponent.Span, 1, Math.Max(1, currentPage.Columns))}")"
+                                                 @onclick="() => SelectComponent(canvasComponent.Id)">
                                             <div class="designer-canvas-component-head">
-                                                <span class="designer-component-icon">@ComponentIcon(component.Type)</span>
+                                                <span class="designer-component-icon">@ComponentIcon(canvasComponent.Type)</span>
                                                 <div>
-                                                    <strong>@ComponentDisplayName(component.Type)</strong>
-                                                    <small>@component.Id</small>
+                                                    <strong>@ComponentDisplayName(canvasComponent.Type)</strong>
+                                                    <small>@canvasComponent.Id</small>
                                                 </div>
                                             </div>
 
                                             <div class="designer-canvas-component-body">
-                                                <strong>@(string.IsNullOrWhiteSpace(component.Title) ? "Ohne Titel" : component.Title)</strong>
-                                                @if (!string.IsNullOrWhiteSpace(component.Dataset))
+                                                <strong>@(string.IsNullOrWhiteSpace(canvasComponent.Title) ? "Ohne Titel" : canvasComponent.Title)</strong>
+                                                @if (!string.IsNullOrWhiteSpace(canvasComponent.Dataset))
                                                 {
-                                                    <small>Dataset: @component.Dataset</small>
+                                                    <small>Dataset: @canvasComponent.Dataset</small>
                                                 }
-                                                @if (component.Type.Equals("metric-strip", StringComparison.OrdinalIgnoreCase))
+                                                @if (canvasComponent.Type.Equals("metric-strip", StringComparison.OrdinalIgnoreCase))
                                                 {
-                                                    <small>@component.Metrics.Count Kennzahl(en)</small>
+                                                    <small>@canvasComponent.Metrics.Count Kennzahl(en)</small>
                                                 }
-                                                @if (component.Type.Equals("grouped-board", StringComparison.OrdinalIgnoreCase)
-                                                     && component.Board is not null)
+                                                @if (canvasComponent.Type.Equals("grouped-board", StringComparison.OrdinalIgnoreCase)
+                                                     && canvasComponent.Board is not null)
                                                 {
-                                                    <small>@component.Board.Columns.Count Board-Spalte(n)</small>
+                                                    <small>@canvasComponent.Board.Columns.Count Board-Spalte(n)</small>
                                                 }
                                             </div>
 
                                             <div class="designer-canvas-span">
-                                                @component.Span / @page.Columns
+                                                @(canvasComponent.Span) / @(currentPage.Columns)
                                             </div>
                                         </article>
                                     }
@@ -356,7 +356,7 @@ else
                                     <small>ausgewählte Komponente</small>
                                 </div>
 
-                                @if (SelectedComponent is not DynVisual component)
+                                @if (SelectedComponent is not DynVisual selected)
                                 {
                                     <div class="designer-inspector-empty">
                                         Eine Komponente auf der Arbeitsfläche auswählen.
@@ -374,15 +374,15 @@ else
                                     <div class="designer-inspector-form">
                                         <label>
                                             <span>Typ</span>
-                                            <input value="@ComponentDisplayName(component.Type)" readonly />
+                                            <input value="@ComponentDisplayName(selected.Type)" readonly />
                                         </label>
                                         <label>
                                             <span>ID</span>
-                                            <input value="@component.Id" readonly />
+                                            <input value="@selected.Id" readonly />
                                         </label>
                                         <label>
                                             <span>Titel</span>
-                                            <input @bind="component.Title" />
+                                            <input @bind="selected.Title" />
                                         </label>
                                         <label>
                                             <span>Untertitel</span>
@@ -393,7 +393,7 @@ else
                                         {
                                             <label>
                                                 <span>Dataset</span>
-                                                <select @bind="component.Dataset">
+                                                <select @bind="selected.Dataset">
                                                     <option value="">– auswählen –</option>
                                                     @foreach (var dataset in draft.Document.Datasets)
                                                     {
@@ -454,7 +454,7 @@ else
                                                             <span>Feld</span>
                                                             <select @bind="component.Value.Field">
                                                                 <option value="">– Feld –</option>
-                                                                @foreach (var field in FieldsFor(component.Dataset))
+                                                                @foreach (var field in FieldsFor(selected.Dataset))
                                                                 {
                                                                     <option value="@field">@field</option>
                                                                 }
@@ -481,7 +481,7 @@ else
                                             </div>
                                         }
 
-                                        @if (component.Type.Equals("metric-strip", StringComparison.OrdinalIgnoreCase))
+                                        @if (selected.Type.Equals("metric-strip", StringComparison.OrdinalIgnoreCase))
                                         {
                                             <div class="designer-inspector-section">
                                                 <div class="designer-inspector-section-head">
@@ -518,7 +518,7 @@ else
                                                                 <span>Feld</span>
                                                                 <select @bind="metric.Value.Field">
                                                                     <option value="">– Feld –</option>
-                                                                    @foreach (var field in FieldsFor(component.Dataset))
+                                                                    @foreach (var field in FieldsFor(selected.Dataset))
                                                                     {
                                                                         <option value="@field">@field</option>
                                                                     }
@@ -540,8 +540,8 @@ else
                                             </div>
                                         }
 
-                                        @if (component.Type.Equals("grouped-board", StringComparison.OrdinalIgnoreCase)
-                                             && component.Board is not null)
+                                        @if (selected.Type.Equals("grouped-board", StringComparison.OrdinalIgnoreCase)
+                                             && selected.Board is not null)
                                         {
                                             <div class="designer-inspector-section">
                                                 <strong>Board-Struktur</strong>
