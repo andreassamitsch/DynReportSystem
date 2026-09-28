@@ -5,6 +5,9 @@
 @inject ReportService Reports
 @inject DashboardCatalog Dashboards
 @inject ChartOptionFactory Charts
+@inject DynReportPackageStore Packages
+@inject NavigationManager Navigation
+@inject IConfiguration Configuration
 @inject IJSRuntime JS
 
 <PageTitle>Kundencockpit · DynReport System</PageTitle>
@@ -74,9 +77,9 @@ else
             }
 
             <div class="sidebar-foot">
-                <strong>DynReport 0.2.2</strong><br />
-                RDL = Datenlogik &amp; GB-Farben<br />
-                DynReport = Darstellung &amp; Interaktion
+                <strong>Legacy-RDL-Fallback</strong><br />
+                Wird nur verwendet, wenn kein natives<br />
+                Kundencockpit-Paket installiert ist.
             </div>
         </aside>
 
@@ -519,7 +522,7 @@ else
             }
 
             <footer>
-                DynReport System 0.2.2 · Windows SSO · RDL-Datenlogik und RDL-Geschäftsbereichsfarben
+                DynReport System · Legacy-RDL-Fallback · native .dynreport-Runtime wird bevorzugt
             </footer>
         </main>
     </div>
@@ -618,6 +621,14 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        // The historic /reports/kundencockpit URL remains stable for users and
+        // bookmarks, but native packages are now the primary runtime path.
+        if (Packages.Get("kundencockpit") is not null)
+        {
+            Navigation.NavigateTo("/reports/package/kundencockpit", replace: true);
+            return;
+        }
+
         SetDefaultDates();
 
         var user = (await Authentication.GetAuthenticationStateAsync()).User;
@@ -767,8 +778,27 @@ else
                 .Where(Reports.Datasets.ContainsKey)
                 .ToArray();
 
-            foreach (var dataset in datasets)
-                overviewResults[dataset] = await Reports.RunAsync(dataset, Filters);
+            var maxParallel = Math.Clamp(
+                Configuration.GetValue("Cockpit:MaxConcurrentDashboardQueries", 4),
+                1,
+                8);
+            using var gate = new SemaphoreSlim(maxParallel, maxParallel);
+
+            var tasks = datasets.Select(async dataset =>
+            {
+                await gate.WaitAsync();
+                try
+                {
+                    return (Dataset: dataset, Result: await Reports.RunAsync(dataset, Filters));
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            });
+
+            foreach (var item in await Task.WhenAll(tasks))
+                overviewResults[item.Dataset] = item.Result;
         }
         catch (Exception ex)
         {
