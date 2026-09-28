@@ -239,7 +239,7 @@ public sealed class DynReportPackageExecutionService(
         }
 
         queryPolicy.Validate(dataSet, sql);
-        sql = NormalizeComposableSelect(dataSet, sql);
+        sql = DynReportInteractiveQueryRules.NormalizeComposableSelect(dataSet, sql);
 
         var source = package.Document.DataSources.FirstOrDefault(x =>
             x.Id.Equals(dataSet.DataSourceId, StringComparison.OrdinalIgnoreCase))
@@ -824,49 +824,6 @@ public sealed class DynReportPackageExecutionService(
         return consumers.All(component =>
             component.Type.Equals("table", StringComparison.OrdinalIgnoreCase)
             && string.Equals(component.Table?.DataMode, "Server", StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static string NormalizeComposableSelect(
-        DynReportDataset dataSet,
-        string sql)
-    {
-        if (!dataSet.CommandType.Equals("Text", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new NotSupportedException(
-                $"Dataset '{dataSet.Id}' muss für serverseitiges Paging SQL-Text verwenden.");
-        }
-
-        var normalized = sql.Trim();
-        if (normalized.EndsWith(';'))
-            normalized = normalized[..^1].TrimEnd();
-
-        if (!Regex.IsMatch(
-                normalized,
-                @"^SELECT\b",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
-        {
-            throw new NotSupportedException(
-                $"Dataset '{dataSet.Id}' ist nicht als komponierbare SELECT-Abfrage aufgebaut. " +
-                "Für DataMode=Server muss die SQL-Datei direkt mit SELECT beginnen.");
-        }
-
-        if (normalized.Contains(';'))
-        {
-            throw new NotSupportedException(
-                $"Dataset '{dataSet.Id}' enthält mehrere SQL-Anweisungen und kann nicht serverseitig komponiert werden.");
-        }
-
-        if (Regex.IsMatch(
-                normalized,
-                @"\bORDER\s+BY\b|\bFOR\s+(XML|JSON)\b|\bOPTION\s*\(",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
-        {
-            throw new NotSupportedException(
-                $"Dataset '{dataSet.Id}' enthält ORDER BY/FOR/OPTION auf oberster Abfrageebene. " +
-                "Sortierung muss bei DataMode=Server über die semantische Tabellendefinition erfolgen.");
-        }
-
-        return normalized;
     }
 
     private static string QuoteIdentifier(string field) =>
