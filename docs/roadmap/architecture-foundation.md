@@ -22,7 +22,7 @@ DynReport report.
 - schema/version contract
 - runtime/designer use the same model
 
-## Completed through 0.11.0
+## Completed through 0.12.0
 
 - central metadata schema and immutable SQL revisions
 - package/runtime security guardrails and least-privilege design
@@ -40,13 +40,17 @@ DynReport report.
 - stable row grouping order in server mode
 - authenticated/authorized table query JSON endpoint for future client-heavy renderers
 - interactive table telemetry and bounded page size
+- semantic server-side grouped tables with Sum/Avg/Min/Max/Count/DistinctCount
+- renderer-neutral bounded pivot matrices with SQL-side aggregation
+- automatic server-mode selection for compatible tables
+- native Kundencockpit runtime prioritized over the legacy Razor/RDL fallback
 
 ## P1 - product readiness
 
 - validate 0.7.1 rollback on APP-01 before making SQL the authoritative read path
-- server-side aggregate grouping / expandable groups
-- semantic pivot contract and server-side pivot execution
+- expandable hierarchical group navigation on top of the existing grouped-query contract
 - optional MIT Tabulator heavy-data renderer using the existing table query API
+- Kundencockpit: move remaining complex legacy SQL batches behind stable composable read models where server-mode diagnostics identify them
 - static/lightweight portal
 - dataset cache with security-scoped keys
 - background worker/job queue
