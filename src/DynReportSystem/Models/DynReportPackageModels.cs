@@ -114,6 +114,54 @@ public sealed class DynVisual
     public string Unit { get; set; } = "";
     public List<DynMetricItem> Metrics { get; set; } = [];
     public DynGroupedBoard? Board { get; set; }
+    public DynTableDefinition? Table { get; set; }
+    public DynChartDefinition? Chart { get; set; }
+}
+
+public sealed class DynTableDefinition
+{
+    public List<DynTableColumn> Columns { get; set; } = [];
+    public List<string> GroupBy { get; set; } = [];
+    public List<DynSortDefinition> DefaultSort { get; set; } = [];
+    public bool Searchable { get; set; } = true;
+    public bool Filterable { get; set; } = true;
+    public bool Sortable { get; set; } = true;
+    public int PageSize { get; set; } = 100;
+    public string DataMode { get; set; } = "Auto";
+}
+
+public sealed class DynTableColumn
+{
+    public string Field { get; set; } = "";
+    public string Header { get; set; } = "";
+    public string Format { get; set; } = "";
+    public string Unit { get; set; } = "";
+    public bool Hidden { get; set; }
+    public bool Filterable { get; set; } = true;
+    public bool Sortable { get; set; } = true;
+}
+
+public sealed class DynChartDefinition
+{
+    public string ChartType { get; set; } = "Auto";
+    public string CategoryField { get; set; } = "";
+    public string SeriesByField { get; set; } = "";
+    public List<DynChartSeries> Series { get; set; } = [];
+    public List<DynSortDefinition> Sort { get; set; } = [];
+    public bool Stacked { get; set; }
+    public bool ShowLegend { get; set; } = true;
+    public bool ShowLabels { get; set; }
+    public int MaxPoints { get; set; } = 120;
+    public int Height { get; set; } = 360;
+}
+
+public sealed class DynChartSeries
+{
+    public string Field { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string Aggregation { get; set; } = "Sum";
+    public string Format { get; set; } = "";
+    public string Unit { get; set; } = "";
 }
 
 public sealed class DynMetricItem
