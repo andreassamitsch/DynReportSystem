@@ -2,6 +2,20 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
+## Version 0.7.2
+
+Version 0.7.2 fixes the SQL metadata bootstrap issue found during the first APP-01 rollout.
+
+- escapes the reserved SQL Server `ROWCOUNT` keyword in the audit table and runtime insert
+- changes `dyn.ReportGrant` from an over-wide composite clustered primary key to a bigint
+  surrogate clustered key
+- preserves logical grant uniqueness with a unique nonclustered index
+- adds idempotent migration `sql/002-fix-audit-and-reportgrant-index.sql` for databases where
+  the original 0.7.1 schema was already partially executed
+- the repair migration records metadata schema version 2
+
+For an affected 0.7.1 database, keep the database and run migration 002, then install 0.7.2.
+
 ## Version 0.7.1
 
 Version 0.7.1 closes the first **revision recovery and write-concurrency gaps** before the
@@ -68,6 +82,7 @@ SQL bootstrap:
 
 ```text
 sql/001-dynreport-metadata-schema.sql
+sql/002-fix-audit-and-reportgrant-index.sql
 sql/010-runtime-principal-template.sql
 ```
 
@@ -304,7 +319,7 @@ connection-string fallback exists only for the migration phase and must not cont
 
 ## Installation / update
 
-GitHub Actions builds DynReportSystem-Server-Setup-0.7.1-win-x64.exe.
+GitHub Actions builds DynReportSystem-Server-Setup-0.7.2-win-x64.exe.
 
 For an SSRS migration, keep the setup EXE, MigrationBundle.zip and the optimized Kundencockpit.rdl (when updating it) next to each other. The setup performs an in-place update and preserves the existing production appsettings, local DynReport permissions and IIS/HTTPS bindings.
 
