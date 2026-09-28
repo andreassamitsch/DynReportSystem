@@ -227,6 +227,17 @@
         },
         "Sortable": {
           "type": "boolean"
+        },
+        "DataType": {
+          "enum": [
+            "Auto",
+            "String",
+            "Integer",
+            "Decimal",
+            "Date",
+            "DateTime",
+            "Boolean"
+          ]
         }
       }
     },
