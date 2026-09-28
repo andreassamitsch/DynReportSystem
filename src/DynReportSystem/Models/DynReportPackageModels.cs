@@ -134,6 +134,7 @@ public sealed class DynTableColumn
 {
     public string Field { get; set; } = "";
     public string Header { get; set; } = "";
+    public string DataType { get; set; } = "Auto";
     public string Format { get; set; } = "";
     public string Unit { get; set; } = "";
     public bool Hidden { get; set; }
