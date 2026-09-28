@@ -556,6 +556,24 @@ else
                                             <div class="designer-inspector-section">
                                                 <strong>Tabellenverhalten</strong>
 
+                                                <label>
+                                                    <span>Datenmodus</span>
+                                                    <select @bind="selected.Table.DataMode">
+                                                        <option value="Auto">Automatisch / lokal</option>
+                                                        <option value="Client">Lokal im geladenen Dataset</option>
+                                                        <option value="Server">Serverseitig paginiert</option>
+                                                    </select>
+                                                </label>
+
+                                                @if (selected.Table.DataMode.Equals("Server", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <small>
+                                                        Servermodus benötigt eine komponierbare SQL-SELECT-Abfrage ohne abschließendes
+                                                        ORDER BY. Filter, Sortierung und Paging werden vom DynReport Query Runtime
+                                                        parametrisiert an SQL Server übergeben.
+                                                    </small>
+                                                }
+
                                                 <div class="designer-inspector-grid">
                                                     <label>
                                                         <span>Zeilen / Seite</span>
