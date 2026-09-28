@@ -22,7 +22,7 @@ DynReport report.
 - schema/version contract
 - runtime/designer use the same model
 
-## Completed through 0.7.1
+## Completed through 0.11.0
 
 - central metadata schema and immutable SQL revisions
 - package/runtime security guardrails and least-privilege design
@@ -33,11 +33,20 @@ DynReport report.
 - transactional active-revision + ACL rollback with local package compensation
 - serialized package mutations
 - backup/recovery and SQL performance runbooks
+- renderer-neutral semantic chart/table model and designer editors
+- zero-license-cost renderer policy (ECharts + native table + optional future Tabulator)
+- server-side interactive table query contract
+- SQL-backed paging, global search, typed column filters and sorting
+- stable row grouping order in server mode
+- authenticated/authorized table query JSON endpoint for future client-heavy renderers
+- interactive table telemetry and bounded page size
 
 ## P1 - product readiness
 
 - validate 0.7.1 rollback on APP-01 before making SQL the authoritative read path
-- viewer API with paging
+- server-side aggregate grouping / expandable groups
+- semantic pivot contract and server-side pivot execution
+- optional MIT Tabulator heavy-data renderer using the existing table query API
 - static/lightweight portal
 - dataset cache with security-scoped keys
 - background worker/job queue
