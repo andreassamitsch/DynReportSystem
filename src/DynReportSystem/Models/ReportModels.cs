@@ -30,3 +30,33 @@ public sealed class QueryResult
     public static object? Get(IReadOnlyDictionary<string, object?> row, string key) =>
         row.TryGetValue(key, out var result) ? result : null;
 }
+
+
+public sealed class DynTableQueryRequest
+{
+    public int Offset { get; set; }
+    public int Limit { get; set; } = 100;
+    public string Search { get; set; } = "";
+    public List<DynTableQueryFilter> Filters { get; set; } = [];
+    public List<DynSortDefinition> Sort { get; set; } = [];
+    public Dictionary<string, List<string>> Parameters { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed class DynTableQueryFilter
+{
+    public string Field { get; set; } = "";
+    public string Operator { get; set; } = "contains";
+    public string Value { get; set; } = "";
+}
+
+public sealed class DynTableQueryResult
+{
+    public required string Dataset { get; init; }
+    public required IReadOnlyList<string> Columns { get; init; }
+    public required IReadOnlyList<Dictionary<string, object?>> Rows { get; init; }
+    public long TotalRows { get; init; }
+    public int Offset { get; init; }
+    public int Limit { get; init; }
+    public bool HasMore => Offset + Rows.Count < TotalRows;
+}
