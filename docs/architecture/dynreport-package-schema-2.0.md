@@ -152,6 +152,36 @@ See:
 
 - `docs/architecture/ADR-0007-server-side-interactive-table-query.md`
 
+## Server-side grouped and pivot tables
+
+A table's semantic `PresentationMode` may be:
+
+- `Rows` — detail rows
+- `Grouped` — SQL-backed grouped dimensions and aggregate measures
+- `Pivot` — SQL-backed row/column dimensions and bounded aggregate matrix
+
+Grouped measures use `Aggregates` and support `Sum`, `Avg`, `Min`, `Max`,
+`Count` and `DistinctCount`.
+
+Pivot tables define:
+
+- `RowFields`
+- `ColumnField`
+- one or more aggregate `Measures`
+- `MaxColumns`
+- pivot-column sort direction
+
+Raw rows are not downloaded for grouped/pivot analysis. SQL Server computes the
+aggregate grain; DynReport shapes only the bounded aggregate result for the renderer.
+
+`DataMode=Auto` may select the server path automatically. Grouped/pivot tables do so
+whenever their dataset query is safely composable, even if another component still needs
+the materialized dataset.
+
+See:
+
+- `docs/architecture/ADR-0008-server-aggregate-and-pivot.md`
+
 ## Designer contract
 
 The runtime renders only schema-defined components. The designer edits only schema-defined components.
