@@ -29,6 +29,244 @@ public sealed class DynamicVisualizationService
         };
     }
 
+    public AutoVisualization? Build(QueryResult result, DynChartDefinition? definition)
+    {
+        if (definition is null)
+            return Build(result, "Auto");
+
+        var chartType = string.IsNullOrWhiteSpace(definition.ChartType)
+            ? "Auto"
+            : definition.ChartType;
+
+        var configuredSeries = definition.Series
+            .Where(x => !string.IsNullOrWhiteSpace(x.Field)
+                && result.Columns.Contains(x.Field, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+
+        if (configuredSeries.Length == 0 || string.IsNullOrWhiteSpace(definition.CategoryField)
+            || !result.Columns.Contains(definition.CategoryField, StringComparer.OrdinalIgnoreCase))
+        {
+            return Build(result, chartType);
+        }
+
+        return BuildConfigured(result, definition, configuredSeries);
+    }
+
+    private static AutoVisualization? BuildConfigured(
+        QueryResult result,
+        DynChartDefinition definition,
+        IReadOnlyList<DynChartSeries> configuredSeries)
+    {
+        var type = definition.ChartType.Equals("Auto", StringComparison.OrdinalIgnoreCase)
+            ? "bar"
+            : definition.ChartType.ToLowerInvariant();
+
+        if (type == "donut")
+            type = "pie";
+
+        var categoryField = definition.CategoryField;
+        var seriesBy = !string.IsNullOrWhiteSpace(definition.SeriesByField)
+            && result.Columns.Contains(definition.SeriesByField, StringComparer.OrdinalIgnoreCase)
+                ? definition.SeriesByField
+                : "";
+
+        var maxPoints = Math.Clamp(definition.MaxPoints, 1, 5000);
+        var categories = result.Rows
+            .Select(row => FormatCategory(QueryResult.Get(row, categoryField)))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .Take(maxPoints)
+            .ToArray();
+
+        if (categories.Length == 0)
+            return null;
+
+        if (type == "pie")
+        {
+            var measure = configuredSeries[0];
+            var data = categories.Select(category =>
+            {
+                var rows = result.Rows.Where(row =>
+                    string.Equals(
+                        FormatCategory(QueryResult.Get(row, categoryField)),
+                        category,
+                        StringComparison.CurrentCultureIgnoreCase));
+
+                return (object)new Dictionary<string, object?>
+                {
+                    ["name"] = category,
+                    ["value"] = Aggregate(rows, measure.Field, measure.Aggregation)
+                };
+            }).ToArray();
+
+            return new AutoVisualization(
+                "Pie",
+                $"{SeriesLabel(measure)} nach {categoryField}",
+                new Dictionary<string, object?>
+                {
+                    ["__dynItemFormat"] = measure.Format,
+                    ["__dynResponsive"] = "donut",
+                    ["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "item" },
+                    ["legend"] = new Dictionary<string, object?>
+                    {
+                        ["show"] = definition.ShowLegend,
+                        ["type"] = "scroll",
+                        ["bottom"] = 0
+                    },
+                    ["toolbox"] = Toolbox(),
+                    ["series"] = new object[]
+                    {
+                        new Dictionary<string, object?>
+                        {
+                            ["name"] = SeriesLabel(measure),
+                            ["type"] = "pie",
+                            ["radius"] = new[] { "45%", "70%" },
+                            ["center"] = new[] { "50%", "44%" },
+                            ["label"] = new Dictionary<string, object?> { ["show"] = definition.ShowLabels },
+                            ["data"] = data
+                        }
+                    }
+                });
+        }
+
+        var groupValues = string.IsNullOrWhiteSpace(seriesBy)
+            ? new[] { "" }
+            : result.Rows
+                .Select(row => FormatCategory(QueryResult.Get(row, seriesBy)))
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.CurrentCultureIgnoreCase)
+                .Take(50)
+                .ToArray();
+
+        var series = new List<object>();
+        var formats = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var measure in configuredSeries)
+        {
+            foreach (var group in groupValues)
+            {
+                var label = string.IsNullOrWhiteSpace(group)
+                    ? SeriesLabel(measure)
+                    : configuredSeries.Count == 1
+                        ? group
+                        : $"{SeriesLabel(measure)} · {group}";
+
+                formats[label] = measure.Format;
+
+                var values = categories.Select(category =>
+                {
+                    var rows = result.Rows.Where(row =>
+                        string.Equals(
+                            FormatCategory(QueryResult.Get(row, categoryField)),
+                            category,
+                            StringComparison.CurrentCultureIgnoreCase)
+                        && (string.IsNullOrWhiteSpace(group)
+                            || string.Equals(
+                                FormatCategory(QueryResult.Get(row, seriesBy)),
+                                group,
+                                StringComparison.CurrentCultureIgnoreCase)));
+
+                    return Aggregate(rows, measure.Field, measure.Aggregation);
+                }).ToArray();
+
+                series.Add(new Dictionary<string, object?>
+                {
+                    ["name"] = label,
+                    ["type"] = type == "area" ? "line" : type,
+                    ["smooth"] = type is "line" or "area",
+                    ["stack"] = definition.Stacked ? "dyn-total" : null,
+                    ["areaStyle"] = type == "area"
+                        ? new Dictionary<string, object?> { ["opacity"] = 0.12 }
+                        : null,
+                    ["label"] = new Dictionary<string, object?> { ["show"] = definition.ShowLabels },
+                    ["data"] = values
+                });
+            }
+        }
+
+        var option = new Dictionary<string, object?>
+        {
+            ["__dynSeriesFormats"] = formats,
+            ["__dynResponsive"] = "cartesian",
+            ["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "axis" },
+            ["legend"] = new Dictionary<string, object?>
+            {
+                ["show"] = definition.ShowLegend,
+                ["type"] = "scroll",
+                ["top"] = 0,
+                ["right"] = 0
+            },
+            ["grid"] = new Dictionary<string, object?>
+            {
+                ["left"] = 55,
+                ["right"] = 28,
+                ["top"] = 45,
+                ["bottom"] = categories.Length > 20 ? 62 : 48,
+                ["containLabel"] = true
+            },
+            ["xAxis"] = new Dictionary<string, object?>
+            {
+                ["type"] = "category",
+                ["data"] = categories,
+                ["axisLabel"] = new Dictionary<string, object?> { ["hideOverlap"] = true }
+            },
+            ["yAxis"] = new Dictionary<string, object?>
+            {
+                ["type"] = "value",
+                ["splitLine"] = new Dictionary<string, object?>
+                {
+                    ["lineStyle"] = new Dictionary<string, object?> { ["color"] = "#edf2f3" }
+                }
+            },
+            ["toolbox"] = Toolbox(),
+            ["series"] = series.ToArray()
+        };
+
+        if (categories.Length > 20)
+        {
+            option["dataZoom"] = new object[]
+            {
+                new Dictionary<string, object?> { ["type"] = "inside", ["start"] = 0, ["end"] = 60 },
+                new Dictionary<string, object?> { ["type"] = "slider", ["height"] = 14, ["bottom"] = 3 }
+            };
+        }
+
+        return new AutoVisualization(
+            definition.ChartType,
+            $"{string.Join(" · ", configuredSeries.Select(SeriesLabel))} nach {categoryField}",
+            option);
+    }
+
+    private static string SeriesLabel(DynChartSeries series) =>
+        string.IsNullOrWhiteSpace(series.Label) ? series.Field : series.Label;
+
+    private static double? Aggregate(
+        IEnumerable<Dictionary<string, object?>> rows,
+        string field,
+        string aggregation)
+    {
+        var values = rows
+            .Select(row => Numeric(QueryResult.Get(row, field)))
+            .Where(value => value.HasValue)
+            .Select(value => value!.Value)
+            .ToArray();
+
+        if (aggregation.Equals("Count", StringComparison.OrdinalIgnoreCase))
+            return values.Length;
+
+        if (values.Length == 0)
+            return null;
+
+        return aggregation.ToLowerInvariant() switch
+        {
+            "avg" or "average" => values.Average(),
+            "min" => values.Min(),
+            "max" => values.Max(),
+            "first" or "none" => values[0],
+            _ => values.Sum()
+        };
+    }
+
     public IReadOnlyList<string> Modes(QueryResult result)
     {
         var profile = Profile(result);
