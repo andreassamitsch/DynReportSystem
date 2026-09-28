@@ -135,6 +135,23 @@ The binding architecture and enforcement rules are defined in:
 
 - `docs/architecture/ADR-0005-renderer-neutral-report-model.md`
 
+## Interactive table execution
+
+A table may choose its execution mode through the semantic `DataMode` property.
+
+- `Auto` / `Client`: the dataset is materialized by the normal report run and table interaction occurs against the loaded result.
+- `Server`: the table uses the DynReport server query contract for page-wise filtering, sorting and paging.
+
+Server mode does not identify a UI framework. The same `.dynreport` definition can be rendered by the current Blazor table or a future heavy-data renderer such as Tabulator.
+
+For `DataMode=Server`, the dataset SQL must be a composable single read-only `SELECT` without its own terminal ordering. The runtime validates requested fields against the trusted dataset/table schema, parameterizes filter values and applies SQL Server `ORDER BY ... OFFSET/FETCH` paging.
+
+Configured row-group fields are prepended to the effective sort order so grouping remains stable across server pages.
+
+See:
+
+- `docs/architecture/ADR-0007-server-side-interactive-table-query.md`
+
 ## Designer contract
 
 The runtime renders only schema-defined components. The designer edits only schema-defined components.
