@@ -163,6 +163,9 @@
         const responsiveMode = option.__dynResponsive || null;
         const stackTotalSeries = option.__dynStackTotalSeries || null;
         const stackTotalFormat = option.__dynStackTotalFormat || "number";
+        const tooltipFields = Array.isArray(option.__dynTooltipFields)
+            ? option.__dynTooltipFields
+            : [];
 
         if (option.__dynMap === "world") delete option.__dynMap;
         delete option.__dynSeriesFormats;
@@ -170,6 +173,7 @@
         delete option.__dynResponsive;
         delete option.__dynStackTotalSeries;
         delete option.__dynStackTotalFormat;
+        delete option.__dynTooltipFields;
 
         const axes = [];
         if (Array.isArray(option.yAxis)) axes.push(...option.yAxis);
@@ -221,12 +225,20 @@
                 }).join("<br/>");
                 return "<b>" + header + "</b><br/>" + body;
             };
-        } else if (itemFormat || Object.keys(seriesFormats).length) {
+        } else if (itemFormat || Object.keys(seriesFormats).length || tooltipFields.length) {
             option.tooltip.formatter = p => {
                 const format = seriesFormats[p.seriesName] || itemFormat;
                 const raw = Array.isArray(p.value) ? p.value[p.value.length - 1] : p.value;
                 const pct = typeof p.percent === "number" ? " · " + number.format(p.percent) + " %" : "";
-                return p.marker + "<b>" + (p.name || "") + "</b><br/>" + formatValue(raw, format) + pct;
+                const details = tooltipFields
+                    .map(field => {
+                        const value = p?.data?.meta?.[field];
+                        return value == null || value === ""
+                            ? ""
+                            : "<br/><span style='opacity:.75'>" + field + ":</span> <b>" + String(value) + "</b>";
+                    })
+                    .join("");
+                return p.marker + "<b>" + (p.name || "") + "</b><br/>" + formatValue(raw, format) + pct + details;
             };
         }
 
