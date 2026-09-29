@@ -1529,22 +1529,22 @@ button.filter-chip{cursor:pointer}
 }
 .dyn2-density-compact .dyn2-chart-visual:hover{border-color:#cfdee1}
 .dyn2-density-compact .dyn2-visual-head{margin-bottom:3px}
-.dyn2-density-compact .dyn2-visual-head h3{font-size:10.5px}
-.dyn2-density-compact .dyn2-visual-head p{font-size:7.2px}
-.dyn2-density-compact .dyn2-visual-jump{font-size:7px}
+.dyn2-density-compact .dyn2-visual-head h3{font-size:11.5px;line-height:1.22}
+.dyn2-density-compact .dyn2-visual-head p{font-size:8.4px;line-height:1.35;color:#6f858d}
+.dyn2-density-compact .dyn2-visual-jump{font-size:7.8px}
 .dyn2-density-compact .dyn2-metric-strip{
-  grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:4px
+  grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:4px
 }
 .dyn2-density-compact .dyn2-metric{
-  min-height:52px;padding:7px 8px;border-radius:7px;box-shadow:none
+  min-height:54px;padding:7px 8px;border-radius:7px;box-shadow:none
 }
-.dyn2-density-compact .dyn2-metric span{font-size:7.2px;line-height:1.15}
-.dyn2-density-compact .dyn2-metric strong{margin-top:2px;font-size:14.5px;letter-spacing:-.15px}
+.dyn2-density-compact .dyn2-metric span{font-size:8.2px;line-height:1.18;color:#526a73;font-weight:700}
+.dyn2-density-compact .dyn2-metric strong{margin-top:3px;font-size:14.5px;letter-spacing:-.15px}
 .dyn2-density-compact .echart{min-height:0}
 .dyn2-density-compact footer{margin-top:8px;font-size:7px}
 
-@media(min-width:1450px){
-  .dyn2-density-compact .dyn2-metric-strip{grid-template-columns:repeat(11,minmax(0,1fr))}
+@media(min-width:1380px){
+  .dyn2-density-compact .dyn2-metric-strip{grid-template-columns:repeat(12,minmax(0,1fr))}
 }
 @media(max-width:1180px){
   .dyn2-density-compact .dynamic-parameter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
