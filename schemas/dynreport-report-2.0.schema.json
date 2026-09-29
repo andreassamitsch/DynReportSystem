@@ -311,6 +311,9 @@
             "Grouped",
             "Pivot"
           ]
+        },
+        "Interaction": {
+          "$ref": "#/$defs/tableInteraction"
         }
       }
     },
@@ -661,6 +664,20 @@
           "additionalProperties": {
             "type": "string"
           }
+        }
+      }
+    },
+    "tableInteraction": {
+      "type": "object",
+      "properties": {
+        "ColumnParameterMap": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "RunReportAfterFilter": {
+          "type": "boolean"
         }
       }
     }
