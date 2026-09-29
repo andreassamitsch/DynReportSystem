@@ -271,6 +271,47 @@ public sealed class FolderAccess(
         Catalog.Reports.Any(report => Can(user, report.Id, "Manage"))
         || Catalog.Folders.Any(folder => CanFolder(user, folder.Id, "Manage"));
 
+    public string? ResolveFolderPath(string path)
+    {
+        _ = Catalog;
+
+        var segments = (path ?? "")
+            .Replace('\\', '/')
+            .Split('/', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        if (segments.Length == 0)
+            return null;
+
+        string? parentId = null;
+
+        foreach (var segment in segments)
+        {
+            var folder = _foldersById.Values.FirstOrDefault(candidate =>
+                string.Equals(candidate.ParentId, parentId, StringComparison.OrdinalIgnoreCase)
+                && candidate.Title.Equals(segment, StringComparison.CurrentCultureIgnoreCase));
+
+            if (folder is null)
+                return null;
+
+            parentId = folder.Id;
+        }
+
+        return parentId;
+    }
+
+    public bool CanPublishToFolderPath(
+        ClaimsPrincipal user,
+        string path)
+    {
+        var folderId = ResolveFolderPath(path);
+        if (string.IsNullOrWhiteSpace(folderId))
+            return false;
+
+        return CanFolder(user, folderId, "Publish")
+            || CanFolder(user, folderId, "Manage");
+    }
+
+
     public IReadOnlyList<ReportGrant> InheritedFolderGrants(string folderId)
     {
         _ = Catalog;
