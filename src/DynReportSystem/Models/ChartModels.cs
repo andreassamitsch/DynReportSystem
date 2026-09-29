@@ -15,6 +15,11 @@ public sealed record ChartPointEvent(
     string? SeriesName,
     JsonElement Data);
 
+public sealed record DynReportInteractionEvent(
+    string TargetPageId,
+    IReadOnlyDictionary<string, string> ParameterValues,
+    bool RunReport);
+
 public sealed record MetricSummary(
     decimal? Value,
     decimal? Current,
