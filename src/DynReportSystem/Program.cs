@@ -28,6 +28,7 @@ builder.Services.AddRazorComponents().AddInteractiveServerComponents(options =>
 builder.Services.AddSingleton<FolderAccess>();
 builder.Services.AddSingleton<PermissionAdministrationService>();
 builder.Services.AddSingleton<RdlCatalog>();
+builder.Services.AddSingleton<ReportVisualThemeService>();
 builder.Services.AddSingleton<RdlStyleCatalog>();
 builder.Services.AddSingleton<DashboardCatalog>();
 builder.Services.AddSingleton<ChartOptionFactory>();
