@@ -1,3 +1,5 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
 @inject DynExpressionEngine Expressions
 @inject DynamicVisualizationService Visuals
 
@@ -13,7 +15,7 @@ else
             @foreach (var reportPage in Package.Document.Pages)
             {
                 <button class="@(reportPage.Id.Equals(activePageId, StringComparison.OrdinalIgnoreCase) ? "active" : "")"
-                        @onclick="() => activePageId = reportPage.Id">
+                        @onclick="() => NavigatePage(reportPage.Id)">
                     @reportPage.Title
                 </button>
             }
@@ -45,8 +47,12 @@ else
     [Parameter, EditorRequired] public LoadedDynReportPackage Package { get; set; } = null!;
     [Parameter, EditorRequired] public DynReportRun Run { get; set; } = null!;
     [Parameter] public IReadOnlyDictionary<string, DynReportParameterValue>? ParameterValues { get; set; }
+    [Parameter] public EventCallback<DynReportInteractionEvent> OnInteraction { get; set; }
 
     private string activePageId = "";
+    private DotNetObjectReference<GenericDynReportView>? historyRef;
+    private bool historyRegistered;
+    private string HistoryKey => $"dynreport:{Package.Manifest.ReportId}";
 
     protected override void OnParametersSet()
     {
@@ -79,7 +85,8 @@ else
         builder.AddAttribute(sequence++, "style", style);
 
         if (!string.IsNullOrWhiteSpace(visual.TargetPageId)
-            && !visual.Type.Equals("table", StringComparison.OrdinalIgnoreCase))
+            && !visual.Type.Equals("table", StringComparison.OrdinalIgnoreCase)
+            && !visual.Type.Equals("chart", StringComparison.OrdinalIgnoreCase))
         {
             builder.AddAttribute(
                 sequence++,
@@ -186,6 +193,12 @@ else
                     sequence++,
                     "Height",
                     $"{Math.Clamp(visual.Chart?.Height ?? 360, 180, 1200)}px");
+                builder.AddAttribute(
+                    sequence++,
+                    "OnPointClick",
+                    EventCallback.Factory.Create<ChartPointEvent>(
+                        this,
+                        point => HandleChartPointAsync(visual, point)));
                 builder.CloseComponent();
             }
             else
@@ -321,7 +334,7 @@ else
         builder.CloseElement();
     };
 
-    private void NavigatePage(string? pageId)
+    private async Task NavigatePage(string? pageId, bool pushHistory = true)
     {
         if (string.IsNullOrWhiteSpace(pageId))
             return;
@@ -329,8 +342,130 @@ else
         var target = Package.Document.Pages.FirstOrDefault(page =>
             page.Id.Equals(pageId, StringComparison.OrdinalIgnoreCase));
 
-        if (target is not null)
-            activePageId = target.Id;
+        if (target is null
+            || target.Id.Equals(activePageId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        activePageId = target.Id;
+
+        if (pushHistory && historyRegistered)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync(
+                    "DynReportCharts.pushReportPage",
+                    HistoryKey,
+                    activePageId);
+            }
+            catch (JSDisconnectedException) { }
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task HandleChartPointAsync(
+        DynVisual visual,
+        ChartPointEvent point)
+    {
+        var interaction = visual.Chart?.Interaction;
+        var targetPage = visual.TargetPageId;
+
+        if (interaction is not null
+            && !string.IsNullOrWhiteSpace(point.SeriesName)
+            && interaction.SeriesTargetPages.TryGetValue(
+                point.SeriesName,
+                out var seriesTarget)
+            && !string.IsNullOrWhiteSpace(seriesTarget))
+        {
+            targetPage = seriesTarget;
+        }
+
+        var parameterValues = new Dictionary<string, string>(
+            StringComparer.OrdinalIgnoreCase);
+
+        if (interaction is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(interaction.CategoryParameter)
+                && !string.IsNullOrWhiteSpace(point.Name))
+            {
+                parameterValues[interaction.CategoryParameter] = point.Name;
+            }
+
+            if (!string.IsNullOrWhiteSpace(interaction.SeriesParameter)
+                && !string.IsNullOrWhiteSpace(point.SeriesName))
+            {
+                parameterValues[interaction.SeriesParameter] = point.SeriesName;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(targetPage))
+            await NavigatePage(targetPage);
+
+        if (parameterValues.Count > 0 && OnInteraction.HasDelegate)
+        {
+            await OnInteraction.InvokeAsync(
+                new DynReportInteractionEvent(
+                    targetPage ?? "",
+                    parameterValues,
+                    interaction?.RunReportAfterFilter ?? true));
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender
+            || historyRegistered
+            || Package.Document.Pages.Count == 0)
+            return;
+
+        historyRef = DotNetObjectReference.Create(this);
+
+        try
+        {
+            var requestedPage = await JS.InvokeAsync<string?>(
+                "DynReportCharts.registerReportHistory",
+                HistoryKey,
+                activePageId,
+                historyRef);
+
+            historyRegistered = true;
+
+            if (!string.IsNullOrWhiteSpace(requestedPage)
+                && Package.Document.Pages.Any(page =>
+                    page.Id.Equals(
+                        requestedPage,
+                        StringComparison.OrdinalIgnoreCase))
+                && !activePageId.Equals(
+                    requestedPage,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                activePageId = requestedPage;
+                StateHasChanged();
+            }
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    [JSInvokable]
+    public async Task HandleReportHistory(string? pageId)
+    {
+        await NavigatePage(pageId, pushHistory: false);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (historyRegistered)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync(
+                    "DynReportCharts.unregisterReportHistory",
+                    HistoryKey);
+            }
+            catch (JSDisconnectedException) { }
+        }
+
+        historyRef?.Dispose();
     }
 
     private RenderFragment GroupedBoard(DynVisual visual) => builder =>
