@@ -77,11 +77,43 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                 : "";
 
         var maxPoints = Math.Clamp(definition.MaxPoints, 1, 5000);
-        var categories = result.Rows
-            .Select(row => FormatCategory(QueryResult.Get(row, categoryField)))
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+        var categoryCandidates = result.Rows
+            .Select((row, index) => new
+            {
+                Label = FormatCategory(QueryResult.Get(row, categoryField)),
+                Raw = QueryResult.Get(row, categoryField),
+                Index = index
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Label))
+            .GroupBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+
+        var categorySort = definition.Sort.FirstOrDefault();
+        if (categorySort is not null
+            && categorySort.Field.Equals(categoryField, StringComparison.OrdinalIgnoreCase))
+        {
+            categoryCandidates = categorySort.Direction.Equals("Desc", StringComparison.OrdinalIgnoreCase)
+                ? categoryCandidates.OrderByDescending(x => x.Raw, ChartCategoryComparer.Instance).ToList()
+                : categoryCandidates.OrderBy(x => x.Raw, ChartCategoryComparer.Instance).ToList();
+        }
+        else if (categoryCandidates.Count > 0
+                 && categoryCandidates.All(x => IsDate(x.Raw)))
+        {
+            categoryCandidates = categoryCandidates
+                .OrderBy(x => x.Raw, ChartCategoryComparer.Instance)
+                .ToList();
+        }
+        else
+        {
+            categoryCandidates = categoryCandidates
+                .OrderBy(x => x.Index)
+                .ToList();
+        }
+
+        var categories = categoryCandidates
             .Take(maxPoints)
+            .Select(x => x.Label)
             .ToArray();
 
         if (categories.Length == 0)
@@ -741,6 +773,44 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
             ["saveAsImage"] = new Dictionary<string, object?> { ["title"] = "Grafik speichern", ["pixelRatio"] = 2 }
         }
     };
+
+    private sealed class ChartCategoryComparer : IComparer<object?>
+    {
+        public static ChartCategoryComparer Instance { get; } = new();
+
+        public int Compare(object? x, object? y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (x is null) return -1;
+            if (y is null) return 1;
+
+            var dx = x switch
+            {
+                DateTime date => date,
+                DateTimeOffset dto => dto.DateTime,
+                DateOnly dateOnly => dateOnly.ToDateTime(TimeOnly.MinValue),
+                _ => (DateTime?)null
+            };
+            var dy = y switch
+            {
+                DateTime date => date,
+                DateTimeOffset dto => dto.DateTime,
+                DateOnly dateOnly => dateOnly.ToDateTime(TimeOnly.MinValue),
+                _ => (DateTime?)null
+            };
+
+            if (dx.HasValue && dy.HasValue)
+                return dx.Value.CompareTo(dy.Value);
+
+            if (x is IComparable comparable && x.GetType() == y.GetType())
+                return comparable.CompareTo(y);
+
+            return string.Compare(
+                Convert.ToString(x, CultureInfo.GetCultureInfo("de-AT")),
+                Convert.ToString(y, CultureInfo.GetCultureInfo("de-AT")),
+                StringComparison.CurrentCultureIgnoreCase);
+        }
+    }
 
     private sealed record DataProfile(string? Date, string? Category, List<string> Numeric);
 }
