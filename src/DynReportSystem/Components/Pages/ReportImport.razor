@@ -69,7 +69,7 @@
                     }
                     else
                     {
-                        <span>Datei ausgewählt. Der Import startet erst nach Bestätigung.</span>
+                        <span>Datei ausgewählt. Neue Berichte dürfen in vorhandenen Ordnern mit Publish/Manage-Recht angelegt werden.</span>
                     }
                 </div>
 
@@ -242,22 +242,48 @@
             memory.Position = 0;
             var preview = Packages.Validate(memory);
 
-            // Importing a package can replace SQL and therefore requires the
-            // stronger Publish/Manage right of the existing target report.
             var existing = Access.Catalog.Reports.Any(x =>
                 x.Id.Equals(preview.Manifest.ReportId, StringComparison.OrdinalIgnoreCase));
 
-            if (!existing)
-            {
-                throw new UnauthorizedAccessException(
-                    "Neue Berichte werden künftig über den Designer angelegt. " +
-                    "Der Dateiimport darf aktuell nur einen bestehenden Bericht ersetzen.");
-            }
+            var targetFolderPath = string.IsNullOrWhiteSpace(preview.Manifest.FolderPath)
+                ? ParentPath(preview.Manifest.Path)
+                : preview.Manifest.FolderPath;
 
-            if (!CanPublish(preview.Manifest.ReportId))
+            if (existing)
             {
-                throw new UnauthorizedAccessException(
-                    "Für den Zielbericht ist Publish oder Manage erforderlich.");
+                if (!CanPublish(preview.Manifest.ReportId))
+                {
+                    throw new UnauthorizedAccessException(
+                        "Für den Zielbericht ist Publish oder Manage erforderlich.");
+                }
+
+                if (preview.Manifest.Grants.Count > 0
+                    && (user is null || !Access.Can(user, preview.Manifest.ReportId, "Manage")))
+                {
+                    throw new UnauthorizedAccessException(
+                        "Das Paket enthält eigene Berechtigungen. Dafür ist Manage auf dem Zielbericht erforderlich.");
+                }
+            }
+            else
+            {
+                if (user is null || !Access.CanPublishToFolderPath(user, targetFolderPath))
+                {
+                    var resolved = Access.ResolveFolderPath(targetFolderPath);
+                    throw new UnauthorizedAccessException(
+                        resolved is null
+                            ? $"Der Zielordner '{targetFolderPath}' existiert nicht im Reporting-Portal."
+                            : $"Für den Zielordner '{targetFolderPath}' ist Publish oder Manage erforderlich.");
+                }
+
+                if (preview.Manifest.Grants.Count > 0)
+                {
+                    var folderId = Access.ResolveFolderPath(targetFolderPath);
+                    if (folderId is null || !Access.CanFolder(user, folderId, "Manage"))
+                    {
+                        throw new UnauthorizedAccessException(
+                            "Neue Pakete mit eigenen Berechtigungen dürfen nur von einem Ordner-Manager importiert werden.");
+                    }
+                }
             }
 
             memory.Position = 0;
@@ -266,9 +292,10 @@
                 user?.Identity?.Name);
 
             success = true;
-            message =
-                $"'{imported.Manifest.Title}' v{imported.Manifest.Version} wurde installiert. " +
-                "Die vorherige Version wurde als Revision gesichert.";
+            message = existing
+                ? $"'{imported.Manifest.Title}' v{imported.Manifest.Version} wurde aktualisiert. " +
+                  "Die vorherige Version wurde als Revision gesichert."
+                : $"'{imported.Manifest.Title}' v{imported.Manifest.Version} wurde als neuer Bericht installiert.";
 
             selectedFile = null;
         }
@@ -281,6 +308,16 @@
         {
             busy = false;
         }
+    }
+
+    private static string ParentPath(string path)
+    {
+        var normalized = (path ?? "")
+            .Replace('\\', '/')
+            .TrimEnd('/');
+
+        var index = normalized.LastIndexOf('/');
+        return index <= 0 ? "/" : normalized[..index];
     }
 
     private static string FormatFileSize(long bytes)
