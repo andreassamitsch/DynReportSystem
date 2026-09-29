@@ -16,6 +16,28 @@ Changes:
 
 No SQL metadata migration is required.
 
+## Version 0.14.0
+
+Version 0.14.0 restores the richer native Kundencockpit experience and generalizes the required capabilities for all DynReport reports.
+
+Changes:
+
+- multi-page `.dynreport` packages now render as real report pages with a compact page navigation instead of one long continuous document
+- native charts add renderer-neutral `WorldMap` and `Treemap` types
+- map tooltips can carry semantic detail fields such as the strongest customer for a country
+- global named chart color sets are available through `VisualTheme:ColorSets`
+- the global `BusinessArea` palette reproduces the original Kundencockpit RDL `GetColor()` mapping
+- charts can select a global `ColorSet` and an independent `ColorKeyField`
+- individual reports may override only selected keys through `ColorOverrides`
+- the Designer exposes global color sets, color-key fields, local overrides, world maps, treemaps and tooltip fields
+- legacy Kundencockpit charts also resolve Geschäftsbereich colors through the same global palette
+- server table reading now respects `CommandBehavior.SequentialAccess` ordinal order, fixing the interactive table error seen after server-side paging was introduced
+- chart `Count` aggregation now counts rows regardless of the measure field's CLR/numeric type
+- package version rendering in the report header is corrected
+- ADR-0010 documents global visual themes and native multi-page navigation
+
+The matching native Kundencockpit package 1.1.0 uses separate pages for overview, Umsatz/Länder, Bestelleingang, offene AB, Angebote, offene Posten and Reklamationen. Its Bestelleingang/Open-AB datasets reference `[FUCHSHOFER].[FU].[AB_get]` cross-database, while Oxaion data remains in the production catalog.
+
 ## Version 0.13.3
 
 Patch release for native Oxaion data-source targeting.
