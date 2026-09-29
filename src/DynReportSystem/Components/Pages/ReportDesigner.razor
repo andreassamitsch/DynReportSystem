@@ -96,6 +96,13 @@ else
                         <input type="number" min="0" step="30"
                                @bind="draft.Document.Settings.AutoRefreshSeconds" />
                     </label>
+                    <label>
+                        <span>Darstellungsdichte</span>
+                        <select @bind="draft.Document.Settings.Density">
+                            <option value="Comfortable">Komfortabel</option>
+                            <option value="Compact">Kompaktes Cockpit</option>
+                        </select>
+                    </label>
                     <label class="designer-check">
                         <input type="checkbox" @bind="draft.Document.Settings.AutoRun" />
                         <span>Automatisch ausführen</span>
@@ -432,6 +439,19 @@ else
                                             <input @bind="selected.CssClass" />
                                         </label>
 
+                                        <label>
+                                            <span>Sprung zu Seite</span>
+                                            <select @bind="selected.TargetPageId">
+                                                <option value="">– kein Sprung –</option>
+                                                @foreach (var reportPage in draft.Document.Pages)
+                                                {
+                                                    <option value="@reportPage.Id">
+                                                        @(string.IsNullOrWhiteSpace(reportPage.Title) ? reportPage.Id : reportPage.Title)
+                                                    </option>
+                                                }
+                                            </select>
+                                        </label>
+
                                         @if (selected.Type.Equals("heading", StringComparison.OrdinalIgnoreCase)
                                              || selected.Type.Equals("text", StringComparison.OrdinalIgnoreCase))
                                         {
@@ -511,6 +531,28 @@ else
                                                             <input @bind="metric.Label" />
                                                         </label>
                                                         <label>
+                                                            <span>Dataset</span>
+                                                            <select @bind="metric.Dataset">
+                                                                <option value="">– Komponenten-Dataset –</option>
+                                                                @foreach (var dataset in draft.Document.Datasets)
+                                                                {
+                                                                    <option value="@dataset.Id">@dataset.Id</option>
+                                                                }
+                                                            </select>
+                                                        </label>
+                                                        <label>
+                                                            <span>Sprung zu Seite</span>
+                                                            <select @bind="metric.TargetPageId">
+                                                                <option value="">– kein Sprung –</option>
+                                                                @foreach (var reportPage in draft.Document.Pages)
+                                                                {
+                                                                    <option value="@reportPage.Id">
+                                                                        @(string.IsNullOrWhiteSpace(reportPage.Title) ? reportPage.Id : reportPage.Title)
+                                                                    </option>
+                                                                }
+                                                            </select>
+                                                        </label>
+                                                        <label>
                                                             <span>Operation</span>
                                                             <select @bind="metric.Value.Op">
                                                                 <option value="count">Anzahl Zeilen</option>
@@ -528,7 +570,10 @@ else
                                                                 <span>Feld</span>
                                                                 <select @bind="metric.Value.Field">
                                                                     <option value="">– Feld –</option>
-                                                                    @foreach (var field in FieldsFor(selected.Dataset))
+                                                                    @foreach (var field in FieldsFor(
+                                                                    string.IsNullOrWhiteSpace(metric.Dataset)
+                                                                        ? selected.Dataset
+                                                                        : metric.Dataset))
                                                                     {
                                                                         <option value="@field">@field</option>
                                                                     }
