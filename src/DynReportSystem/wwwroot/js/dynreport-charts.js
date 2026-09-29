@@ -1,5 +1,6 @@
 (() => {
     const charts = new Map();
+    const reportHistories = new Map();
     let worldMapPromise = null;
 
     const currency = new Intl.NumberFormat("de-AT", {
@@ -87,7 +88,7 @@
                     legend: compactLegend,
                     toolbox: hideToolbox,
                     grid: { left: 4, right: 6, top: 56, bottom: 46, containLabel: true },
-                    xAxis: { axisLabel: { rotate: 42, fontSize: 9, interval: "auto" } },
+                    xAxis: { axisLabel: { rotate: 0, fontSize: 10, interval: "auto", hideOverlap: true } },
                     yAxis: { axisLabel: { fontSize: 9 }, splitNumber: 4 },
                     dataZoom: [{ type: "inside", start: 0, end: 100 }],
                     series: (baseSeries || []).map(() => ({ barMaxWidth: 24 }))
@@ -102,7 +103,7 @@
                     legend: compactLegend,
                     toolbox: hideToolbox,
                     grid: { left: 4, right: 6, top: 56, bottom: 46, containLabel: true },
-                    xAxis: { axisLabel: { rotate: 40, fontSize: 9, interval: "auto" } },
+                    xAxis: { axisLabel: { rotate: 0, fontSize: 10, interval: "auto", hideOverlap: true } },
                     yAxis: { axisLabel: { fontSize: 9 }, splitNumber: 4 },
                     dataZoom: [{ type: "inside", start: 0, end: 100 }],
                     series: (baseSeries || []).map(s => ({
@@ -197,8 +198,8 @@
                 : Array.isArray(option?.yAxis?.data)
                     ? option.yAxis.data.length
                     : 0;
-            const labelStep = categoryCount > 8
-                ? Math.ceil(categoryCount / 8)
+            const labelStep = categoryCount > 16
+                ? Math.ceil(categoryCount / 12)
                 : 1;
 
             for (const s of option.series) {
@@ -348,6 +349,89 @@
         URL.revokeObjectURL(url);
     }
 
+    function pageFromHash() {
+        const raw = (window.location.hash || "").replace(/^#/, "");
+        if (!raw.startsWith("page=")) return null;
+
+        try {
+            return decodeURIComponent(raw.slice(5));
+        } catch {
+            return raw.slice(5);
+        }
+    }
+
+    function reportHistoryState(key, pageId) {
+        const current = window.history.state;
+        const base = current && typeof current === "object" ? current : {};
+        return {
+            ...base,
+            dynReport: {
+                key,
+                pageId
+            }
+        };
+    }
+
+    function registerReportHistory(key, initialPage, dotnetRef) {
+        unregisterReportHistory(key);
+
+        const hashPage = pageFromHash();
+        const activePage = hashPage || initialPage;
+        const handler = event => {
+            const state = event?.state?.dynReport;
+            const pageId = state?.key === key
+                ? state.pageId
+                : pageFromHash();
+
+            if (!pageId || !dotnetRef) return;
+
+            dotnetRef.invokeMethodAsync(
+                "HandleReportHistory",
+                pageId
+            ).catch(() => {});
+        };
+
+        window.addEventListener("popstate", handler);
+        reportHistories.set(key, handler);
+
+        const url = new URL(window.location.href);
+        if (activePage) {
+            url.hash = "page=" + encodeURIComponent(activePage);
+        }
+
+        window.history.replaceState(
+            reportHistoryState(key, activePage),
+            "",
+            url
+        );
+
+        return activePage;
+    }
+
+    function pushReportPage(key, pageId) {
+        if (!pageId) return;
+
+        const current = window.history.state?.dynReport;
+        if (current?.key === key && current?.pageId === pageId) return;
+
+        const url = new URL(window.location.href);
+        url.hash = "page=" + encodeURIComponent(pageId);
+
+        window.history.pushState(
+            reportHistoryState(key, pageId),
+            "",
+            url
+        );
+    }
+
+    function unregisterReportHistory(key) {
+        const handler = reportHistories.get(key);
+        if (!handler) return;
+
+        window.removeEventListener("popstate", handler);
+        reportHistories.delete(key);
+    }
+
     function goBack(fallbackUrl) {
         if (window.history.length > 1) {
             window.history.back();
@@ -360,5 +444,13 @@
         for (const chart of charts.values()) chart.resize();
     });
 
-    window.DynReportCharts = { render, dispose, downloadCsv, goBack };
+    window.DynReportCharts = {
+        render,
+        dispose,
+        downloadCsv,
+        goBack,
+        registerReportHistory,
+        pushReportPage,
+        unregisterReportHistory
+    };
 })();
