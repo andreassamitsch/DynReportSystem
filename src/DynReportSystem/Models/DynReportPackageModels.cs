@@ -127,12 +127,20 @@ public sealed class DynTableDefinition
     public List<DynSortDefinition> DefaultSort { get; set; } = [];
     public List<DynTableAggregate> Aggregates { get; set; } = [];
     public DynTablePivotDefinition? Pivot { get; set; }
+    public DynTableInteractionDefinition Interaction { get; set; } = new();
     public bool Searchable { get; set; } = true;
     public bool Filterable { get; set; } = true;
     public bool Sortable { get; set; } = true;
     public int PageSize { get; set; } = 100;
     public string DataMode { get; set; } = "Auto";
     public string PresentationMode { get; set; } = "Rows";
+}
+
+public sealed class DynTableInteractionDefinition
+{
+    public Dictionary<string, string> ColumnParameterMap { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
+    public bool RunReportAfterFilter { get; set; } = true;
 }
 
 public sealed class DynTableAggregate
