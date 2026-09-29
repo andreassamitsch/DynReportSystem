@@ -16,6 +16,27 @@ Changes:
 
 No SQL metadata migration is required.
 
+## Version 0.17.0
+
+Version 0.17.0 adds semantic cockpit interactions and stable customer colors.
+
+Changes:
+
+- multi-page native reports now participate in browser Back/Forward history; leaving a detail page with the browser Back button returns to the previous report page before leaving the report URL
+- chart clicks can set report parameters and re-run the complete report
+- chart categories / axis labels can act as filters, enabling customer-name drill filtering
+- chart series can map to different target pages, e.g. Umsatz -> Umsatz detail and offener Auftragsbestand/Rahmen -> offene AB
+- the Designer exposes category/series parameter mapping and series-to-page navigation
+- the global `Customer` color set derives a deterministic visualization-safe color from the normalized customer name
+- customer colors avoid near-white/neon ranges and remain stable across reports; explicit overrides remain possible
+- stacked total labels are now rendered by an independent helper series, so totals also appear when only one stacked component has a value
+- compact chart axes no longer force rotated date labels at narrow widths
+- compact KPI labels and chart subtitles are more readable, and 12 KPI cards fit in one desktop row on typical widescreen report layouts
+
+The matching Kundencockpit 1.4.0 uses the new interactions for customer filters and series drilldowns and applies stable customer colors to customer-oriented charts.
+
+ADR-0013 documents the semantic interaction and deterministic customer-color model.
+
 ## Version 0.16.0
 
 Version 0.16.0 tightens the compact cockpit presentation and adds controlled support for SQL Server local temporary tables.
