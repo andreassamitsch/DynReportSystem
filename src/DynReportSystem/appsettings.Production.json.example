@@ -41,7 +41,8 @@
     "AbsoluteMaxResultBytes": 67108864,
     "MaxInteractivePageSize": 1000,
     "MaxInteractivePivotRows": 250,
-    "MaxInteractivePivotCells": 5000
+    "MaxInteractivePivotCells": 5000,
+    "MaxParallelDatasetsPerReport": 4
   },
   "Security": {
     "AllowLegacyPackageConnectionStringFallback": true,
