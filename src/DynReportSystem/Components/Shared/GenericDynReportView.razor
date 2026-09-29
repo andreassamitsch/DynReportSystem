@@ -167,6 +167,7 @@ else
                 builder.AddAttribute(sequence++, "Visual", visual);
                 builder.AddAttribute(sequence++, "ParameterValues", ParameterValues);
                 builder.AddAttribute(sequence++, "ExportName", Package.Manifest.Title);
+                builder.AddAttribute(sequence++, "OnInteraction", OnInteraction);
                 builder.CloseComponent();
             }
             else if (Run.Results.TryGetValue(visual.Dataset, out var table))
@@ -175,6 +176,7 @@ else
                 builder.AddAttribute(sequence++, "Result", table);
                 builder.AddAttribute(sequence++, "ExportName", Package.Manifest.Title);
                 builder.AddAttribute(sequence++, "Definition", visual.Table);
+                builder.AddAttribute(sequence++, "OnInteraction", OnInteraction);
                 builder.CloseComponent();
             }
 
