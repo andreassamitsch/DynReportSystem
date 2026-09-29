@@ -10,18 +10,18 @@ else
     @if (Package.Document.Pages.Count > 1)
     {
         <nav class="dyn2-page-tabs" aria-label="Berichtsseiten">
-            @foreach (var page in Package.Document.Pages)
+            @foreach (var reportPage in Package.Document.Pages)
             {
-                <button class="@(page.Id.Equals(activePageId, StringComparison.OrdinalIgnoreCase) ? "active" : "")"
-                        @onclick="() => activePageId = page.Id">
-                    @page.Title
+                <button class="@(reportPage.Id.Equals(activePageId, StringComparison.OrdinalIgnoreCase) ? "active" : "")"
+                        @onclick="() => activePageId = reportPage.Id">
+                    @reportPage.Title
                 </button>
             }
         </nav>
     }
 
     var activePage = Package.Document.Pages.FirstOrDefault(page =>
-        page.Id.Equals(activePageId, StringComparison.OrdinalIgnoreCase))
+        reportPage.Id.Equals(activePageId, StringComparison.OrdinalIgnoreCase))
         ?? Package.Document.Pages[0];
 
     <section class="dyn2-page" style="@($"--dyn-columns:{Math.Clamp(activePage.Columns, 1, 24)}")">
@@ -58,7 +58,7 @@ else
 
         if (string.IsNullOrWhiteSpace(activePageId)
             || !Package.Document.Pages.Any(page =>
-                page.Id.Equals(activePageId, StringComparison.OrdinalIgnoreCase)))
+                reportPage.Id.Equals(activePageId, StringComparison.OrdinalIgnoreCase)))
         {
             activePageId = Package.Document.Pages[0].Id;
         }
