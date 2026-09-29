@@ -888,6 +888,14 @@ else
                                                            placeholder="Kunde; Kundenanzahl" />
                                                 </label>
 
+                                                <label>
+                                                    <span>Ausrichtung</span>
+                                                    <select @bind="selected.Chart.Orientation">
+                                                        <option value="Vertical">Vertikal</option>
+                                                        <option value="Horizontal">Horizontal</option>
+                                                    </select>
+                                                </label>
+
                                                 <small>
                                                     Globale Farbsets gelten systemweit. Ein Report überschreibt nur die hier
                                                     angegebenen Schlüssel. Für Geschäftsbereiche sind die bisherigen RDL-Farben
@@ -914,6 +922,14 @@ else
                                                     <label class="designer-check">
                                                         <input type="checkbox" @bind="selected.Chart.ShowLabels" />
                                                         <span>Werte anzeigen</span>
+                                                    </label>
+                                                    <label class="designer-check">
+                                                        <input type="checkbox" @bind="selected.Chart.ShowStackTotal" />
+                                                        <span>Gesamtsumme über Stapel</span>
+                                                    </label>
+                                                    <label>
+                                                        <span>Summenformat</span>
+                                                        <input @bind="selected.Chart.StackTotalFormat" placeholder="currency" />
                                                     </label>
                                                 </div>
 
@@ -949,6 +965,32 @@ else
                                                                 <option value="First">Erster Wert</option>
                                                             </select>
                                                         </label>
+                                                        <label>
+                                                            <span>Serientyp</span>
+                                                            <select @bind="series.ChartType">
+                                                                <option value="">– Diagrammtyp übernehmen –</option>
+                                                                <option value="Bar">Säule / Balken</option>
+                                                                <option value="Line">Linie</option>
+                                                                <option value="Area">Fläche</option>
+                                                            </select>
+                                                        </label>
+                                                        <div class="designer-inspector-grid">
+                                                            <label>
+                                                                <span>Farbe</span>
+                                                                <input @bind="series.Color" placeholder="#3398FF" />
+                                                            </label>
+                                                            <label>
+                                                                <span>Y-Achse</span>
+                                                                <select @bind="series.Axis">
+                                                                    <option value="0">Primär</option>
+                                                                    <option value="1">Sekundär</option>
+                                                                </select>
+                                                            </label>
+                                                            <label class="designer-check">
+                                                                <input type="checkbox" @bind="series.Area" />
+                                                                <span>Fläche füllen</span>
+                                                            </label>
+                                                        </div>
                                                         <div class="designer-inspector-grid">
                                                             <label>
                                                                 <span>Format</span>
