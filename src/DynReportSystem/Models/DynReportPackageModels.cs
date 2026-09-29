@@ -169,6 +169,11 @@ public sealed class DynChartDefinition
     public string ChartType { get; set; } = "Auto";
     public string CategoryField { get; set; } = "";
     public string SeriesByField { get; set; } = "";
+    public string ColorSet { get; set; } = "";
+    public string ColorKeyField { get; set; } = "";
+    public Dictionary<string, string> ColorOverrides { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
+    public List<string> TooltipFields { get; set; } = [];
     public List<DynChartSeries> Series { get; set; } = [];
     public List<DynSortDefinition> Sort { get; set; } = [];
     public bool Stacked { get; set; }
