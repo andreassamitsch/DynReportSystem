@@ -192,16 +192,31 @@
         option.tooltip ??= {};
 
         if (stackTotalSeries && Array.isArray(option.series)) {
+            const categoryCount = Array.isArray(option?.xAxis?.data)
+                ? option.xAxis.data.length
+                : Array.isArray(option?.yAxis?.data)
+                    ? option.yAxis.data.length
+                    : 0;
+            const labelStep = categoryCount > 8
+                ? Math.ceil(categoryCount / 8)
+                : 1;
+
             for (const s of option.series) {
                 if (s.name !== stackTotalSeries) continue;
                 s.label = {
                     show: true,
                     position: "top",
-                    distance: 7,
+                    distance: 5,
                     color: "#4d626a",
-                    fontSize: 10,
+                    fontSize: 9,
                     fontWeight: 700,
                     formatter: p => {
+                        if (labelStep > 1
+                            && p.dataIndex % labelStep !== 0
+                            && p.dataIndex !== categoryCount - 1) {
+                            return "";
+                        }
+
                         const total = Number(p?.data?.stackTotal);
                         if (!Number.isFinite(total)) return "";
                         if (stackTotalFormat === "currency" && Math.abs(total) >= 100000) {
@@ -210,6 +225,7 @@
                         return formatValue(total, stackTotalFormat);
                     }
                 };
+                s.labelLayout = { hideOverlap: true };
             }
         }
 
