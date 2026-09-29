@@ -1463,3 +1463,11 @@ button.filter-chip{cursor:pointer}
   .permission-inherited-row{align-items:flex-start;flex-direction:column}
   .permission-chip-list{justify-content:flex-start}
 }
+
+
+/* Native DynReport page navigation */
+.dyn2-page-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0 18px;padding:6px;background:#edf4f5;border:1px solid #dce7e9;border-radius:12px}
+.dyn2-page-tabs button{border:0;background:transparent;color:#60767e;border-radius:9px;padding:9px 13px;font-size:10.5px;font-weight:750;cursor:pointer}
+.dyn2-page-tabs button:hover{background:#fff;color:#006479}
+.dyn2-page-tabs button.active{background:#fff;color:#006479;box-shadow:0 1px 5px rgba(33,62,72,.08)}
+@media(max-width:700px){.dyn2-page-tabs{overflow-x:auto;flex-wrap:nowrap}.dyn2-page-tabs button{white-space:nowrap}}
