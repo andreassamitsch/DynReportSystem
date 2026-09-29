@@ -212,7 +212,8 @@ else
             {
                 <GenericDynReportView Package="@package"
                                       Run="@run"
-                                      ParameterValues="@values" />
+                                      ParameterValues="@values"
+                                      OnInteraction="HandleReportInteractionAsync" />
             }
             else
             {
@@ -468,6 +469,49 @@ else
         return DateInputType(parameter) == "datetime-local"
             ? date.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture)
             : date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    private async Task HandleReportInteractionAsync(
+        DynReportInteractionEvent interaction)
+    {
+        if (package is null || interaction.ParameterValues.Count == 0)
+            return;
+
+        var changed = false;
+
+        foreach (var item in interaction.ParameterValues)
+        {
+            var parameter = package.Document.Parameters.FirstOrDefault(candidate =>
+                candidate.Name.Equals(
+                    item.Key,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (parameter is null)
+                continue;
+
+            var state = values.GetValueOrDefault(parameter.Name);
+            if (state is null)
+                continue;
+
+            var current = state.Values.FirstOrDefault() ?? "";
+            if (string.Equals(
+                    current,
+                    item.Value,
+                    StringComparison.CurrentCultureIgnoreCase))
+                continue;
+
+            state.Values.Clear();
+            if (!string.IsNullOrWhiteSpace(item.Value))
+                state.Values.Add(item.Value.Trim());
+
+            changed = true;
+        }
+
+        if (!changed)
+            return;
+
+        if (interaction.RunReport)
+            await RunAsync();
     }
 
     private async Task RunAsync()
