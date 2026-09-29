@@ -98,11 +98,22 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                         category,
                         StringComparison.CurrentCultureIgnoreCase));
 
-                return (object)new Dictionary<string, object?>
+                var groupedRows = rows.ToArray();
+                var item = new Dictionary<string, object?>
                 {
                     ["name"] = category,
-                    ["value"] = Aggregate(rows, measure.Field, measure.Aggregation)
+                    ["value"] = Aggregate(groupedRows, measure.Field, measure.Aggregation)
                 };
+
+                if (TryChartColor(definition, groupedRows, category, out var color))
+                {
+                    item["itemStyle"] = new Dictionary<string, object?>
+                    {
+                        ["color"] = color
+                    };
+                }
+
+                return (object)item;
             }).ToArray();
 
             return new AutoVisualization(
@@ -175,7 +186,7 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                     return Aggregate(rows, measure.Field, measure.Aggregation);
                 }).ToArray();
 
-                series.Add(new Dictionary<string, object?>
+                var entry = new Dictionary<string, object?>
                 {
                     ["name"] = label,
                     ["type"] = type == "area" ? "line" : type,
@@ -186,7 +197,28 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                         : null,
                     ["label"] = new Dictionary<string, object?> { ["show"] = definition.ShowLabels },
                     ["data"] = values
-                });
+                };
+
+                var groupRows = string.IsNullOrWhiteSpace(group)
+                    ? result.Rows
+                    : result.Rows
+                        .Where(row => string.Equals(
+                            FormatCategory(QueryResult.Get(row, seriesBy)),
+                            group,
+                            StringComparison.CurrentCultureIgnoreCase))
+                        .ToArray();
+
+                if (TryChartColor(definition, groupRows, group, out var groupColor))
+                {
+                    entry["itemStyle"] = new Dictionary<string, object?> { ["color"] = groupColor };
+                    entry["lineStyle"] = new Dictionary<string, object?>
+                    {
+                        ["color"] = groupColor,
+                        ["width"] = 2.5
+                    };
+                }
+
+                series.Add(entry);
             }
         }
 
@@ -241,6 +273,195 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
             definition.ChartType,
             $"{string.Join(" · ", configuredSeries.Select(SeriesLabel))} nach {categoryField}",
             option);
+    }
+
+    private AutoVisualization? BuildWorldMap(
+        QueryResult result,
+        DynChartDefinition definition,
+        DynChartSeries measure)
+    {
+        var categoryField = definition.CategoryField;
+        var groups = result.Rows
+            .GroupBy(
+                row => FormatCategory(QueryResult.Get(row, categoryField)).Trim().ToUpperInvariant(),
+                StringComparer.OrdinalIgnoreCase)
+            .Where(group => !string.IsNullOrWhiteSpace(group.Key))
+            .Take(Math.Clamp(definition.MaxPoints, 1, 5000))
+            .ToArray();
+
+        if (groups.Length == 0)
+            return null;
+
+        var tooltipFields = definition.TooltipFields
+            .Where(field => result.Columns.Contains(field, StringComparer.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var data = groups.Select(group =>
+        {
+            var rows = group.ToArray();
+            var item = new Dictionary<string, object?>
+            {
+                ["name"] = group.Key,
+                ["value"] = Aggregate(rows, measure.Field, measure.Aggregation)
+            };
+
+            if (tooltipFields.Length > 0)
+            {
+                var top = rows
+                    .OrderByDescending(row =>
+                        Math.Abs(Numeric(QueryResult.Get(row, measure.Field)) ?? 0d))
+                    .FirstOrDefault();
+
+                if (top is not null)
+                {
+                    item["meta"] = tooltipFields.ToDictionary(
+                        field => field,
+                        field => QueryResult.Get(top, field));
+                }
+            }
+
+            return (object)item;
+        }).ToArray();
+
+        var numeric = data
+            .OfType<Dictionary<string, object?>>()
+            .Select(item => Numeric(item.GetValueOrDefault("value")) ?? 0d)
+            .Select(Math.Abs)
+            .DefaultIfEmpty(1d)
+            .Max();
+
+        return new AutoVisualization(
+            "WorldMap",
+            $"{SeriesLabel(measure)} nach {categoryField}",
+            new Dictionary<string, object?>
+            {
+                ["__dynMap"] = "world",
+                ["__dynItemFormat"] = measure.Format,
+                ["__dynTooltipFields"] = tooltipFields,
+                ["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "item" },
+                ["visualMap"] = new Dictionary<string, object?>
+                {
+                    ["min"] = 0,
+                    ["max"] = numeric <= 0 ? 1 : numeric,
+                    ["left"] = 10,
+                    ["bottom"] = 10,
+                    ["calculable"] = true,
+                    ["textStyle"] = new Dictionary<string, object?> { ["color"] = "#61767e" }
+                },
+                ["toolbox"] = Toolbox(),
+                ["series"] = new object[]
+                {
+                    new Dictionary<string, object?>
+                    {
+                        ["name"] = SeriesLabel(measure),
+                        ["type"] = "map",
+                        ["map"] = "dyn-world",
+                        ["roam"] = true,
+                        ["selectedMode"] = false,
+                        ["label"] = new Dictionary<string, object?> { ["show"] = definition.ShowLabels },
+                        ["data"] = data,
+                        ["emphasis"] = new Dictionary<string, object?>
+                        {
+                            ["label"] = new Dictionary<string, object?> { ["show"] = false }
+                        }
+                    }
+                }
+            });
+    }
+
+    private AutoVisualization? BuildTreemap(
+        QueryResult result,
+        DynChartDefinition definition,
+        DynChartSeries measure)
+    {
+        var categoryField = definition.CategoryField;
+        var groups = result.Rows
+            .GroupBy(
+                row => FormatCategory(QueryResult.Get(row, categoryField)),
+                StringComparer.CurrentCultureIgnoreCase)
+            .Where(group => !string.IsNullOrWhiteSpace(group.Key))
+            .Select(group =>
+            {
+                var rows = group.ToArray();
+                var item = new Dictionary<string, object?>
+                {
+                    ["name"] = group.Key,
+                    ["value"] = Aggregate(rows, measure.Field, measure.Aggregation)
+                };
+
+                if (TryChartColor(definition, rows, group.Key, out var color))
+                    item["itemStyle"] = new Dictionary<string, object?> { ["color"] = color };
+
+                return item;
+            })
+            .OrderByDescending(item => Math.Abs(Numeric(item["value"]) ?? 0d))
+            .Take(Math.Clamp(definition.MaxPoints, 1, 500))
+            .Cast<object>()
+            .ToArray();
+
+        if (groups.Length == 0)
+            return null;
+
+        return new AutoVisualization(
+            "Treemap",
+            $"{SeriesLabel(measure)} nach {categoryField}",
+            new Dictionary<string, object?>
+            {
+                ["__dynItemFormat"] = measure.Format,
+                ["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "item" },
+                ["toolbox"] = Toolbox(),
+                ["series"] = new object[]
+                {
+                    new Dictionary<string, object?>
+                    {
+                        ["name"] = SeriesLabel(measure),
+                        ["type"] = "treemap",
+                        ["roam"] = false,
+                        ["nodeClick"] = false,
+                        ["breadcrumb"] = new Dictionary<string, object?> { ["show"] = false },
+                        ["label"] = new Dictionary<string, object?>
+                        {
+                            ["show"] = true,
+                            ["formatter"] = "{b}"
+                        },
+                        ["upperLabel"] = new Dictionary<string, object?> { ["show"] = false },
+                        ["itemStyle"] = new Dictionary<string, object?>
+                        {
+                            ["borderColor"] = "#fff",
+                            ["borderWidth"] = 3,
+                            ["gapWidth"] = 3
+                        },
+                        ["data"] = groups
+                    }
+                }
+            });
+    }
+
+    private bool TryChartColor(
+        DynChartDefinition definition,
+        IEnumerable<Dictionary<string, object?>> rows,
+        string fallbackKey,
+        out string color)
+    {
+        var row = rows.FirstOrDefault();
+        var key = fallbackKey;
+
+        if (row is not null
+            && !string.IsNullOrWhiteSpace(definition.ColorKeyField))
+        {
+            var configured = FormatCategory(
+                QueryResult.Get(row, definition.ColorKeyField));
+
+            if (!string.IsNullOrWhiteSpace(configured))
+                key = configured;
+        }
+
+        return themes.TryResolve(
+            definition.ColorSet,
+            key,
+            out color,
+            definition.ColorOverrides);
     }
 
     private static string SeriesLabel(DynChartSeries series) =>
