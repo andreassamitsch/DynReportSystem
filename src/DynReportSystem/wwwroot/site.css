@@ -1471,3 +1471,83 @@ button.filter-chip{cursor:pointer}
 .dyn2-page-tabs button:hover{background:#fff;color:#006479}
 .dyn2-page-tabs button.active{background:#fff;color:#006479;box-shadow:0 1px 5px rgba(33,62,72,.08)}
 @media(max-width:700px){.dyn2-page-tabs{overflow-x:auto;flex-wrap:nowrap}.dyn2-page-tabs button{white-space:nowrap}}
+
+
+/* DynReport 0.15 compact cockpit density */
+.dyn2-visual-head{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:8px;
+  margin:0 0 6px;padding:0 2px
+}
+.dyn2-visual-head h3{margin:0;color:#294851;font-size:12px;line-height:1.2}
+.dyn2-visual-head p{margin:2px 0 0;color:#85989f;font-size:8px;line-height:1.3}
+.dyn2-visual-jump{flex:0 0 auto;color:#007985;font-size:8px;font-weight:800;white-space:nowrap}
+.dyn2-chart-visual,.dyn2-table-visual,.dyn2-grouped-board-visual{
+  min-width:0
+}
+.dyn2-link-visual{cursor:pointer}
+.dyn2-link-visual:hover .dyn2-visual-head h3{color:#006479}
+.dyn2-metric-link{cursor:pointer;transition:transform .12s ease,box-shadow .12s ease,border-color .12s ease}
+.dyn2-metric-link:hover{transform:translateY(-1px);border-color:#b9d6d9;box-shadow:0 5px 14px rgba(22,79,91,.08)}
+.dyn2-metric.unavailable{opacity:.62}
+
+.dyn2-density-compact{
+  max-width:none;
+  padding:14px clamp(12px,2.2vw,34px) 16px
+}
+.dyn2-density-compact .dynamic-report-heading{gap:10px}
+.dyn2-density-compact .dynamic-report-titleblock{gap:9px}
+.dyn2-density-compact .dynamic-report-titleblock h1{font-size:27px;line-height:1.05}
+.dyn2-density-compact .dynamic-report-titleblock .eyebrow{margin-bottom:4px;font-size:8px}
+.dyn2-density-compact .report-path{font-size:7.5px;margin-top:2px}
+.dyn2-density-compact .subtitle{font-size:9px;margin-top:3px;line-height:1.3}
+.dyn2-density-compact .report-meta-chips{gap:4px}
+.dyn2-density-compact .report-meta-chips span,
+.dyn2-density-compact .custom-report-meta{padding:3px 6px;font-size:7px}
+.dyn2-density-compact .report-parameter-shell{margin:8px 0 6px;border-radius:10px}
+.dyn2-density-compact .report-parameter-shell>summary{min-height:30px;padding:5px 8px}
+.dyn2-density-compact .report-parameter-shell>summary strong{font-size:8.5px}
+.dyn2-density-compact .report-parameter-shell>summary span:nth-child(2){font-size:7.5px}
+.dyn2-density-compact .dynamic-parameter-grid{grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:6px;padding:7px 8px 8px;align-items:end}
+.dyn2-density-compact .dynamic-parameter{gap:3px;font-size:7.5px}
+.dyn2-density-compact .dynamic-parameter input,
+.dyn2-density-compact .dynamic-parameter select{height:29px;border-radius:6px;padding:0 7px;font-size:8.5px}
+.dyn2-density-compact .dynamic-parameter-actions{grid-column:auto;align-items:end;white-space:nowrap}
+.dyn2-density-compact .dynamic-parameter-actions button{height:29px;padding:0 10px;font-size:8px}
+.dyn2-density-compact .dyn2-run-meta{margin:4px 0;gap:7px;font-size:7px}
+.dyn2-density-compact .dyn2-run-meta button{height:26px;padding:0 8px;font-size:7.5px}
+.dyn2-density-compact .report-view-switch{margin:5px 0 5px;padding:3px;gap:3px;border-radius:9px}
+.dyn2-density-compact .report-view-switch button{min-width:95px;padding:5px 8px;border-radius:6px;font-size:8.5px}
+.dyn2-density-compact .report-view-switch button small{font-size:6.5px}
+.dyn2-density-compact .dyn2-page-tabs{margin:4px 0 6px;padding:3px;gap:3px;border-radius:9px}
+.dyn2-density-compact .dyn2-page-tabs button{padding:5px 9px;border-radius:6px;font-size:8px}
+.dyn2-density-compact .dyn2-page{margin-top:4px}
+.dyn2-density-compact .dyn2-page-title h2{margin:0 0 4px;font-size:14px}
+.dyn2-density-compact .dyn2-layout-grid{gap:7px}
+.dyn2-density-compact .dyn2-visual-head{margin-bottom:3px}
+.dyn2-density-compact .dyn2-visual-head h3{font-size:10.5px}
+.dyn2-density-compact .dyn2-visual-head p{font-size:7.2px}
+.dyn2-density-compact .dyn2-visual-jump{font-size:7px}
+.dyn2-density-compact .dyn2-metric-strip{
+  grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:4px
+}
+.dyn2-density-compact .dyn2-metric{
+  min-height:52px;padding:7px 8px;border-radius:7px;box-shadow:none
+}
+.dyn2-density-compact .dyn2-metric span{font-size:7.2px;line-height:1.15}
+.dyn2-density-compact .dyn2-metric strong{margin-top:2px;font-size:14.5px;letter-spacing:-.15px}
+.dyn2-density-compact .echart{min-height:0}
+.dyn2-density-compact footer{margin-top:8px;font-size:7px}
+
+@media(min-width:1450px){
+  .dyn2-density-compact .dyn2-metric-strip{grid-template-columns:repeat(11,minmax(0,1fr))}
+}
+@media(max-width:1180px){
+  .dyn2-density-compact .dynamic-parameter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dyn2-density-compact .dynamic-parameter-actions{grid-column:1/-1}
+}
+@media(max-width:760px){
+  .dyn2-density-compact{padding:10px 8px 14px}
+  .dyn2-density-compact .dynamic-report-titleblock h1{font-size:23px}
+  .dyn2-density-compact .dyn2-metric-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dyn2-density-compact .dyn2-metric{min-height:58px}
+}
