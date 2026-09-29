@@ -349,7 +349,9 @@
             "Bar",
             "Line",
             "Area",
-            "Donut"
+            "Donut",
+            "Treemap",
+            "WorldMap"
           ]
         },
         "CategoryField": {
@@ -388,6 +390,25 @@
           "type": "integer",
           "minimum": 180,
           "maximum": 1200
+        },
+        "ColorSet": {
+          "type": "string"
+        },
+        "ColorKeyField": {
+          "type": "string"
+        },
+        "ColorOverrides": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
+          }
+        },
+        "TooltipFields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
