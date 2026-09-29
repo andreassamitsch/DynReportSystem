@@ -291,6 +291,12 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                             : "top"
                     },
                     ["labelLayout"] = new Dictionary<string, object?> { ["hideOverlap"] = true },
+                    ["cursor"] =
+                        !string.IsNullOrWhiteSpace(definition.Interaction.CategoryParameter)
+                        || !string.IsNullOrWhiteSpace(definition.Interaction.SeriesParameter)
+                        || definition.Interaction.SeriesTargetPages.Count > 0
+                            ? "pointer"
+                            : "default",
                     ["data"] = chartData
                 };
 
@@ -389,6 +395,7 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
         {
             ["type"] = "category",
             ["data"] = categories,
+            ["triggerEvent"] = !string.IsNullOrWhiteSpace(definition.Interaction.CategoryParameter),
             ["axisTick"] = new Dictionary<string, object?> { ["show"] = false },
             ["axisLabel"] = new Dictionary<string, object?>
             {
