@@ -325,6 +325,9 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
             }
         }
 
+        var stackTotals = Array.Empty<double>();
+        var stackTotalSeriesName = "";
+
         if (definition.Stacked && definition.ShowStackTotal)
         {
             var stackedBars = series
@@ -335,7 +338,7 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
 
             if (stackedBars.Length > 0)
             {
-                var totals = Enumerable.Range(0, categories.Length)
+                stackTotals = Enumerable.Range(0, categories.Length)
                     .Select(index => stackedBars.Sum(entry =>
                     {
                         if (entry["data"] is not Array array || index >= array.Length)
@@ -344,34 +347,43 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                         return Numeric(array.GetValue(index)) ?? 0d;
                     }))
                     .ToArray();
-
-                var labelSeries = stackedBars[^1];
-                var raw = labelSeries["data"] as Array;
-                if (raw is not null)
-                {
-                    labelSeries["data"] = Enumerable.Range(0, raw.Length)
-                        .Select(index => (object)new Dictionary<string, object?>
-                        {
-                            ["value"] = raw.GetValue(index),
-                            ["stackTotal"] = index < totals.Length ? totals[index] : 0d
-                        })
-                        .ToArray();
-
-                    var name = Convert.ToString(labelSeries.GetValueOrDefault("name")) ?? "";
-                    if (!string.IsNullOrWhiteSpace(name))
-                    {
-                        labelSeries["label"] = new Dictionary<string, object?>
-                        {
-                            ["show"] = false
-                        };
-                    }
-                }
+                stackTotalSeriesName = "__dyn_stack_total__";
             }
         }
 
         var horizontal = definition.Orientation.Equals("Horizontal", StringComparison.OrdinalIgnoreCase)
             && series.All(entry =>
                 string.Equals(Convert.ToString(entry.GetValueOrDefault("type")), "bar", StringComparison.OrdinalIgnoreCase));
+
+        var visibleLegendSeries = series
+            .Select(entry => Convert.ToString(entry.GetValueOrDefault("name")) ?? "")
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
+        if (stackTotals.Length > 0)
+        {
+            series.Add(new Dictionary<string, object?>
+            {
+                ["name"] = stackTotalSeriesName,
+                ["type"] = horizontal ? "bar" : "line",
+                ["data"] = stackTotals.Select(total => (object)new Dictionary<string, object?>
+                {
+                    ["value"] = total,
+                    ["stackTotal"] = total
+                }).ToArray(),
+                ["silent"] = true,
+                ["symbol"] = "none",
+                ["symbolSize"] = 0,
+                ["barWidth"] = horizontal ? 1 : null,
+                ["barGap"] = horizontal ? "-100%" : null,
+                ["lineStyle"] = new Dictionary<string, object?> { ["opacity"] = 0 },
+                ["itemStyle"] = new Dictionary<string, object?> { ["opacity"] = 0 },
+                ["label"] = new Dictionary<string, object?> { ["show"] = false },
+                ["tooltip"] = new Dictionary<string, object?> { ["show"] = false },
+                ["z"] = 50
+            });
+        }
 
         var categoryAxis = new Dictionary<string, object?>
         {
@@ -445,7 +457,8 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                 ["type"] = "scroll",
                 ["top"] = 0,
                 ["left"] = 0,
-                ["right"] = 34
+                ["right"] = 34,
+                ["data"] = visibleLegendSeries
             },
             ["grid"] = new Dictionary<string, object?>
             {
@@ -461,24 +474,15 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
             ["series"] = series.Cast<object>().ToArray()
         };
 
-        if (definition.Stacked && definition.ShowStackTotal)
+        if (stackTotals.Length > 0)
         {
-            var stackedBars = series.Where(entry =>
-                string.Equals(Convert.ToString(entry.GetValueOrDefault("type")), "bar", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(Convert.ToString(entry.GetValueOrDefault("stack")), "dyn-total", StringComparison.OrdinalIgnoreCase))
-                .ToArray();
-
-            if (stackedBars.Length > 0)
-            {
-                var labelSeriesName = Convert.ToString(stackedBars[^1].GetValueOrDefault("name")) ?? "";
-                if (!string.IsNullOrWhiteSpace(labelSeriesName))
-                {
-                    option["__dynStackTotalSeries"] = labelSeriesName;
-                    option["__dynStackTotalFormat"] = string.IsNullOrWhiteSpace(definition.StackTotalFormat)
-                        ? formatBySeries.GetValueOrDefault(labelSeriesName) ?? "number"
-                        : definition.StackTotalFormat;
-                }
-            }
+            option["__dynStackTotalSeries"] = stackTotalSeriesName;
+            option["__dynStackTotalFormat"] = string.IsNullOrWhiteSpace(definition.StackTotalFormat)
+                ? configuredSeries
+                    .Select(item => item.Format)
+                    .FirstOrDefault(format => !string.IsNullOrWhiteSpace(format))
+                    ?? "number"
+                : definition.StackTotalFormat;
         }
 
         if (!horizontal && categories.Length > 20)
