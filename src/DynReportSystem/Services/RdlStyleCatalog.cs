@@ -7,7 +7,7 @@ namespace DynReportSystem.Services;
 /// the SSRS layout, but it deliberately reuses the established business-area
 /// color mapping so the same GB has the same color in both systems.
 /// </summary>
-public sealed partial class RdlStyleCatalog(RdlCatalog rdl)
+public sealed partial class RdlStyleCatalog(RdlCatalog rdl, ReportVisualThemeService themes)
 {
     private readonly object _gate = new();
     private DateTime _loadedUtc;
@@ -16,8 +16,12 @@ public sealed partial class RdlStyleCatalog(RdlCatalog rdl)
 
     public string BusinessAreaColor(string? key)
     {
-        EnsureLoaded();
         var normalized = (key ?? "").Trim();
+
+        if (themes.TryResolve("BusinessArea", normalized, out var global))
+            return global;
+
+        EnsureLoaded();
 
         return _businessAreaColors.TryGetValue(normalized, out var color)
             ? color
