@@ -1523,6 +1523,11 @@ button.filter-chip{cursor:pointer}
 .dyn2-density-compact .dyn2-page{margin-top:4px}
 .dyn2-density-compact .dyn2-page-title h2{margin:0 0 4px;font-size:14px}
 .dyn2-density-compact .dyn2-layout-grid{gap:7px}
+.dyn2-density-compact .dyn2-chart-visual{
+  padding:7px 8px 4px;border:1px solid #dfe8ea;border-radius:8px;background:#fff;
+  box-shadow:0 2px 7px rgba(22,79,91,.025)
+}
+.dyn2-density-compact .dyn2-chart-visual:hover{border-color:#cfdee1}
 .dyn2-density-compact .dyn2-visual-head{margin-bottom:3px}
 .dyn2-density-compact .dyn2-visual-head h3{font-size:10.5px}
 .dyn2-density-compact .dyn2-visual-head p{font-size:7.2px}
