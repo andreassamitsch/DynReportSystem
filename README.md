@@ -16,6 +16,26 @@ Changes:
 
 No SQL metadata migration is required.
 
+## Version 0.15.0
+
+Version 0.15.0 adds a dedicated compact analytical cockpit mode for dense desktop dashboards such as the Kundencockpit.
+
+Changes:
+
+- reports can select `Settings.Density = Compact`; the runtime then reduces report chrome, parameter spacing, navigation, dashboard gaps and KPI card height while preserving responsive mobile behavior
+- one metric strip can source individual KPIs from different datasets
+- KPI cards and overview visuals can define `TargetPageId` and act as navigation into matching detail pages
+- native charts support horizontal orientation, per-series chart types, fixed series colors, primary/secondary Y axes, optional area fill and formatted visible labels
+- stacked charts can show a formatted total above every stack
+- category colors can come from global semantic color sets such as `BusinessArea`, including report-local overrides when required
+- Designer support was added for compact density, cross-dataset KPIs, page jumps and the new chart semantics
+- native read-only SQL may start with local `DECLARE` statements or a leading semicolon before a CTE; the existing DML/DDL/EXEC/SELECT-INTO restrictions remain active
+- ADR-0011 documents compact analytical cockpit architecture
+
+The matching native Kundencockpit 1.2.0 rebuilds the overview around the proven SSRS information hierarchy: a compact KPI strip, a dominant Umsatz/Auftragsbestand/Rahmen chart and two dense rows of supporting sales, offer, order-intake and complaint analytics, with direct jumps into the existing detail pages.
+
+The legacy Lagerwert-kritisch calculation is intentionally not embedded yet because its historical RDL query relies on temporary-table DDL. The native security boundary remains read-only; this calculation should be moved to a dedicated read-only FU view/function/stored procedure before it is added natively.
+
 ## Version 0.14.0
 
 Version 0.14.0 restores the richer native Kundencockpit experience and generalizes the required capabilities for all DynReport reports.
