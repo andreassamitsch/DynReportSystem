@@ -797,6 +797,22 @@ else
                                                     }
                                                 }
 
+                                                <div class="designer-inspector-section-head">
+                                                    <strong>Interaktion bei Zellklick</strong>
+                                                </div>
+
+                                                <label>
+                                                    <span>Spalte → Reportparameter (; getrennt)</span>
+                                                    <input value="@StringMapText(selected.Table.Interaction.ColumnParameterMap)"
+                                                           @onchange="e => SetStringMap(selected.Table.Interaction.ColumnParameterMap, e.Value?.ToString())"
+                                                           placeholder="Kunde=Kunde; Vertriebsmitarbeiter=Vertriebsmitarbeiter" />
+                                                </label>
+
+                                                <label class="designer-check">
+                                                    <input type="checkbox" @bind="selected.Table.Interaction.RunReportAfterFilter" />
+                                                    <span>Nach Zellklick Bericht neu ausführen</span>
+                                                </label>
+
                                                 <label>
                                                     <span>Standard-Sortierung</span>
                                                     <input value="@SortText(selected.Table.DefaultSort)"
