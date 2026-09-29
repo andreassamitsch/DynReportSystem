@@ -773,19 +773,25 @@ public sealed class DynReportPackageExecutionService(
 
         while (await reader.ReadAsync(cancellationToken))
         {
-            if (totalOrdinal >= 0 && totalRows == 0 && !await reader.IsDBNullAsync(totalOrdinal, cancellationToken))
-                totalRows = Convert.ToInt64(reader.GetValue(totalOrdinal), CultureInfo.InvariantCulture);
-
             var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+            // SequentialAccess requires monotonically increasing ordinal reads.
+            // Capture the synthetic total exactly where it occurs in the row
+            // instead of reading it before ordinal 0.
             for (var i = 0; i < reader.FieldCount; i++)
             {
+                var isNull = await reader.IsDBNullAsync(i, cancellationToken);
+
                 if (i == totalOrdinal)
+                {
+                    if (totalRows == 0 && !isNull)
+                        totalRows = Convert.ToInt64(reader.GetValue(i), CultureInfo.InvariantCulture);
+
                     continue;
+                }
 
                 var name = reader.GetName(i);
-                row[name] = await reader.IsDBNullAsync(i, cancellationToken)
-                    ? null
-                    : reader.GetValue(i);
+                row[name] = isNull ? null : reader.GetValue(i);
             }
 
             rows.Add(row);
