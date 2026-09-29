@@ -70,8 +70,24 @@ else
         var style = $"--dyn-span:{Math.Clamp(visual.Span, 1, 24)};--dyn-mobile-span:{Math.Clamp(visual.MobileSpan, 1, 24)}";
 
         builder.OpenElement(sequence++, "section");
-        builder.AddAttribute(sequence++, "class", $"dyn2-visual {visual.CssClass}".Trim());
+        var typeClass = $"dyn2-{visual.Type.ToLowerInvariant()}-visual";
+        var linkClass = !string.IsNullOrWhiteSpace(visual.TargetPageId) ? " dyn2-link-visual" : "";
+        builder.AddAttribute(
+            sequence++,
+            "class",
+            $"dyn2-visual {typeClass} {visual.CssClass}{linkClass}".Trim());
         builder.AddAttribute(sequence++, "style", style);
+
+        if (!string.IsNullOrWhiteSpace(visual.TargetPageId)
+            && !visual.Type.Equals("table", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.AddAttribute(
+                sequence++,
+                "onclick",
+                EventCallback.Factory.Create(
+                    this,
+                    () => NavigatePage(visual.TargetPageId)));
+        }
 
         if (visual.Type.Equals("heading", StringComparison.OrdinalIgnoreCase)
             || visual.Type.Equals("text", StringComparison.OrdinalIgnoreCase))
@@ -109,16 +125,7 @@ else
 
         if (visual.Type.Equals("metric-strip", StringComparison.OrdinalIgnoreCase))
         {
-            if (!string.IsNullOrWhiteSpace(visual.Dataset)
-                && !Run.Results.ContainsKey(visual.Dataset))
-            {
-                builder.AddContent(sequence++, DatasetUnavailable(visual.Dataset));
-            }
-            else
-            {
-                builder.AddContent(sequence++, MetricStrip(visual));
-            }
-
+            builder.AddContent(sequence++, MetricStrip(visual));
             builder.CloseElement();
             return;
         }
@@ -126,6 +133,7 @@ else
         if (visual.Type.Equals("grouped-board", StringComparison.OrdinalIgnoreCase)
             && visual.Board is not null)
         {
+            builder.AddContent(sequence++, VisualHead(visual));
             builder.AddContent(sequence++, GroupedBoard(visual));
             builder.CloseElement();
             return;
@@ -133,6 +141,8 @@ else
 
         if (visual.Type.Equals("table", StringComparison.OrdinalIgnoreCase))
         {
+            builder.AddContent(sequence++, VisualHead(visual));
+
             if (DynReportInteractiveQueryRules.ShouldUseServerMode(Package, visual))
             {
                 builder.OpenComponent<ServerDynamicResultTable>(sequence++);
@@ -157,6 +167,8 @@ else
 
         if (visual.Type.Equals("chart", StringComparison.OrdinalIgnoreCase))
         {
+            builder.AddContent(sequence++, VisualHead(visual));
+
             if (!Run.Results.TryGetValue(visual.Dataset, out var chartResult))
             {
                 builder.AddContent(sequence++, DatasetUnavailable(visual.Dataset));
@@ -217,7 +229,6 @@ else
 
     private RenderFragment MetricStrip(DynVisual visual) => builder =>
     {
-        var rows = Rows(visual.Dataset);
         var seq = 0;
 
         builder.OpenElement(seq++, "div");
@@ -225,18 +236,46 @@ else
 
         foreach (var metric in visual.Metrics)
         {
-            var value = Expressions.Evaluate(metric.Value, Package.Document, rows, ParameterValues);
-            var tone = Tone(metric.Rules, rows);
+            var dataset = string.IsNullOrWhiteSpace(metric.Dataset)
+                ? visual.Dataset
+                : metric.Dataset;
+            var rows = Rows(dataset);
+            var available = string.IsNullOrWhiteSpace(dataset)
+                || Run.Results.ContainsKey(dataset);
+            var value = available
+                ? Expressions.Evaluate(metric.Value, Package.Document, rows, ParameterValues)
+                : null;
+            var tone = available ? Tone(metric.Rules, rows) : "unavailable";
+            var target = string.IsNullOrWhiteSpace(metric.TargetPageId)
+                ? ""
+                : metric.TargetPageId;
 
             builder.OpenElement(seq++, "article");
-            builder.AddAttribute(seq++, "class", $"dyn2-metric {tone}");
+            builder.AddAttribute(
+                seq++,
+                "class",
+                $"dyn2-metric {tone}{(!string.IsNullOrWhiteSpace(target) ? " dyn2-metric-link" : "")}");
+
+            if (!string.IsNullOrWhiteSpace(target))
+            {
+                builder.AddAttribute(
+                    seq++,
+                    "onclick",
+                    EventCallback.Factory.Create(this, () => NavigatePage(target)));
+                builder.AddAttribute(seq++, "role", "button");
+                builder.AddAttribute(seq++, "tabindex", "0");
+            }
 
             builder.OpenElement(seq++, "span");
             builder.AddContent(seq++, metric.Label);
             builder.CloseElement();
 
             builder.OpenElement(seq++, "strong");
-            builder.AddContent(seq++, Expressions.FormatValue(value, metric.Format, metric.Unit));
+            builder.AddContent(
+                seq++,
+                available
+                    ? Expressions.FormatValue(value, metric.Format, metric.Unit)
+                    : "–");
             builder.CloseElement();
 
             builder.CloseElement();
@@ -244,6 +283,55 @@ else
 
         builder.CloseElement();
     };
+
+    private RenderFragment VisualHead(DynVisual visual) => builder =>
+    {
+        if (string.IsNullOrWhiteSpace(visual.Title)
+            && string.IsNullOrWhiteSpace(visual.Subtitle))
+            return;
+
+        var seq = 0;
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "dyn2-visual-head");
+
+        builder.OpenElement(seq++, "div");
+        if (!string.IsNullOrWhiteSpace(visual.Title))
+        {
+            builder.OpenElement(seq++, "h3");
+            builder.AddContent(seq++, visual.Title);
+            builder.CloseElement();
+        }
+
+        if (!string.IsNullOrWhiteSpace(visual.Subtitle))
+        {
+            builder.OpenElement(seq++, "p");
+            builder.AddContent(seq++, visual.Subtitle);
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+
+        if (!string.IsNullOrWhiteSpace(visual.TargetPageId))
+        {
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "dyn2-visual-jump");
+            builder.AddContent(seq++, "Details →");
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+    };
+
+    private void NavigatePage(string? pageId)
+    {
+        if (string.IsNullOrWhiteSpace(pageId))
+            return;
+
+        var target = Package.Document.Pages.FirstOrDefault(page =>
+            page.Id.Equals(pageId, StringComparison.OrdinalIgnoreCase));
+
+        if (target is not null)
+            activePageId = target.Id;
+    }
 
     private RenderFragment GroupedBoard(DynVisual visual) => builder =>
     {
