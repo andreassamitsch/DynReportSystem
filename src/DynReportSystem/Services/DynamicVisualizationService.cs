@@ -472,14 +472,17 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
         string field,
         string aggregation)
     {
-        var values = rows
+        var materialized = rows as IReadOnlyCollection<Dictionary<string, object?>>
+            ?? rows.ToArray();
+
+        if (aggregation.Equals("Count", StringComparison.OrdinalIgnoreCase))
+            return materialized.Count;
+
+        var values = materialized
             .Select(row => Numeric(QueryResult.Get(row, field)))
             .Where(value => value.HasValue)
             .Select(value => value!.Value)
             .ToArray();
-
-        if (aggregation.Equals("Count", StringComparison.OrdinalIgnoreCase))
-            return values.Length;
 
         if (values.Length == 0)
             return null;
