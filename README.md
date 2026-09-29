@@ -16,6 +16,25 @@ Changes:
 
 No SQL metadata migration is required.
 
+## Version 0.16.0
+
+Version 0.16.0 tightens the compact cockpit presentation and adds controlled support for SQL Server local temporary tables.
+
+Changes:
+
+- local SQL Server `#temp` tables are allowed for read-only analytical calculations:
+  `SELECT ... INTO #temp`, temp-table indexes and `DROP TABLE #temp`
+- persistent DDL and DML remain blocked; `SELECT INTO` to a non-temp target is still rejected
+- optional leading `SET NOCOUNT ON` is supported for migrated analytical SQL
+- stacked area/line charts now use true semantic stacking, restoring the original Geschäftsbereich area view
+- value axes use the configured semantic number format, producing compact de-AT scales such as `2,5 Mio. €`
+- stacked total labels are automatically thinned on narrow/multi-month charts to prevent overlap
+- visible chart value labels use consistent de-AT/currency formatting
+
+The matching Kundencockpit 1.3.0 fixes the three empty offer-analysis datasets by making empty customer filters NULL-safe, restores the legacy Lager/Kundenartikel calculation with local #temp tables, adds the `Lagerwert kritisch` KPI and a dedicated Lager analysis page, and further optimizes the overview for one-monitor scanning.
+
+ADR-0012 documents the constrained local-temp-table security model.
+
 ## Version 0.15.0
 
 Version 0.15.0 adds a dedicated compact analytical cockpit mode for dense desktop dashboards such as the Kundencockpit.
