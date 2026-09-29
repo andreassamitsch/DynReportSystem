@@ -18,18 +18,28 @@ public sealed class DynReportDataSourceRegistry(
 
         // Backward compatibility for installations that already ran the
         // historic Kundencockpit before the central DataSources registry
-        // existed. OxaionPRD is the native name for that same SQL target.
-        if ((source.Id.Equals("OxaionPRD", StringComparison.OrdinalIgnoreCase)
-             || source.ConfigKey.Equals("OxaionPRD", StringComparison.OrdinalIgnoreCase))
-            && !string.IsNullOrWhiteSpace(config["Cockpit:ConnectionString"]))
-        {
-            logger.LogInformation(
-                "DataSource {DataSourceId} uses legacy Cockpit:ConnectionString fallback.",
-                source.Id);
+        // existed. Reuse server/authentication/TLS from Cockpit, but apply the
+        // centrally configured target database for the native source.
+        var legacyConnection = config["Cockpit:ConnectionString"];
+        var targetDatabase =
+            config[$"DataSources:{source.ConfigKey}:Database"]
+            ?? config[$"DataSources:{source.Id}:Database"];
 
-            return ValidateServerConnection(
+        if (!string.IsNullOrWhiteSpace(legacyConnection)
+            && !string.IsNullOrWhiteSpace(targetDatabase))
+        {
+            var derived = new SqlConnectionStringBuilder(legacyConnection)
+            {
+                InitialCatalog = targetDatabase.Trim(),
+                ApplicationName = "DynReport"
+            };
+
+            logger.LogInformation(
+                "DataSource {DataSourceId} derives server/authentication from Cockpit and targets database {Database}.",
                 source.Id,
-                config["Cockpit:ConnectionString"]!);
+                derived.InitialCatalog);
+
+            return ValidateServerConnection(source.Id, derived.ConnectionString);
         }
 
         // Transitional compatibility only. Native packages must not contain
