@@ -279,7 +279,7 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                     ["smooth"] = isLine,
                     ["symbolSize"] = isLine ? 6 : null,
                     ["barMaxWidth"] = isBar ? 34 : null,
-                    ["stack"] = definition.Stacked && isBar ? "dyn-total" : null,
+                    ["stack"] = definition.Stacked ? "dyn-total" : null,
                     ["areaStyle"] = useArea
                         ? new Dictionary<string, object?> { ["opacity"] = 0.14 }
                         : null,
@@ -290,6 +290,7 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                             ? "right"
                             : "top"
                     },
+                    ["labelLayout"] = new Dictionary<string, object?> { ["hideOverlap"] = true },
                     ["data"] = chartData
                 };
 
@@ -385,9 +386,22 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
             }
         };
 
+        var primaryAxisFormat = configuredSeries
+            .Where(item => item.Axis <= 0)
+            .Select(item => item.Format)
+            .FirstOrDefault(format => !string.IsNullOrWhiteSpace(format))
+            ?? "";
+
+        var secondaryAxisFormat = configuredSeries
+            .Where(item => item.Axis > 0)
+            .Select(item => item.Format)
+            .FirstOrDefault(format => !string.IsNullOrWhiteSpace(format))
+            ?? "";
+
         var valueAxis = new Dictionary<string, object?>
         {
             ["type"] = "value",
+            ["__dynFormat"] = primaryAxisFormat,
             ["splitLine"] = new Dictionary<string, object?>
             {
                 ["lineStyle"] = new Dictionary<string, object?> { ["color"] = "#edf2f3" }
@@ -406,6 +420,7 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                     new Dictionary<string, object?>
                     {
                         ["type"] = "value",
+                        ["__dynFormat"] = secondaryAxisFormat,
                         ["splitLine"] = new Dictionary<string, object?> { ["show"] = false }
                     }
                 }
@@ -416,7 +431,13 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
             ["__dynSeriesFormats"] = formats,
             ["__dynResponsive"] = horizontal
                 ? definition.Stacked ? "horizontal-stack" : "horizontal-bar"
-                : definition.Stacked ? "primary-stack" : "cartesian",
+                : definition.Stacked && series.All(entry =>
+                    string.Equals(
+                        Convert.ToString(entry.GetValueOrDefault("type")),
+                        "bar",
+                        StringComparison.OrdinalIgnoreCase))
+                    ? "primary-stack"
+                    : "cartesian",
             ["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "axis" },
             ["legend"] = new Dictionary<string, object?>
             {
