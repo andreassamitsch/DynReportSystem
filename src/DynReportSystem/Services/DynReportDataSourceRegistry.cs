@@ -16,6 +16,22 @@ public sealed class DynReportDataSourceRegistry(
         if (!string.IsNullOrWhiteSpace(direct))
             return ValidateServerConnection(source.Id, direct);
 
+        // Backward compatibility for installations that already ran the
+        // historic Kundencockpit before the central DataSources registry
+        // existed. OxaionPRD is the native name for that same SQL target.
+        if ((source.Id.Equals("OxaionPRD", StringComparison.OrdinalIgnoreCase)
+             || source.ConfigKey.Equals("OxaionPRD", StringComparison.OrdinalIgnoreCase))
+            && !string.IsNullOrWhiteSpace(config["Cockpit:ConnectionString"]))
+        {
+            logger.LogInformation(
+                "DataSource {DataSourceId} uses legacy Cockpit:ConnectionString fallback.",
+                source.Id);
+
+            return ValidateServerConnection(
+                source.Id,
+                config["Cockpit:ConnectionString"]!);
+        }
+
         // Transitional compatibility only. Native packages must not contain
         // credentials. A package may carry non-secret server/database target
         // metadata while APP-01 still migrates to the central DataSource registry.
