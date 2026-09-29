@@ -47,6 +47,8 @@ else
     [Parameter, EditorRequired] public LoadedDynReportPackage Package { get; set; } = null!;
     [Parameter, EditorRequired] public DynReportRun Run { get; set; } = null!;
     [Parameter] public IReadOnlyDictionary<string, DynReportParameterValue>? ParameterValues { get; set; }
+    [Parameter] public string InitialPageId { get; set; } = "";
+    [Parameter] public EventCallback<string> OnPageChanged { get; set; }
     [Parameter] public EventCallback<DynReportInteractionEvent> OnInteraction { get; set; }
 
     private string activePageId = "";
@@ -62,11 +64,19 @@ else
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(activePageId)
+        var requested = string.IsNullOrWhiteSpace(InitialPageId)
+            ? activePageId
+            : InitialPageId;
+
+        if (string.IsNullOrWhiteSpace(requested)
             || !Package.Document.Pages.Any(page =>
-                page.Id.Equals(activePageId, StringComparison.OrdinalIgnoreCase)))
+                page.Id.Equals(requested, StringComparison.OrdinalIgnoreCase)))
         {
             activePageId = Package.Document.Pages[0].Id;
+        }
+        else
+        {
+            activePageId = requested;
         }
     }
 
@@ -340,7 +350,10 @@ else
         builder.CloseElement();
     };
 
-    private async Task NavigatePage(string? pageId, bool pushHistory = true)
+    private async Task NavigatePage(
+        string? pageId,
+        bool pushHistory = true,
+        bool notify = true)
     {
         if (string.IsNullOrWhiteSpace(pageId))
             return;
@@ -351,6 +364,9 @@ else
         if (target is null
             || target.Id.Equals(activePageId, StringComparison.OrdinalIgnoreCase))
             return;
+
+        if (notify && OnPageChanged.HasDelegate)
+            await OnPageChanged.InvokeAsync(target.Id);
 
         activePageId = target.Id;
 
@@ -404,9 +420,6 @@ else
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(targetPage))
-            await NavigatePage(targetPage);
-
         if (parameterValues.Count > 0 && OnInteraction.HasDelegate)
         {
             await OnInteraction.InvokeAsync(
@@ -414,7 +427,15 @@ else
                     targetPage ?? "",
                     parameterValues,
                     interaction?.RunReportAfterFilter ?? true));
+
+            if (!string.IsNullOrWhiteSpace(targetPage))
+                await NavigatePage(targetPage, notify: false);
+
+            return;
         }
+
+        if (!string.IsNullOrWhiteSpace(targetPage))
+            await NavigatePage(targetPage);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -445,7 +466,9 @@ else
                     requestedPage,
                     StringComparison.OrdinalIgnoreCase))
             {
-                activePageId = requestedPage;
+                await NavigatePage(
+                    requestedPage,
+                    pushHistory: false);
                 StateHasChanged();
             }
         }
