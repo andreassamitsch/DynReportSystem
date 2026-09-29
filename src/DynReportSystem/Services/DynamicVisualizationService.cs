@@ -226,6 +226,39 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                     return Aggregate(rows, measure.Field, measure.Aggregation);
                 }).ToArray();
 
+                object chartData = values;
+
+                if (string.IsNullOrWhiteSpace(seriesBy)
+                    && (!string.IsNullOrWhiteSpace(definition.ColorSet)
+                        || definition.ColorOverrides.Count > 0))
+                {
+                    chartData = categories.Select((category, index) =>
+                    {
+                        var categoryRows = result.Rows
+                            .Where(row => string.Equals(
+                                FormatCategory(QueryResult.Get(row, categoryField)),
+                                category,
+                                StringComparison.CurrentCultureIgnoreCase))
+                            .ToArray();
+
+                        var point = new Dictionary<string, object?>
+                        {
+                            ["value"] = values[index],
+                            ["categoryLabel"] = category
+                        };
+
+                        if (TryChartColor(definition, categoryRows, category, out var categoryColor))
+                        {
+                            point["itemStyle"] = new Dictionary<string, object?>
+                            {
+                                ["color"] = categoryColor
+                            };
+                        }
+
+                        return (object)point;
+                    }).ToArray();
+                }
+
                 var effectiveType = string.IsNullOrWhiteSpace(measure.ChartType)
                     ? type
                     : measure.ChartType.Trim().ToLowerInvariant();
@@ -257,7 +290,7 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                             ? "right"
                             : "top"
                     },
-                    ["data"] = values
+                    ["data"] = chartData
                 };
 
                 if (measure.Axis > 0)
@@ -887,6 +920,17 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
     {
         if (value is null)
             return null;
+
+        if (value is IReadOnlyDictionary<string, object?> readOnly
+            && readOnly.TryGetValue("value", out var readOnlyValue))
+        {
+            value = readOnlyValue;
+        }
+        else if (value is IDictionary<string, object?> dictionary
+                 && dictionary.TryGetValue("value", out var dictionaryValue))
+        {
+            value = dictionaryValue;
+        }
 
         try
         {
