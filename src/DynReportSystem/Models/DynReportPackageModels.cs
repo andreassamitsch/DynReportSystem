@@ -42,6 +42,7 @@ public sealed class DynReportSettings
     public int AutoRefreshSeconds { get; set; }
     public bool ParametersCollapsedByDefault { get; set; }
     public string Culture { get; set; } = "de-AT";
+    public string Density { get; set; } = "Comfortable";
     public int MaxRowsPerDataset { get; set; } = 20000;
     public int CommandTimeoutSeconds { get; set; } = 120;
 }
@@ -109,6 +110,7 @@ public sealed class DynVisual
     public int Span { get; set; } = 12;
     public int MobileSpan { get; set; } = 12;
     public string CssClass { get; set; } = "";
+    public string TargetPageId { get; set; } = "";
     public DynExpr? Value { get; set; }
     public string Format { get; set; } = "";
     public string Unit { get; set; } = "";
@@ -169,6 +171,7 @@ public sealed class DynChartDefinition
     public string ChartType { get; set; } = "Auto";
     public string CategoryField { get; set; } = "";
     public string SeriesByField { get; set; } = "";
+    public string Orientation { get; set; } = "Vertical";
     public string ColorSet { get; set; } = "";
     public string ColorKeyField { get; set; } = "";
     public Dictionary<string, string> ColorOverrides { get; set; } =
@@ -179,6 +182,8 @@ public sealed class DynChartDefinition
     public bool Stacked { get; set; }
     public bool ShowLegend { get; set; } = true;
     public bool ShowLabels { get; set; }
+    public bool ShowStackTotal { get; set; }
+    public string StackTotalFormat { get; set; } = "";
     public int MaxPoints { get; set; } = 120;
     public int Height { get; set; } = 360;
 }
@@ -188,14 +193,20 @@ public sealed class DynChartSeries
     public string Field { get; set; } = "";
     public string Label { get; set; } = "";
     public string Aggregation { get; set; } = "Sum";
+    public string ChartType { get; set; } = "";
     public string Format { get; set; } = "";
     public string Unit { get; set; } = "";
+    public string Color { get; set; } = "";
+    public int Axis { get; set; }
+    public bool Area { get; set; }
 }
 
 public sealed class DynMetricItem
 {
     public string Id { get; set; } = "";
     public string Label { get; set; } = "";
+    public string Dataset { get; set; } = "";
+    public string TargetPageId { get; set; } = "";
     public DynExpr Value { get; set; } = new();
     public string Format { get; set; } = "";
     public string Unit { get; set; } = "";
