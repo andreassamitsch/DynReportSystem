@@ -327,6 +327,12 @@ else
         {
             builder.OpenElement(seq++, "span");
             builder.AddAttribute(seq++, "class", "dyn2-visual-jump");
+            builder.AddAttribute(
+                seq++,
+                "onclick",
+                EventCallback.Factory.Create(
+                    this,
+                    () => NavigatePage(visual.TargetPageId)));
             builder.AddContent(seq++, "Details →");
             builder.CloseElement();
         }
