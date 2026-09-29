@@ -38,12 +38,36 @@ public sealed class DynReportPackageExecutionService(
         return result;
     }
 
-    public async Task<DynReportRun> RunAsync(
+    public Task<DynReportRun> RunAsync(
         LoadedDynReportPackage package,
         IReadOnlyDictionary<string, DynReportParameterValue> parameters,
         string? userName = null,
+        CancellationToken cancellationToken = default) =>
+        RunDataSetsAsync(
+            package,
+            parameters,
+            dataSetIds: null,
+            userName,
+            cancellationToken);
+
+    public async Task<DynReportRun> RunDataSetsAsync(
+        LoadedDynReportPackage package,
+        IReadOnlyDictionary<string, DynReportParameterValue> parameters,
+        IReadOnlyCollection<string>? dataSetIds,
+        string? userName = null,
         CancellationToken cancellationToken = default)
     {
+        var requested = dataSetIds is null
+            ? null
+            : dataSetIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var dataSets = package.Document.Datasets
+            .Where(dataSet => requested is null || requested.Contains(dataSet.Id))
+            .Where(dataSet => !ShouldDeferDataSet(package, dataSet.Id))
+            .ToArray();
+
         var run = new DynReportRun
         {
             ExecutionId = Guid.NewGuid(),
@@ -75,115 +99,129 @@ public sealed class DynReportPackageExecutionService(
                     package.Manifest.ReportId);
             }
 
-            foreach (var dataSet in package.Document.Datasets)
-            {
-                if (ShouldDeferDataSet(package, dataSet.Id))
-                    continue;
+            var maxParallel = Math.Clamp(
+                config.GetValue("Runtime:MaxParallelDatasetsPerReport", 4),
+                1,
+                8);
 
-                var stopwatch = Stopwatch.StartNew();
-
-                try
+            await Parallel.ForEachAsync(
+                dataSets,
+                new ParallelOptions
                 {
-                    var result = await ExecuteDataSetAsync(
-                        package,
-                        dataSet,
-                        parameters,
-                        cancellationToken);
+                    MaxDegreeOfParallelism = maxParallel,
+                    CancellationToken = cancellationToken
+                },
+                async (dataSet, token) =>
+                {
+                    var stopwatch = Stopwatch.StartNew();
 
-                    run.Results[dataSet.Id] = result;
-
-                    metrics.DatasetExecutions.Add(
-                        1,
-                        new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
-                        new KeyValuePair<string, object?>("dataset.id", dataSet.Id));
-                    metrics.DatasetDurationMs.Record(
-                        stopwatch.Elapsed.TotalMilliseconds,
-                        new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
-                        new KeyValuePair<string, object?>("dataset.id", dataSet.Id));
-                    metrics.DatasetRows.Record(
-                        result.Rows.Count,
-                        new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
-                        new KeyValuePair<string, object?>("dataset.id", dataSet.Id));
-
-                    await metadata.WriteAuditAsync(
-                        new DynAuditEvent(
-                            run.CorrelationId,
-                            "dataset.execute",
-                            "success",
-                            userName,
-                            package.Manifest.ReportId,
-                            DataSourceId: dataSet.DataSourceId,
-                            DatasetId: dataSet.Id,
-                            DurationMs: stopwatch.ElapsedMilliseconds,
-                            RowCount: result.Rows.Count,
-                            DetailsJson: DynAuditEvent.Details(new
-                            {
-                                result.Truncated,
-                                MaxRows = package.Document.Settings.MaxRowsPerDataset
-                            })),
-                        cancellationToken);
-
-                    var slowThreshold = Math.Max(
-                        250,
-                        config.GetValue("Runtime:SlowQueryThresholdMs", 2000));
-
-                    if (stopwatch.ElapsedMilliseconds >= slowThreshold)
+                    try
                     {
-                        logger.LogWarning(
-                            "Slow DynReport dataset {ReportId}/{DatasetId}: {DurationMs} ms, {RowCount} rows",
-                            package.Manifest.ReportId,
-                            dataSet.Id,
-                            stopwatch.ElapsedMilliseconds,
-                            result.Rows.Count);
+                        var result = await ExecuteDataSetAsync(
+                            package,
+                            dataSet,
+                            parameters,
+                            token);
+
+                        lock (run.Results)
+                            run.Results[dataSet.Id] = result;
+
+                        metrics.DatasetExecutions.Add(
+                            1,
+                            new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
+                            new KeyValuePair<string, object?>("dataset.id", dataSet.Id));
+                        metrics.DatasetDurationMs.Record(
+                            stopwatch.Elapsed.TotalMilliseconds,
+                            new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
+                            new KeyValuePair<string, object?>("dataset.id", dataSet.Id));
+                        metrics.DatasetRows.Record(
+                            result.Rows.Count,
+                            new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
+                            new KeyValuePair<string, object?>("dataset.id", dataSet.Id));
+
+                        await metadata.WriteAuditAsync(
+                            new DynAuditEvent(
+                                run.CorrelationId,
+                                "dataset.execute",
+                                "success",
+                                userName,
+                                package.Manifest.ReportId,
+                                DataSourceId: dataSet.DataSourceId,
+                                DatasetId: dataSet.Id,
+                                DurationMs: stopwatch.ElapsedMilliseconds,
+                                RowCount: result.Rows.Count,
+                                DetailsJson: DynAuditEvent.Details(new
+                                {
+                                    result.Truncated,
+                                    MaxRows = package.Document.Settings.MaxRowsPerDataset,
+                                    ScopedExecution = requested is not null
+                                })),
+                            token);
+
+                        var slowThreshold = Math.Max(
+                            250,
+                            config.GetValue("Runtime:SlowQueryThresholdMs", 2000));
+
+                        if (stopwatch.ElapsedMilliseconds >= slowThreshold)
+                        {
+                            logger.LogWarning(
+                                "Slow DynReport dataset {ReportId}/{DatasetId}: {DurationMs} ms, {RowCount} rows",
+                                package.Manifest.ReportId,
+                                dataSet.Id,
+                                stopwatch.ElapsedMilliseconds,
+                                result.Rows.Count);
+                        }
                     }
-                }
-                catch (OperationCanceledException)
-                {
-                    await metadata.WriteAuditAsync(
-                        new DynAuditEvent(
-                            run.CorrelationId,
-                            "dataset.execute",
-                            "cancelled",
-                            userName,
+                    catch (OperationCanceledException)
+                    {
+                        await metadata.WriteAuditAsync(
+                            new DynAuditEvent(
+                                run.CorrelationId,
+                                "dataset.execute",
+                                "cancelled",
+                                userName,
+                                package.Manifest.ReportId,
+                                DataSourceId: dataSet.DataSourceId,
+                                DatasetId: dataSet.Id,
+                                DurationMs: stopwatch.ElapsedMilliseconds),
+                            CancellationToken.None);
+
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        lock (run.Errors)
+                            run.Errors.Add($"{dataSet.Id}: {ex.Message}");
+
+                        metrics.DatasetErrors.Add(
+                            1,
+                            new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
+                            new KeyValuePair<string, object?>("dataset.id", dataSet.Id));
+
+                        await metadata.WriteAuditAsync(
+                            new DynAuditEvent(
+                                run.CorrelationId,
+                                "dataset.execute",
+                                "error",
+                                userName,
+                                package.Manifest.ReportId,
+                                DataSourceId: dataSet.DataSourceId,
+                                DatasetId: dataSet.Id,
+                                DurationMs: stopwatch.ElapsedMilliseconds,
+                                DetailsJson: DynAuditEvent.Details(new
+                                {
+                                    ErrorType = ex.GetType().Name,
+                                    ScopedExecution = requested is not null
+                                })),
+                            token);
+
+                        logger.LogError(
+                            ex,
+                            "DynReport dataset failed {ReportId}/{DatasetId}",
                             package.Manifest.ReportId,
-                            DataSourceId: dataSet.DataSourceId,
-                            DatasetId: dataSet.Id,
-                            DurationMs: stopwatch.ElapsedMilliseconds),
-                        CancellationToken.None);
-
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    run.Errors.Add($"{dataSet.Id}: {ex.Message}");
-                    metrics.DatasetErrors.Add(
-                        1,
-                        new KeyValuePair<string, object?>("report.id", package.Manifest.ReportId),
-                        new KeyValuePair<string, object?>("dataset.id", dataSet.Id));
-
-                    await metadata.WriteAuditAsync(
-                        new DynAuditEvent(
-                            run.CorrelationId,
-                            "dataset.execute",
-                            "error",
-                            userName,
-                            package.Manifest.ReportId,
-                            DataSourceId: dataSet.DataSourceId,
-                            DatasetId: dataSet.Id,
-                            DurationMs: stopwatch.ElapsedMilliseconds,
-                            DetailsJson: DynAuditEvent.Details(new
-                            {
-                                ErrorType = ex.GetType().Name
-                            })),
-                        cancellationToken);
-
-                    logger.LogError(
-                        ex,
-                        "DynReport dataset failed {ReportId}/{DatasetId}",
-                        package.Manifest.ReportId,
-                        dataSet.Id);
-                }
-            }
+                            dataSet.Id);
+                    }
+                });
 
             return run;
         }
@@ -202,13 +240,53 @@ public sealed class DynReportPackageExecutionService(
                 CancellationToken.None);
 
             logger.LogInformation(
-                "DynReport execution {ExecutionId} for {ReportId} finished in {DurationMs} ms with {ErrorCount} errors",
+                "DynReport execution {ExecutionId} for {ReportId} finished in {DurationMs} ms with {ErrorCount} errors ({DatasetCount} datasets)",
                 run.ExecutionId,
                 package.Manifest.ReportId,
                 run.DurationMs,
-                run.Errors.Count);
+                run.Errors.Count,
+                dataSets.Length);
         }
     }
+
+    public IReadOnlyList<string> ResolvePageDataSets(
+        LoadedDynReportPackage package,
+        string? pageId)
+    {
+        var page = package.Document.Pages.FirstOrDefault(candidate =>
+                candidate.Id.Equals(
+                    pageId ?? "",
+                    StringComparison.OrdinalIgnoreCase))
+            ?? package.Document.Pages.FirstOrDefault();
+
+        if (page is null)
+            return [];
+
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var visual in page.Components)
+        {
+            if (!string.IsNullOrWhiteSpace(visual.Dataset))
+                result.Add(visual.Dataset);
+
+            foreach (var metric in visual.Metrics)
+            {
+                var metricDataSet = string.IsNullOrWhiteSpace(metric.Dataset)
+                    ? visual.Dataset
+                    : metric.Dataset;
+
+                if (!string.IsNullOrWhiteSpace(metricDataSet))
+                    result.Add(metricDataSet);
+            }
+        }
+
+        return package.Document.Datasets
+            .Where(dataSet => result.Contains(dataSet.Id))
+            .Where(dataSet => !ShouldDeferDataSet(package, dataSet.Id))
+            .Select(dataSet => dataSet.Id)
+            .ToArray();
+    }
+
 
 
     public async Task<DynTableQueryResult> QueryTableAsync(
