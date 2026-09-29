@@ -2,6 +2,24 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
+## Version 0.13.1
+
+Patch release for native report onboarding and upgrades from older DynReport installations.
+
+Changes:
+
+- the file import can now create a new native report when the target folder already exists and the current user has effective `Publish` or `Manage` permission there
+- replacing an existing report still requires `Publish` or `Manage` on the report
+- importing a package that carries its own ACL grants requires `Manage`, preventing ordinary publishers from changing production access
+- package imports into unknown folders are rejected instead of silently creating an unauthorized reporting subtree
+- in-place upgrades now merge missing bootstrap folders/reports into the preserved `permissions.json` instead of restoring the old catalog unchanged
+- existing grants remain untouched during the merge
+- current report metadata such as URL, folder and dataset mappings is refreshed from the shipped bootstrap catalog
+- the old permissions file is saved with a timestamp before the merged catalog is written
+- this fixes upgrades from releases such as 0.8 where the `kundencockpit` ACL/catalog entry could otherwise be missing even though the Razor route existed
+
+No SQL metadata migration is required.
+
 ## Version 0.13.0
 
 Version 0.13.0 adds portal-based permission administration for report folders and reports.
