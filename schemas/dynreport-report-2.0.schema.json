@@ -56,6 +56,12 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 900
+        },
+        "Density": {
+          "enum": [
+            "Comfortable",
+            "Compact"
+          ]
         }
       }
     },
@@ -337,6 +343,26 @@
         },
         "Unit": {
           "type": "string"
+        },
+        "ChartType": {
+          "enum": [
+            "",
+            "Bar",
+            "Line",
+            "Area"
+          ]
+        },
+        "Color": {
+          "type": "string",
+          "pattern": "^$|^#[0-9A-Fa-f]{6}$"
+        },
+        "Axis": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "Area": {
+          "type": "boolean"
         }
       }
     },
@@ -409,6 +435,18 @@
           "items": {
             "type": "string"
           }
+        },
+        "Orientation": {
+          "enum": [
+            "Vertical",
+            "Horizontal"
+          ]
+        },
+        "ShowStackTotal": {
+          "type": "boolean"
+        },
+        "StackTotalFormat": {
+          "type": "string"
         }
       }
     },
@@ -470,7 +508,10 @@
           "type": "string"
         },
         "Metrics": {
-          "type": "array"
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metric"
+          }
         },
         "Board": {
           "type": [
@@ -497,6 +538,9 @@
               "type": "null"
             }
           ]
+        },
+        "TargetPageId": {
+          "type": "string"
         }
       }
     },
@@ -565,6 +609,35 @@
             "asc",
             "desc"
           ]
+        }
+      }
+    },
+    "metric": {
+      "type": "object",
+      "properties": {
+        "Id": {
+          "type": "string"
+        },
+        "Label": {
+          "type": "string"
+        },
+        "Dataset": {
+          "type": "string"
+        },
+        "TargetPageId": {
+          "type": "string"
+        },
+        "Value": {
+          "type": "object"
+        },
+        "Format": {
+          "type": "string"
+        },
+        "Unit": {
+          "type": "string"
+        },
+        "Rules": {
+          "type": "array"
         }
       }
     }
