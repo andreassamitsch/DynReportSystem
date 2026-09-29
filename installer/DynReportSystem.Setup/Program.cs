@@ -110,7 +110,21 @@ void Install()
     if (aclBackup is not null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(existingAcl)!);
-        File.WriteAllText(existingAcl, aclBackup, new UTF8Encoding(false));
+
+        var bootstrapAcl = File.Exists(existingAcl)
+            ? File.ReadAllText(existingAcl)
+            : null;
+
+        var mergedAcl = bootstrapAcl is null
+            ? aclBackup
+            : MergePermissionConfiguration(aclBackup, bootstrapAcl);
+
+        var backupPath = existingAcl + ".backup-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        File.WriteAllText(backupPath, aclBackup, new UTF8Encoding(false));
+        File.WriteAllText(existingAcl, mergedAcl, new UTF8Encoding(false));
+
+        Console.WriteLine($"Berechtigungskatalog gesichert: {backupPath}");
+        Console.WriteLine("Neue Standardordner/-berichte wurden ergänzt; vorhandene Grants blieben erhalten.");
     }
     else if (File.Exists(existingAcl))
     {
@@ -406,6 +420,85 @@ JsonObject EnsureObject(JsonObject parent, string propertyName)
     var created = new JsonObject();
     parent[propertyName] = created;
     return created;
+}
+
+string MergePermissionConfiguration(string currentJson, string bootstrapJson)
+{
+    var current = JsonNode.Parse(currentJson) as JsonObject
+        ?? throw new InvalidDataException("Bestehende permissions.json ist ungültig.");
+
+    var bootstrap = JsonNode.Parse(bootstrapJson) as JsonObject
+        ?? throw new InvalidDataException("Neue Bootstrap-permissions.json ist ungültig.");
+
+    var currentFolders = current["Folders"] as JsonArray ?? new JsonArray();
+    var bootstrapFolders = bootstrap["Folders"] as JsonArray ?? new JsonArray();
+    current["Folders"] = currentFolders;
+
+    foreach (var source in bootstrapFolders.OfType<JsonObject>())
+    {
+        var id = source["Id"]?.GetValue<string>() ?? "";
+        if (string.IsNullOrWhiteSpace(id))
+            continue;
+
+        var existing = currentFolders
+            .OfType<JsonObject>()
+            .FirstOrDefault(item => string.Equals(
+                item["Id"]?.GetValue<string>(),
+                id,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (existing is null)
+        {
+            var clone = source.DeepClone() as JsonObject ?? new JsonObject();
+            clone["Grants"] = new JsonArray();
+            currentFolders.Add(clone);
+        }
+        else
+        {
+            if (existing["Title"] is null && source["Title"] is not null)
+                existing["Title"] = source["Title"]!.DeepClone();
+
+            if (existing["ParentId"] is null && source["ParentId"] is not null)
+                existing["ParentId"] = source["ParentId"]!.DeepClone();
+        }
+    }
+
+    var currentReports = current["Reports"] as JsonArray ?? new JsonArray();
+    var bootstrapReports = bootstrap["Reports"] as JsonArray ?? new JsonArray();
+    current["Reports"] = currentReports;
+
+    foreach (var source in bootstrapReports.OfType<JsonObject>())
+    {
+        var id = source["Id"]?.GetValue<string>() ?? "";
+        if (string.IsNullOrWhiteSpace(id))
+            continue;
+
+        var existing = currentReports
+            .OfType<JsonObject>()
+            .FirstOrDefault(item => string.Equals(
+                item["Id"]?.GetValue<string>(),
+                id,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (existing is null)
+        {
+            var clone = source.DeepClone() as JsonObject ?? new JsonObject();
+            clone["Grants"] = new JsonArray();
+            currentReports.Add(clone);
+            continue;
+        }
+
+        // Report metadata is not security state. Keep the user's grants, but
+        // refresh the runtime mapping so newly added datasets/routes from later
+        // versions work after an in-place upgrade.
+        foreach (var property in new[] { "FolderId", "Title", "Url", "Datasets" })
+        {
+            if (source[property] is not null)
+                existing[property] = source[property]!.DeepClone();
+        }
+    }
+
+    return current.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
 }
 
 void EnsurePortalAdministrator(string installDir)
