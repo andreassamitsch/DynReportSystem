@@ -2,6 +2,20 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
+## Version 0.13.2
+
+Patch release for the first native Kundencockpit run on upgraded APP-01 installations.
+
+Changes:
+
+- native data source `OxaionPRD` automatically falls back to the proven legacy `Cockpit:ConnectionString` when `DataSources:OxaionPRD:ConnectionString` is still empty
+- central `DataSources:OxaionPRD` remains preferred and takes over automatically once configured
+- no SQL credentials are written into `.dynreport` packages
+- chart and KPI visuals now show the real dataset execution error instead of misleading warnings such as `Visual 'chart' wird nicht dargestellt` or a false zero value
+- native Kundencockpit package 1.0.1 removes the duplicated heading and requires runtime 0.13.2
+
+No SQL metadata migration is required.
+
 ## Version 0.13.1
 
 Patch release for native report onboarding and upgrades from older DynReport installations.
