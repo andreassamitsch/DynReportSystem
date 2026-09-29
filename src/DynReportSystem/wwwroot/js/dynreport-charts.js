@@ -213,6 +213,20 @@
             }
         }
 
+        if (Array.isArray(option.series)) {
+            for (const s of option.series) {
+                if (!s?.label?.show || s.label.formatter) continue;
+                const format = seriesFormats[s.name] || itemFormat;
+                s.label.formatter = p => {
+                    const raw = Array.isArray(p.value) ? p.value[p.value.length - 1] : p.value;
+                    if (format === "currency" && Math.abs(Number(raw)) >= 100000) {
+                        return compact.format(Number(raw)) + " €";
+                    }
+                    return formatValue(raw, format);
+                };
+            }
+        }
+
         if (option.tooltip.trigger === "axis") {
             option.tooltip.formatter = params => {
                 const rows = Array.isArray(params) ? params : [params];
