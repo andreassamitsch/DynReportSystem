@@ -213,6 +213,8 @@ else
                 <GenericDynReportView Package="@package"
                                       Run="@run"
                                       ParameterValues="@values"
+                                      InitialPageId="@activeReportPageId"
+                                      OnPageChanged="HandlePageChangedAsync"
                                       OnInteraction="HandleReportInteractionAsync" />
             }
             else
@@ -273,6 +275,7 @@ else
     private string error = "";
     private string viewMode = "Report";
     private string activeDataSet = "";
+    private string activeReportPageId = "";
     private DateTime lastUpdated;
     private string? userName;
     private CancellationTokenSource? refreshCts;
@@ -280,6 +283,8 @@ else
     private readonly Dictionary<string, DynReportParameterValue> values =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<DynReportParameterOption>> options =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, CachedDataSet> dataSetCache =
         new(StringComparer.OrdinalIgnoreCase);
 
     private IEnumerable<DynReportParameter> VisibleParameters
@@ -327,14 +332,18 @@ else
         initialized = false;
         error = "";
         run = null;
+        activeReportPageId = "";
         values.Clear();
         options.Clear();
+        dataSetCache.Clear();
 
         try
         {
             package = Packages.Get(ReportId)
                 ?? throw new FileNotFoundException(
                     $"DynReport-Paket '{ReportId}' wurde nicht gefunden.");
+
+            activeReportPageId = package.Document.Pages.FirstOrDefault()?.Id ?? "";
 
             var user = (await Authentication.GetAuthenticationStateAsync()).User;
             userName = user.Identity?.Name;
@@ -474,8 +483,11 @@ else
     private async Task HandleReportInteractionAsync(
         DynReportInteractionEvent interaction)
     {
-        if (package is null || interaction.ParameterValues.Count == 0)
+        if (package is null)
             return;
+
+        if (!string.IsNullOrWhiteSpace(interaction.TargetPageId))
+            activeReportPageId = interaction.TargetPageId;
 
         var changed = false;
 
@@ -507,20 +519,60 @@ else
             changed = true;
         }
 
-        if (!changed)
-            return;
-
-        if (interaction.RunReport)
-            await RunAsync();
+        if (interaction.RunReport || changed)
+            await RunPageAsync(activeReportPageId, force: false);
+        else if (!string.IsNullOrWhiteSpace(interaction.TargetPageId))
+            await EnsurePageDataAsync(activeReportPageId);
     }
 
-    private async Task RunAsync()
+    private async Task HandlePageChangedAsync(string pageId)
+    {
+        if (package is null || string.IsNullOrWhiteSpace(pageId))
+            return;
+
+        activeReportPageId = pageId;
+        await EnsurePageDataAsync(pageId);
+    }
+
+    private Task RunAsync() =>
+        RunPageAsync(activeReportPageId, force: true);
+
+    private Task EnsurePageDataAsync(string pageId) =>
+        RunPageAsync(pageId, force: false);
+
+    private async Task RunPageAsync(
+        string? pageId,
+        bool force)
     {
         if (package is null || busy)
             return;
 
-        busy = true;
+        var effectivePageId = string.IsNullOrWhiteSpace(pageId)
+            ? package.Document.Pages.FirstOrDefault()?.Id ?? ""
+            : pageId;
+
+        var required = Executor.ResolvePageDataSets(package, effectivePageId);
+        var stale = required
+            .Where(dataSetId =>
+                force
+                || !dataSetCache.TryGetValue(dataSetId, out var cached)
+                || !cached.Signature.Equals(
+                    DataSetSignature(dataSetId),
+                    StringComparison.Ordinal))
+            .ToArray();
+
+        activeReportPageId = effectivePageId;
         error = "";
+
+        if (stale.Length == 0)
+        {
+            run = BuildRunFromCurrentCache();
+            viewMode = "Report";
+            lastUpdated = DateTime.Now;
+            return;
+        }
+
+        busy = true;
 
         runCts?.Cancel();
         runCts?.Dispose();
@@ -528,12 +580,21 @@ else
 
         try
         {
-            run = await Executor.RunAsync(
+            var partial = await Executor.RunDataSetsAsync(
                 package,
                 values,
+                stale,
                 userName,
                 runCts.Token);
 
+            foreach (var result in partial.Results)
+            {
+                dataSetCache[result.Key] = new CachedDataSet(
+                    DataSetSignature(result.Key),
+                    result.Value);
+            }
+
+            run = BuildRunFromCurrentCache(partial);
             activeDataSet = run.Results.Keys.FirstOrDefault() ?? "";
             lastUpdated = DateTime.Now;
             viewMode = "Report";
@@ -550,6 +611,68 @@ else
         {
             busy = false;
         }
+    }
+
+    private DynReportRun BuildRunFromCurrentCache(
+        DynReportRun? latest = null)
+    {
+        var merged = new DynReportRun
+        {
+            ExecutionId = latest?.ExecutionId ?? Guid.NewGuid(),
+            CorrelationId = latest?.CorrelationId ?? Guid.NewGuid(),
+            StartedUtc = latest?.StartedUtc ?? DateTime.UtcNow,
+            DurationMs = latest?.DurationMs ?? 0
+        };
+
+        foreach (var item in dataSetCache)
+        {
+            if (!item.Value.Signature.Equals(
+                    DataSetSignature(item.Key),
+                    StringComparison.Ordinal))
+                continue;
+
+            merged.Results[item.Key] = item.Value.Result;
+        }
+
+        if (latest is not null)
+            merged.Errors.AddRange(latest.Errors);
+
+        return merged;
+    }
+
+    private string DataSetSignature(string dataSetId)
+    {
+        if (package is null)
+            return "";
+
+        var dataSet = package.Document.Datasets.FirstOrDefault(candidate =>
+            candidate.Id.Equals(
+                dataSetId,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (dataSet is null)
+            return "";
+
+        var parts = new List<string>
+        {
+            package.Manifest.Version,
+            dataSet.Id
+        };
+
+        foreach (var binding in dataSet.Parameters
+            .OrderBy(item => item.ParameterName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.SqlName, StringComparer.OrdinalIgnoreCase))
+        {
+            values.TryGetValue(binding.ParameterName, out var state);
+            parts.Add(binding.ParameterName);
+            parts.Add(state is null
+                ? ""
+                : string.Join(
+                    "\u001e",
+                    state.Values.Select(value => value ?? "")));
+        }
+
+        return string.Join("\u001f", parts);
     }
 
     private void StartAutoRefresh()
@@ -613,6 +736,10 @@ else
         runCts = null;
         return ValueTask.CompletedTask;
     }
+
+    private sealed record CachedDataSet(
+        string Signature,
+        QueryResult Result);
 
     private async Task BackAsync()
     {
