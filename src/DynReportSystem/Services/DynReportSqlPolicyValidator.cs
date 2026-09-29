@@ -48,12 +48,14 @@ public sealed class DynReportSqlPolicyValidator
                 $"Dataset '{dataSet.Id}' verwendet unbekannten CommandType '{dataSet.CommandType}'.");
 
         var normalized = StripCommentsAndStrings(sql).Trim();
+        normalized = normalized.TrimStart(';', ' ', '\t', '\r', '\n');
 
         if (!(normalized.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase)
-              || normalized.StartsWith("WITH", StringComparison.OrdinalIgnoreCase)))
+              || normalized.StartsWith("WITH", StringComparison.OrdinalIgnoreCase)
+              || normalized.StartsWith("DECLARE", StringComparison.OrdinalIgnoreCase)))
         {
             throw new InvalidDataException(
-                $"Dataset '{dataSet.Id}' muss als Textabfrage mit SELECT oder WITH beginnen.");
+                $"Dataset '{dataSet.Id}' muss als read-only Textabfrage mit SELECT, WITH oder DECLARE beginnen.");
         }
 
         if (GoBatch.IsMatch(sql))
