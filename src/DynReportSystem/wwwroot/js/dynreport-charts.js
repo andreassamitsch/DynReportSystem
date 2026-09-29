@@ -303,7 +303,7 @@
         if (dotnetRef) {
             chart.on("click", p => {
                 dotnetRef.invokeMethodAsync("HandleChartClick", {
-                    name: p.name ?? null,
+                    name: p.name ?? p.value ?? null,
                     seriesName: p.seriesName ?? null,
                     data: p.data ?? null
                 }).catch(() => {});
