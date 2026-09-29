@@ -102,7 +102,11 @@
                     <tr>
                         @foreach (var column in DisplayColumns)
                         {
-                            <td title="@Cell(row, column)">@Cell(row, column)</td>
+                            <td title="@Cell(row, column)"
+                                class="@(IsInteractiveColumn(column) ? "dyn2-interactive-cell" : "")"
+                                @onclick="() => CellClickedAsync(row, column)">
+                                @Cell(row, column)
+                            </td>
                         }
                     </tr>
                 }
@@ -126,6 +130,7 @@
     [Parameter] public IReadOnlyList<string>? GroupColumns { get; set; }
     [Parameter] public IReadOnlyList<string>? InitialSortColumns { get; set; }
     [Parameter] public DynTableDefinition? Definition { get; set; }
+    [Parameter] public EventCallback<DynReportInteractionEvent> OnInteraction { get; set; }
 
     private IReadOnlyList<string> DisplayColumns
     {
@@ -153,6 +158,44 @@
 
     private IReadOnlyList<string> EffectiveGroups =>
         Definition?.GroupBy.Count > 0 ? Definition.GroupBy : GroupColumns ?? [];
+
+    private bool IsInteractiveColumn(string column) =>
+        Definition?.Interaction.ColumnParameterMap.ContainsKey(column) == true;
+
+    private async Task CellClickedAsync(
+        IReadOnlyDictionary<string, object?> row,
+        string column)
+    {
+        if (!IsInteractiveColumn(column) || !OnInteraction.HasDelegate)
+            return;
+
+        var interaction = Definition?.Interaction;
+        if (interaction is null
+            || !interaction.ColumnParameterMap.TryGetValue(column, out var parameterName)
+            || string.IsNullOrWhiteSpace(parameterName))
+            return;
+
+        var raw = QueryResult.Get(row, column);
+        var value = raw switch
+        {
+            null => "",
+            DateTime date => date.ToString("O", CultureInfo.InvariantCulture),
+            DateTimeOffset dto => dto.ToString("O", CultureInfo.InvariantCulture),
+            _ => Convert.ToString(raw, CultureInfo.InvariantCulture) ?? ""
+        };
+
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+
+        await OnInteraction.InvokeAsync(
+            new DynReportInteractionEvent(
+                "",
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [parameterName] = value
+                },
+                interaction.RunReportAfterFilter));
+    }
 
     private DynTableColumn? ColumnDefinition(string column) =>
         Definition?.Columns.FirstOrDefault(x =>
