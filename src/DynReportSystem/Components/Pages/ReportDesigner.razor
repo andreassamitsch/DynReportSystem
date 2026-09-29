@@ -860,6 +860,7 @@ else
                                                     <select @bind="selected.Chart.ColorSet">
                                                         <option value="">– Standard –</option>
                                                         <option value="BusinessArea">Geschäftsbereiche</option>
+                                                        <option value="Customer">Kunden (stabil aus Name)</option>
                                                     </select>
                                                 </label>
 
@@ -894,6 +895,44 @@ else
                                                         <option value="Vertical">Vertikal</option>
                                                         <option value="Horizontal">Horizontal</option>
                                                     </select>
+                                                </label>
+
+                                                <div class="designer-inspector-section-head">
+                                                    <strong>Interaktion bei Klick</strong>
+                                                </div>
+
+                                                <label>
+                                                    <span>Kategorie setzt Parameter</span>
+                                                    <select @bind="selected.Chart.Interaction.CategoryParameter">
+                                                        <option value="">– keinen –</option>
+                                                        @foreach (var parameter in draft.Document.Parameters.Where(x => !x.MultiValue))
+                                                        {
+                                                            <option value="@parameter.Name">@parameter.Label (@parameter.Name)</option>
+                                                        }
+                                                    </select>
+                                                </label>
+
+                                                <label>
+                                                    <span>Serie setzt Parameter</span>
+                                                    <select @bind="selected.Chart.Interaction.SeriesParameter">
+                                                        <option value="">– keinen –</option>
+                                                        @foreach (var parameter in draft.Document.Parameters.Where(x => !x.MultiValue))
+                                                        {
+                                                            <option value="@parameter.Name">@parameter.Label (@parameter.Name)</option>
+                                                        }
+                                                    </select>
+                                                </label>
+
+                                                <label>
+                                                    <span>Serien → Zielseiten (; getrennt)</span>
+                                                    <input value="@StringMapText(selected.Chart.Interaction.SeriesTargetPages)"
+                                                           @onchange="e => SetStringMap(selected.Chart.Interaction.SeriesTargetPages, e.Value?.ToString())"
+                                                           placeholder="Umsatz=umsatz; Offener Auftragsbestand=offene-ab" />
+                                                </label>
+
+                                                <label class="designer-check">
+                                                    <input type="checkbox" @bind="selected.Chart.Interaction.RunReportAfterFilter" />
+                                                    <span>Nach gesetztem Filter Bericht neu ausführen</span>
                                                 </label>
 
                                                 <small>
@@ -1813,6 +1852,31 @@ else
                 ? column
                 : new DynTableColumn { Field = field, Header = field })
             .ToList();
+    }
+
+    private static string StringMapText(IReadOnlyDictionary<string, string> values) =>
+        string.Join("; ", values.Select(item => $"{item.Key}={item.Value}"));
+
+    private static void SetStringMap(
+        IDictionary<string, string> target,
+        string? value)
+    {
+        target.Clear();
+
+        foreach (var item in (value ?? "").Split(
+            ';',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = item.IndexOf('=');
+            if (separator <= 0 || separator >= item.Length - 1)
+                continue;
+
+            var key = item[..separator].Trim();
+            var mapped = item[(separator + 1)..].Trim();
+
+            if (key.Length > 0 && mapped.Length > 0)
+                target[key] = mapped;
+        }
     }
 
     private static string ColorOverrideText(IReadOnlyDictionary<string, string> colors) =>
