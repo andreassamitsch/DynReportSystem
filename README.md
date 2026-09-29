@@ -16,6 +16,27 @@ Changes:
 
 No SQL metadata migration is required.
 
+## Version 0.18.0
+
+Version 0.18.0 focuses on report-runtime performance and makes native detail pages consistently interactive.
+
+Changes:
+
+- native reports execute only datasets required by the active page instead of running the complete package on every parameter change
+- page navigation lazy-loads missing datasets and reuses datasets that are still valid
+- the per-report dataset cache is parameter-aware: only parameters actually bound by a dataset participate in its cache signature
+- changing an unrelated parameter therefore does not invalidate expensive calculations
+- independent datasets on one page execute in bounded parallel batches; the default is `Runtime:MaxParallelDatasetsPerReport = 4`
+- the existing global query gate remains the outer SQL Server safety limit
+- `Bericht ausführen` reuses unaffected datasets; explicit `Aktualisieren` and Auto-Refresh force a fresh execution of the active page
+- server-mode tables continue to query only the visible page/filter/sort and are never preloaded with the report page
+- native table cells can map columns to report parameters; clicking a mapped customer or salesperson cell applies the global report filter and can re-run the report
+- the Designer exposes table cell -> report parameter mappings
+
+The matching Kundencockpit 1.5.0 moves the expensive Lagerwert KPI to a dedicated aggregate dataset. The full Lager/Kundenartikel dataset is executed only when the Lager page is opened. Customer and salesperson cells in the detail tables act as global filters.
+
+ADR-0014 documents page-scoped execution, dependency-aware caching and bounded parallelism.
+
 ## Version 0.17.0
 
 Version 0.17.0 adds semantic cockpit interactions and stable customer colors.
