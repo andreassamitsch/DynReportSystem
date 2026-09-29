@@ -124,13 +124,13 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
             var measure = configuredSeries[0];
             var data = categories.Select(category =>
             {
-                var rows = result.Rows.Where(row =>
+                var groupedRows = result.Rows.Where(row =>
                     string.Equals(
                         FormatCategory(QueryResult.Get(row, categoryField)),
                         category,
-                        StringComparison.CurrentCultureIgnoreCase));
+                        StringComparison.CurrentCultureIgnoreCase))
+                    .ToArray();
 
-                var groupedRows = rows.ToArray();
                 var item = new Dictionary<string, object?>
                 {
                     ["name"] = category,
@@ -148,6 +148,23 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                 return (object)item;
             }).ToArray();
 
+            var pieSeries = new Dictionary<string, object?>
+            {
+                ["name"] = SeriesLabel(measure),
+                ["type"] = "pie",
+                ["radius"] = new[] { "45%", "70%" },
+                ["center"] = new[] { "50%", "44%" },
+                ["label"] = new Dictionary<string, object?>
+                {
+                    ["show"] = definition.ShowLabels,
+                    ["formatter"] = "{b}"
+                },
+                ["data"] = data
+            };
+
+            if (IsHexColor(measure.Color))
+                pieSeries["color"] = new[] { measure.Color };
+
             return new AutoVisualization(
                 "Pie",
                 $"{SeriesLabel(measure)} nach {categoryField}",
@@ -163,18 +180,7 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                         ["bottom"] = 0
                     },
                     ["toolbox"] = Toolbox(),
-                    ["series"] = new object[]
-                    {
-                        new Dictionary<string, object?>
-                        {
-                            ["name"] = SeriesLabel(measure),
-                            ["type"] = "pie",
-                            ["radius"] = new[] { "45%", "70%" },
-                            ["center"] = new[] { "50%", "44%" },
-                            ["label"] = new Dictionary<string, object?> { ["show"] = definition.ShowLabels },
-                            ["data"] = data
-                        }
-                    }
+                    ["series"] = new object[] { pieSeries }
                 });
         }
 
@@ -187,8 +193,9 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                 .Take(50)
                 .ToArray();
 
-        var series = new List<object>();
+        var series = new List<Dictionary<string, object?>>();
         var formats = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var formatBySeries = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var measure in configuredSeries)
         {
@@ -201,6 +208,7 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                         : $"{SeriesLabel(measure)} · {group}";
 
                 formats[label] = measure.Format;
+                formatBySeries[label] = measure.Format;
 
                 var values = categories.Select(category =>
                 {
@@ -218,18 +226,42 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                     return Aggregate(rows, measure.Field, measure.Aggregation);
                 }).ToArray();
 
+                var effectiveType = string.IsNullOrWhiteSpace(measure.ChartType)
+                    ? type
+                    : measure.ChartType.Trim().ToLowerInvariant();
+
+                if (effectiveType == "area")
+                    effectiveType = "line";
+
+                var isLine = effectiveType == "line";
+                var isBar = effectiveType == "bar";
+                var useArea = measure.Area
+                    || measure.ChartType.Equals("Area", StringComparison.OrdinalIgnoreCase)
+                    || type == "area";
+
                 var entry = new Dictionary<string, object?>
                 {
                     ["name"] = label,
-                    ["type"] = type == "area" ? "line" : type,
-                    ["smooth"] = type is "line" or "area",
-                    ["stack"] = definition.Stacked ? "dyn-total" : null,
-                    ["areaStyle"] = type == "area"
-                        ? new Dictionary<string, object?> { ["opacity"] = 0.12 }
+                    ["type"] = effectiveType,
+                    ["smooth"] = isLine,
+                    ["symbolSize"] = isLine ? 6 : null,
+                    ["barMaxWidth"] = isBar ? 34 : null,
+                    ["stack"] = definition.Stacked && isBar ? "dyn-total" : null,
+                    ["areaStyle"] = useArea
+                        ? new Dictionary<string, object?> { ["opacity"] = 0.14 }
                         : null,
-                    ["label"] = new Dictionary<string, object?> { ["show"] = definition.ShowLabels },
+                    ["label"] = new Dictionary<string, object?>
+                    {
+                        ["show"] = definition.ShowLabels,
+                        ["position"] = definition.Orientation.Equals("Horizontal", StringComparison.OrdinalIgnoreCase)
+                            ? "right"
+                            : "top"
+                    },
                     ["data"] = values
                 };
+
+                if (measure.Axis > 0)
+                    entry["yAxisIndex"] = measure.Axis;
 
                 var groupRows = string.IsNullOrWhiteSpace(group)
                     ? result.Rows
@@ -240,12 +272,17 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                             StringComparison.CurrentCultureIgnoreCase))
                         .ToArray();
 
-                if (TryChartColor(definition, groupRows, group, out var groupColor))
+                var explicitColor = IsHexColor(measure.Color)
+                    ? measure.Color
+                    : null;
+
+                if (explicitColor is not null
+                    || TryChartColor(definition, groupRows, group, out explicitColor))
                 {
-                    entry["itemStyle"] = new Dictionary<string, object?> { ["color"] = groupColor };
+                    entry["itemStyle"] = new Dictionary<string, object?> { ["color"] = explicitColor };
                     entry["lineStyle"] = new Dictionary<string, object?>
                     {
-                        ["color"] = groupColor,
+                        ["color"] = explicitColor,
                         ["width"] = 2.5
                     };
                 }
@@ -254,50 +291,148 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
             }
         }
 
+        if (definition.Stacked && definition.ShowStackTotal)
+        {
+            var stackedBars = series
+                .Where(entry =>
+                    string.Equals(Convert.ToString(entry.GetValueOrDefault("type")), "bar", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(Convert.ToString(entry.GetValueOrDefault("stack")), "dyn-total", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            if (stackedBars.Length > 0)
+            {
+                var totals = Enumerable.Range(0, categories.Length)
+                    .Select(index => stackedBars.Sum(entry =>
+                    {
+                        if (entry["data"] is not Array array || index >= array.Length)
+                            return 0d;
+
+                        return Numeric(array.GetValue(index)) ?? 0d;
+                    }))
+                    .ToArray();
+
+                var labelSeries = stackedBars[^1];
+                var raw = labelSeries["data"] as Array;
+                if (raw is not null)
+                {
+                    labelSeries["data"] = Enumerable.Range(0, raw.Length)
+                        .Select(index => (object)new Dictionary<string, object?>
+                        {
+                            ["value"] = raw.GetValue(index),
+                            ["stackTotal"] = index < totals.Length ? totals[index] : 0d
+                        })
+                        .ToArray();
+
+                    var name = Convert.ToString(labelSeries.GetValueOrDefault("name")) ?? "";
+                    if (!string.IsNullOrWhiteSpace(name))
+                    {
+                        labelSeries["label"] = new Dictionary<string, object?>
+                        {
+                            ["show"] = false
+                        };
+                    }
+                }
+            }
+        }
+
+        var horizontal = definition.Orientation.Equals("Horizontal", StringComparison.OrdinalIgnoreCase)
+            && series.All(entry =>
+                string.Equals(Convert.ToString(entry.GetValueOrDefault("type")), "bar", StringComparison.OrdinalIgnoreCase));
+
+        var categoryAxis = new Dictionary<string, object?>
+        {
+            ["type"] = "category",
+            ["data"] = categories,
+            ["axisTick"] = new Dictionary<string, object?> { ["show"] = false },
+            ["axisLabel"] = new Dictionary<string, object?>
+            {
+                ["hideOverlap"] = true,
+                ["overflow"] = "truncate",
+                ["width"] = horizontal ? 160 : null
+            }
+        };
+
+        var valueAxis = new Dictionary<string, object?>
+        {
+            ["type"] = "value",
+            ["splitLine"] = new Dictionary<string, object?>
+            {
+                ["lineStyle"] = new Dictionary<string, object?> { ["color"] = "#edf2f3" }
+            }
+        };
+
+        var hasSecondAxis = series.Any(entry =>
+            Convert.ToInt32(entry.GetValueOrDefault("yAxisIndex") ?? 0, CultureInfo.InvariantCulture) > 0);
+
+        object yAxis = horizontal
+            ? categoryAxis
+            : hasSecondAxis
+                ? new object[]
+                {
+                    valueAxis,
+                    new Dictionary<string, object?>
+                    {
+                        ["type"] = "value",
+                        ["splitLine"] = new Dictionary<string, object?> { ["show"] = false }
+                    }
+                }
+                : valueAxis;
+
         var option = new Dictionary<string, object?>
         {
             ["__dynSeriesFormats"] = formats,
-            ["__dynResponsive"] = "cartesian",
+            ["__dynResponsive"] = horizontal
+                ? definition.Stacked ? "horizontal-stack" : "horizontal-bar"
+                : definition.Stacked ? "primary-stack" : "cartesian",
             ["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "axis" },
             ["legend"] = new Dictionary<string, object?>
             {
                 ["show"] = definition.ShowLegend,
                 ["type"] = "scroll",
                 ["top"] = 0,
-                ["right"] = 0
+                ["left"] = 0,
+                ["right"] = 34
             },
             ["grid"] = new Dictionary<string, object?>
             {
-                ["left"] = 55,
-                ["right"] = 28,
-                ["top"] = 45,
-                ["bottom"] = categories.Length > 20 ? 62 : 48,
+                ["left"] = horizontal ? 8 : 48,
+                ["right"] = horizontal ? 70 : hasSecondAxis ? 52 : 20,
+                ["top"] = definition.ShowLegend ? 34 : 10,
+                ["bottom"] = !horizontal && categories.Length > 20 ? 56 : 32,
                 ["containLabel"] = true
             },
-            ["xAxis"] = new Dictionary<string, object?>
-            {
-                ["type"] = "category",
-                ["data"] = categories,
-                ["axisLabel"] = new Dictionary<string, object?> { ["hideOverlap"] = true }
-            },
-            ["yAxis"] = new Dictionary<string, object?>
-            {
-                ["type"] = "value",
-                ["splitLine"] = new Dictionary<string, object?>
-                {
-                    ["lineStyle"] = new Dictionary<string, object?> { ["color"] = "#edf2f3" }
-                }
-            },
+            ["xAxis"] = horizontal ? valueAxis : categoryAxis,
+            ["yAxis"] = yAxis,
             ["toolbox"] = Toolbox(),
-            ["series"] = series.ToArray()
+            ["series"] = series.Cast<object>().ToArray()
         };
 
-        if (categories.Length > 20)
+        if (definition.Stacked && definition.ShowStackTotal)
+        {
+            var stackedBars = series.Where(entry =>
+                string.Equals(Convert.ToString(entry.GetValueOrDefault("type")), "bar", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(Convert.ToString(entry.GetValueOrDefault("stack")), "dyn-total", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            if (stackedBars.Length > 0)
+            {
+                var labelSeriesName = Convert.ToString(stackedBars[^1].GetValueOrDefault("name")) ?? "";
+                if (!string.IsNullOrWhiteSpace(labelSeriesName))
+                {
+                    option["__dynStackTotalSeries"] = labelSeriesName;
+                    option["__dynStackTotalFormat"] = string.IsNullOrWhiteSpace(definition.StackTotalFormat)
+                        ? formatBySeries.GetValueOrDefault(labelSeriesName) ?? "number"
+                        : definition.StackTotalFormat;
+                }
+            }
+        }
+
+        if (!horizontal && categories.Length > 20)
         {
             option["dataZoom"] = new object[]
             {
                 new Dictionary<string, object?> { ["type"] = "inside", ["start"] = 0, ["end"] = 60 },
-                new Dictionary<string, object?> { ["type"] = "slider", ["height"] = 14, ["bottom"] = 3 }
+                new Dictionary<string, object?> { ["type"] = "slider", ["height"] = 12, ["bottom"] = 2 }
             };
         }
 
@@ -495,6 +630,12 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
             out color,
             definition.ColorOverrides);
     }
+
+    private static bool IsHexColor(string? color) =>
+        !string.IsNullOrWhiteSpace(color)
+        && color.Length == 7
+        && color[0] == '#'
+        && color.Skip(1).All(Uri.IsHexDigit);
 
     private static string SeriesLabel(DynChartSeries series) =>
         string.IsNullOrWhiteSpace(series.Label) ? series.Field : series.Label;
