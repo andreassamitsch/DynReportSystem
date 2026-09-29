@@ -4,7 +4,7 @@ using DynReportSystem.Models;
 
 namespace DynReportSystem.Services;
 
-public sealed class DynamicVisualizationService
+public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
 {
     public AutoVisualization? Build(QueryResult result, string mode = "Auto")
     {
@@ -52,7 +52,7 @@ public sealed class DynamicVisualizationService
         return BuildConfigured(result, definition, configuredSeries);
     }
 
-    private static AutoVisualization? BuildConfigured(
+    private AutoVisualization? BuildConfigured(
         QueryResult result,
         DynChartDefinition definition,
         IReadOnlyList<DynChartSeries> configuredSeries)
@@ -63,6 +63,12 @@ public sealed class DynamicVisualizationService
 
         if (type == "donut")
             type = "pie";
+
+        if (type is "worldmap" or "world-map" or "map")
+            return BuildWorldMap(result, definition, configuredSeries[0]);
+
+        if (type == "treemap")
+            return BuildTreemap(result, definition, configuredSeries[0]);
 
         var categoryField = definition.CategoryField;
         var seriesBy = !string.IsNullOrWhiteSpace(definition.SeriesByField)
