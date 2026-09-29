@@ -1556,3 +1556,18 @@ button.filter-chip{cursor:pointer}
   .dyn2-density-compact .dyn2-metric-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
   .dyn2-density-compact .dyn2-metric{min-height:58px}
 }
+
+
+/* Semantic table drill filters */
+.data-table td.dyn2-interactive-cell{
+  cursor:pointer;
+  color:#006f78;
+  font-weight:650;
+  text-decoration:underline;
+  text-decoration-thickness:1px;
+  text-underline-offset:2px
+}
+.data-table td.dyn2-interactive-cell:hover{
+  background:#eef8f8;
+  color:#004f56
+}
