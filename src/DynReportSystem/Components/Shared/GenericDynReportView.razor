@@ -7,30 +7,62 @@
 }
 else
 {
-    @foreach (var page in Package.Document.Pages)
+    @if (Package.Document.Pages.Count > 1)
     {
-        <section class="dyn2-page" style="@($"--dyn-columns:{Math.Clamp(page.Columns, 1, 24)}")">
-            @if (!string.IsNullOrWhiteSpace(page.Title))
+        <nav class="dyn2-page-tabs" aria-label="Berichtsseiten">
+            @foreach (var page in Package.Document.Pages)
             {
-                <div class="dyn2-page-title">
-                    <h2>@(page.Title)</h2>
-                </div>
+                <button class="@(page.Id.Equals(activePageId, StringComparison.OrdinalIgnoreCase) ? "active" : "")"
+                        @onclick="() => activePageId = page.Id">
+                    @page.Title
+                </button>
             }
-
-            <div class="dyn2-layout-grid">
-                @foreach (var visual in page.Components)
-                {
-                    @RenderVisual(visual)
-                }
-            </div>
-        </section>
+        </nav>
     }
+
+    var activePage = Package.Document.Pages.FirstOrDefault(page =>
+        page.Id.Equals(activePageId, StringComparison.OrdinalIgnoreCase))
+        ?? Package.Document.Pages[0];
+
+    <section class="dyn2-page" style="@($"--dyn-columns:{Math.Clamp(activePage.Columns, 1, 24)}")">
+        @if (!string.IsNullOrWhiteSpace(activePage.Title))
+        {
+            <div class="dyn2-page-title">
+                <h2>@activePage.Title</h2>
+            </div>
+        }
+
+        <div class="dyn2-layout-grid">
+            @foreach (var visual in activePage.Components)
+            {
+                @RenderVisual(visual)
+            }
+        </div>
+    </section>
 }
 
 @code {
     [Parameter, EditorRequired] public LoadedDynReportPackage Package { get; set; } = null!;
     [Parameter, EditorRequired] public DynReportRun Run { get; set; } = null!;
     [Parameter] public IReadOnlyDictionary<string, DynReportParameterValue>? ParameterValues { get; set; }
+
+    private string activePageId = "";
+
+    protected override void OnParametersSet()
+    {
+        if (Package.Document.Pages.Count == 0)
+        {
+            activePageId = "";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(activePageId)
+            || !Package.Document.Pages.Any(page =>
+                page.Id.Equals(activePageId, StringComparison.OrdinalIgnoreCase)))
+        {
+            activePageId = Package.Document.Pages[0].Id;
+        }
+    }
 
     private RenderFragment RenderVisual(DynVisual visual) => builder =>
     {
