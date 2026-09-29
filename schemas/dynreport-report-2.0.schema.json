@@ -447,6 +447,9 @@
         },
         "StackTotalFormat": {
           "type": "string"
+        },
+        "Interaction": {
+          "$ref": "#/$defs/chartInteraction"
         }
       }
     },
@@ -638,6 +641,26 @@
         },
         "Rules": {
           "type": "array"
+        }
+      }
+    },
+    "chartInteraction": {
+      "type": "object",
+      "properties": {
+        "CategoryParameter": {
+          "type": "string"
+        },
+        "SeriesParameter": {
+          "type": "string"
+        },
+        "RunReportAfterFilter": {
+          "type": "boolean"
+        },
+        "SeriesTargetPages": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       }
     }
