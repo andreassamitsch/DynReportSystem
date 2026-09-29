@@ -179,6 +179,7 @@ public sealed class DynChartDefinition
     public List<string> TooltipFields { get; set; } = [];
     public List<DynChartSeries> Series { get; set; } = [];
     public List<DynSortDefinition> Sort { get; set; } = [];
+    public DynChartInteractionDefinition Interaction { get; set; } = new();
     public bool Stacked { get; set; }
     public bool ShowLegend { get; set; } = true;
     public bool ShowLabels { get; set; }
@@ -186,6 +187,15 @@ public sealed class DynChartDefinition
     public string StackTotalFormat { get; set; } = "";
     public int MaxPoints { get; set; } = 120;
     public int Height { get; set; } = 360;
+}
+
+public sealed class DynChartInteractionDefinition
+{
+    public string CategoryParameter { get; set; } = "";
+    public string SeriesParameter { get; set; } = "";
+    public bool RunReportAfterFilter { get; set; } = true;
+    public Dictionary<string, string> SeriesTargetPages { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class DynChartSeries
