@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace DynReportSystem.Services;
 
 public sealed class ReportVisualThemeService(IConfiguration config)
@@ -59,6 +61,10 @@ public sealed class ReportVisualThemeService(IConfiguration config)
             if (normalizedSet.Equals("BusinessArea", StringComparison.OrdinalIgnoreCase)
                 && BuiltInBusinessArea.TryGetValue(normalizedKey, out var builtIn))
                 return builtIn;
+
+            if (normalizedSet.Equals("Customer", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(normalizedKey))
+                return StableCustomerColor(normalizedKey);
         }
 
         return fallback;
@@ -92,6 +98,76 @@ public sealed class ReportVisualThemeService(IConfiguration config)
         }
 
         return result;
+    }
+
+    private static string StableCustomerColor(string key)
+    {
+        var normalized = string.Join(
+            " ",
+            key.Normalize(NormalizationForm.FormKC)
+                .Trim()
+                .ToUpperInvariant()
+                .Split(
+                    (char[]?)null,
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+        unchecked
+        {
+            uint hash = 2166136261;
+            foreach (var ch in normalized)
+            {
+                hash ^= ch;
+                hash *= 16777619;
+            }
+
+            var hue = hash % 360;
+            var saturation = 0.58 + ((hash >> 9) % 10) / 100d;
+            var lightness = 0.45 + ((hash >> 17) % 8) / 100d;
+
+            // Yellow/lime and cyan need slightly darker / calmer values on white
+            // dashboard backgrounds. This keeps customer colors readable instead
+            // of drifting into neon or near-white tones.
+            if (hue is >= 42 and <= 82)
+            {
+                saturation = Math.Min(saturation, 0.62);
+                lightness = Math.Max(0.40, lightness - 0.05);
+            }
+            else if (hue is >= 83 and <= 155)
+            {
+                lightness = Math.Max(0.42, lightness - 0.03);
+            }
+            else if (hue is >= 170 and <= 205)
+            {
+                saturation = Math.Min(saturation, 0.60);
+                lightness = Math.Max(0.43, lightness - 0.02);
+            }
+
+            return HslToHex(hue, saturation, lightness);
+        }
+    }
+
+    private static string HslToHex(double hue, double saturation, double lightness)
+    {
+        var chroma = (1 - Math.Abs(2 * lightness - 1)) * saturation;
+        var h = hue / 60d;
+        var x = chroma * (1 - Math.Abs(h % 2 - 1));
+
+        var (r1, g1, b1) = h switch
+        {
+            < 1 => (chroma, x, 0d),
+            < 2 => (x, chroma, 0d),
+            < 3 => (0d, chroma, x),
+            < 4 => (0d, x, chroma),
+            < 5 => (x, 0d, chroma),
+            _ => (chroma, 0d, x)
+        };
+
+        var m = lightness - chroma / 2;
+        var r = (int)Math.Round((r1 + m) * 255);
+        var g = (int)Math.Round((g1 + m) * 255);
+        var b = (int)Math.Round((b1 + m) * 255);
+
+        return $"#{Math.Clamp(r, 0, 255):X2}{Math.Clamp(g, 0, 255):X2}{Math.Clamp(b, 0, 255):X2}";
     }
 
     private static bool IsHex(string? value) =>
