@@ -77,7 +77,16 @@ else
 
         if (visual.Type.Equals("metric-strip", StringComparison.OrdinalIgnoreCase))
         {
-            builder.AddContent(sequence++, MetricStrip(visual));
+            if (!string.IsNullOrWhiteSpace(visual.Dataset)
+                && !Run.Results.ContainsKey(visual.Dataset))
+            {
+                builder.AddContent(sequence++, DatasetUnavailable(visual.Dataset));
+            }
+            else
+            {
+                builder.AddContent(sequence++, MetricStrip(visual));
+            }
+
             builder.CloseElement();
             return;
         }
@@ -114,9 +123,15 @@ else
             return;
         }
 
-        if (visual.Type.Equals("chart", StringComparison.OrdinalIgnoreCase)
-            && Run.Results.TryGetValue(visual.Dataset, out var chartResult))
+        if (visual.Type.Equals("chart", StringComparison.OrdinalIgnoreCase))
         {
+            if (!Run.Results.TryGetValue(visual.Dataset, out var chartResult))
+            {
+                builder.AddContent(sequence++, DatasetUnavailable(visual.Dataset));
+                builder.CloseElement();
+                return;
+            }
+
             var chart = Visuals.Build(chartResult, visual.Chart);
             if (chart is not null)
             {
@@ -129,6 +144,13 @@ else
                     $"{Math.Clamp(visual.Chart?.Height ?? 360, 180, 1200)}px");
                 builder.CloseComponent();
             }
+            else
+            {
+                builder.OpenElement(sequence++, "div");
+                builder.AddAttribute(sequence++, "class", "notice warn");
+                builder.AddContent(sequence++, $"Dataset '{visual.Dataset}' enthält keine darstellbaren Diagrammdaten.");
+                builder.CloseElement();
+            }
 
             builder.CloseElement();
             return;
@@ -137,6 +159,26 @@ else
         builder.OpenElement(sequence++, "div");
         builder.AddAttribute(sequence++, "class", "notice warn");
         builder.AddContent(sequence++, $"Visual '{visual.Type}' wird nicht dargestellt.");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private RenderFragment DatasetUnavailable(string dataset) => builder =>
+    {
+        var sequence = 0;
+        var error = Run.Errors.FirstOrDefault(item =>
+            item.StartsWith(dataset + ":", StringComparison.OrdinalIgnoreCase));
+        var detail = string.IsNullOrWhiteSpace(error)
+            ? $"Dataset '{dataset}' wurde nicht geladen."
+            : error[(error.IndexOf(':') + 1)..].Trim();
+
+        builder.OpenElement(sequence++, "div");
+        builder.AddAttribute(sequence++, "class", "notice error");
+        builder.OpenElement(sequence++, "strong");
+        builder.AddContent(sequence++, $"Dataset '{dataset}' konnte nicht geladen werden.");
+        builder.CloseElement();
+        builder.OpenElement(sequence++, "div");
+        builder.AddContent(sequence++, detail);
         builder.CloseElement();
         builder.CloseElement();
     };
