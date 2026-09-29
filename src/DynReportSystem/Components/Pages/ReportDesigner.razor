@@ -783,6 +783,8 @@ else
                                                         <option value="Line">Linie</option>
                                                         <option value="Area">Fläche</option>
                                                         <option value="Donut">Donut</option>
+                                                        <option value="Treemap">Treemap</option>
+                                                        <option value="WorldMap">Weltkarte</option>
                                                     </select>
                                                 </label>
 
@@ -807,6 +809,45 @@ else
                                                         }
                                                     </select>
                                                 </label>
+
+                                                <label>
+                                                    <span>Globales Farbset</span>
+                                                    <select @bind="selected.Chart.ColorSet">
+                                                        <option value="">– Standard –</option>
+                                                        <option value="BusinessArea">Geschäftsbereiche</option>
+                                                    </select>
+                                                </label>
+
+                                                <label>
+                                                    <span>Farbschlüssel-Feld</span>
+                                                    <select @bind="selected.Chart.ColorKeyField">
+                                                        <option value="">– Kategorie / Serie verwenden –</option>
+                                                        @foreach (var field in FieldsFor(selected.Dataset))
+                                                        {
+                                                            <option value="@field">@field</option>
+                                                        }
+                                                    </select>
+                                                </label>
+
+                                                <label>
+                                                    <span>Farb-Overrides (; getrennt)</span>
+                                                    <input value="@ColorOverrideText(selected.Chart.ColorOverrides)"
+                                                           @onchange="e => SetColorOverrides(selected.Chart.ColorOverrides, e.Value?.ToString())"
+                                                           placeholder="10=#90ceff; 21=#7ae5da" />
+                                                </label>
+
+                                                <label>
+                                                    <span>Tooltip-Zusatzfelder (; getrennt)</span>
+                                                    <input value="@string.Join("; ", selected.Chart.TooltipFields)"
+                                                           @onchange="e => SetStringList(selected.Chart.TooltipFields, e.Value?.ToString())"
+                                                           placeholder="Kunde; Kundenanzahl" />
+                                                </label>
+
+                                                <small>
+                                                    Globale Farbsets gelten systemweit. Ein Report überschreibt nur die hier
+                                                    angegebenen Schlüssel. Für Geschäftsbereiche sind die bisherigen RDL-Farben
+                                                    global hinterlegt.
+                                                </small>
 
                                                 <div class="designer-inspector-grid">
                                                     <label>
@@ -1685,6 +1726,36 @@ else
                 ? column
                 : new DynTableColumn { Field = field, Header = field })
             .ToList();
+    }
+
+    private static string ColorOverrideText(IReadOnlyDictionary<string, string> colors) =>
+        string.Join("; ", colors.Select(item => $"{item.Key}={item.Value}"));
+
+    private static void SetColorOverrides(
+        IDictionary<string, string> target,
+        string? value)
+    {
+        target.Clear();
+
+        foreach (var item in (value ?? "").Split(
+            ';',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = item.IndexOf('=');
+            if (separator <= 0 || separator >= item.Length - 1)
+                continue;
+
+            var key = item[..separator].Trim();
+            var color = item[(separator + 1)..].Trim();
+
+            if (key.Length == 0
+                || color.Length != 7
+                || color[0] != '#'
+                || !color.Skip(1).All(Uri.IsHexDigit))
+                continue;
+
+            target[key] = color;
+        }
     }
 
     private static string SortText(IEnumerable<DynSortDefinition> sorts) =>
