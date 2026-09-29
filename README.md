@@ -16,6 +16,21 @@ Changes:
 
 No SQL metadata migration is required.
 
+## Version 0.13.3
+
+Patch release for native Oxaion data-source targeting.
+
+Changes:
+
+- native `OxaionPRD` may reuse server/authentication/TLS settings from the established `Cockpit:ConnectionString`
+- the native source now applies its own central target database metadata instead of inheriting the legacy connection's current catalog
+- `DataSources:OxaionPRD:Database` defaults to `production`, matching the historic SSRS shared source `/Oxaion PRD`
+- in-place upgrades add this non-secret database metadata automatically without overwriting existing production connection strings
+- explicitly configured `DataSources:OxaionPRD:ConnectionString` still has precedence
+- native visual errors now surface the actual dataset failure instead of the generic “Visual 'chart' wird nicht dargestellt” fallback
+
+No report re-import or SQL metadata migration is required for this patch.
+
 ## Version 0.13.1
 
 Patch release for native report onboarding and upgrades from older DynReport installations.
