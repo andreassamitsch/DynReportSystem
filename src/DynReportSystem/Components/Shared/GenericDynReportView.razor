@@ -54,6 +54,7 @@ else
     private string activePageId = "";
     private DotNetObjectReference<GenericDynReportView>? historyRef;
     private bool historyRegistered;
+    private readonly HashSet<string> expandedBoardRows = new(StringComparer.Ordinal);
     private string HistoryKey => $"dynreport:{Package.Manifest.ReportId}";
 
     protected override void OnParametersSet()
@@ -502,6 +503,7 @@ else
     private RenderFragment GroupedBoard(DynVisual visual) => builder =>
     {
         var board = visual.Board!;
+        var compactBoard = HasCssClass(visual.CssClass, "dyn2-machine-board");
         var sourceRows = Rows(visual.Dataset);
         var sections = BuildGroups(sourceRows, board.SectionGroupBy);
         var seq = 0;
@@ -584,13 +586,43 @@ else
                     .Select(w => w.Text)
                     .ToArray();
 
+                var rowKey = $"{visual.Id}\u001f{section.Key}\u001f{rowGroup.Key}";
+                var expanded = compactBoard && expandedBoardRows.Contains(rowKey);
+                var accent = RowAccent(board, rowGroup.Rows);
+
                 builder.OpenElement(seq++, "article");
-                builder.AddAttribute(seq++, "class", $"dyn2-board-row {(warnings.Length > 0 ? "has-warning" : "")}");
+                builder.AddAttribute(
+                    seq++,
+                    "class",
+                    $"dyn2-board-row {(warnings.Length > 0 ? "has-warning " : "")}{(expanded ? "is-expanded" : "")}".Trim());
+
+                if (!string.IsNullOrWhiteSpace(accent))
+                    builder.AddAttribute(seq++, "style", $"--dyn-row-accent:{accent}");
+
                 if (warnings.Length > 0)
                     builder.AddAttribute(seq++, "title", string.Join(" · ", warnings));
 
+                if (compactBoard)
+                {
+                    builder.AddAttribute(
+                        seq++,
+                        "onclick",
+                        EventCallback.Factory.Create(this, () => ToggleBoardRow(rowKey)));
+                    builder.AddAttribute(seq++, "role", "button");
+                    builder.AddAttribute(seq++, "tabindex", "0");
+                    builder.AddAttribute(seq++, "aria-expanded", expanded ? "true" : "false");
+                }
+
                 foreach (var column in board.Columns)
                     builder.AddContent(seq++, BoardCell(column, rowGroup.Rows, warnings));
+
+                if (compactBoard)
+                {
+                    builder.OpenElement(seq++, "span");
+                    builder.AddAttribute(seq++, "class", "dyn2-board-expand");
+                    builder.AddContent(seq++, expanded ? "Weniger ▲" : "Details ▼");
+                    builder.CloseElement();
+                }
 
                 builder.CloseElement();
             }
@@ -623,7 +655,8 @@ else
                 color = "#eef3f4";
 
             builder.OpenElement(seq++, "div");
-            builder.AddAttribute(seq++, "class", "dyn2-cell dyn2-status-cell");
+            builder.AddAttribute(seq++, "class", $"dyn2-cell dyn2-status-cell {ColumnClass(column)}");
+            builder.AddAttribute(seq++, "data-label", column.Header);
             builder.OpenElement(seq++, "span");
             builder.AddAttribute(seq++, "class", "dyn2-status-pill");
             builder.AddAttribute(seq++, "style", $"background:{color};color:{Contrast(color)}");
@@ -646,7 +679,8 @@ else
             state ??= new DynStatePresentation { Label = key, Tone = "neutral", Icon = "●" };
 
             builder.OpenElement(seq++, "div");
-            builder.AddAttribute(seq++, "class", $"dyn2-cell dyn2-state {state.Tone}");
+            builder.AddAttribute(seq++, "class", $"dyn2-cell dyn2-state {state.Tone} {ColumnClass(column)}");
+            builder.AddAttribute(seq++, "data-label", column.Header);
             builder.OpenElement(seq++, "strong");
             builder.AddContent(seq++, string.Join(" ", new[] { state.Icon, state.Label }.Where(x => !string.IsNullOrWhiteSpace(x))));
             builder.CloseElement();
@@ -665,7 +699,8 @@ else
             var tone = MetricTone(column, value, target, rows);
 
             builder.OpenElement(seq++, "div");
-            builder.AddAttribute(seq++, "class", $"dyn2-cell dyn2-board-metric {tone}");
+            builder.AddAttribute(seq++, "class", $"dyn2-cell dyn2-board-metric {tone} {ColumnClass(column)}");
+            builder.AddAttribute(seq++, "data-label", column.Header);
             builder.OpenElement(seq++, "strong");
             builder.AddContent(seq++, Expressions.FormatValue(value, column.Format));
             builder.CloseElement();
@@ -686,7 +721,8 @@ else
         }
 
         builder.OpenElement(seq++, "div");
-        builder.AddAttribute(seq++, "class", "dyn2-cell dyn2-text-cell");
+        builder.AddAttribute(seq++, "class", $"dyn2-cell dyn2-text-cell {ColumnClass(column)}");
+        builder.AddAttribute(seq++, "data-label", column.Header);
         builder.OpenElement(seq++, "strong");
         builder.AddContent(seq++, Expressions.FormatValue(value, column.Format, column.Unit));
         builder.CloseElement();
@@ -708,14 +744,71 @@ else
         if (column.Id.Equals("warnings", StringComparison.OrdinalIgnoreCase)
             && warnings.Count > 0)
         {
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "dyn2-warning-count");
+            builder.AddContent(seq++, $"⚠ {warnings.Count}");
+            builder.CloseElement();
+
             builder.OpenElement(seq++, "small");
             builder.AddAttribute(seq++, "class", "dyn2-warning-text");
-            builder.AddContent(seq++, "⚠ " + string.Join(" · ", warnings));
+            builder.AddContent(seq++, string.Join(" · ", warnings));
             builder.CloseElement();
         }
 
         builder.CloseElement();
     };
+
+    private void ToggleBoardRow(string key)
+    {
+        if (!expandedBoardRows.Add(key))
+            expandedBoardRows.Remove(key);
+    }
+
+    private string RowAccent(
+        DynGroupedBoard board,
+        IReadOnlyList<Dictionary<string, object?>> rows)
+    {
+        var statusColumn = board.Columns.FirstOrDefault(column =>
+            column.Kind.Equals("status", StringComparison.OrdinalIgnoreCase));
+
+        if (statusColumn is null)
+            return "";
+
+        var value = Expressions.Evaluate(
+            statusColumn.Value,
+            Package.Document,
+            rows,
+            ParameterValues);
+        var text = Convert.ToString(
+            value,
+            CultureInfo.GetCultureInfo("de-AT"))?.Trim() ?? "";
+
+        return statusColumn.ColorMap.FirstOrDefault(item =>
+            item.Key.Equals(text, StringComparison.OrdinalIgnoreCase)).Value ?? "";
+    }
+
+    private static string ColumnClass(DynBoardColumn column)
+    {
+        var token = new string((column.Id ?? "")
+            .Trim()
+            .ToLowerInvariant()
+            .Select(character =>
+                char.IsLetterOrDigit(character) || character is '-' or '_'
+                    ? character
+                    : '-')
+            .ToArray());
+
+        return string.IsNullOrWhiteSpace(token)
+            ? "dyn2-col"
+            : $"dyn2-col-{token}";
+    }
+
+    private static bool HasCssClass(string? classes, string target) =>
+        !string.IsNullOrWhiteSpace(classes)
+        && classes.Split(
+                ' ',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(item => item.Equals(target, StringComparison.OrdinalIgnoreCase));
 
     private string Tone(
         IReadOnlyList<DynConditionalRule> rules,
