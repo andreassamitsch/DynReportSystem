@@ -26,7 +26,7 @@ else if (package is null)
 }
 else
 {
-<div class="shell">
+<div class="shell @ReportShellClass">
     <header class="topbar">
         <div class="brand-mark">D</div>
         <div class="brand-text">
@@ -312,6 +312,24 @@ else
             StringComparison.OrdinalIgnoreCase) == true
                 ? "dyn2-density-compact"
                 : "dyn2-density-comfortable";
+
+    private string ReportShellClass =>
+        package?.Document.Pages
+            .SelectMany(page => page.Components)
+            .Any(visual => HasCssClass(
+                visual.CssClass,
+                "dyn2-machine-board")) == true
+            ? "dyn2-production-shell"
+            : "";
+
+    private static bool HasCssClass(string? classes, string target) =>
+        !string.IsNullOrWhiteSpace(classes)
+        && classes.Split(
+                ' ',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(item => item.Equals(
+                target,
+                StringComparison.OrdinalIgnoreCase));
 
     private string ParameterSummary =>
         string.Join(" · ", VisibleParameters.Take(4).Select(parameter =>
