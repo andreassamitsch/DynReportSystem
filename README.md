@@ -2,6 +2,22 @@
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
 
+## Version 0.19.1
+
+Patch release for the production cockpit readability feedback from the first 0.19.0 rollout.
+
+Changes:
+
+- substantially larger text on desktop/TV machine cards
+- machine cards use three compact information rows instead of five stacked rows
+- desktop cards use wider minimum columns so the important values remain human-readable
+- phone layout intentionally uses one full-width card per machine for legibility, while compressing each card to three rows
+- order/article and operation share one row; operator/warnings and the two shift KPIs share the next row
+- full warning text and secondary metrics remain available after expanding a machine card
+- KPI strip and section headings are larger without increasing the mobile card height
+
+No SQL metadata migration is required.
+
 ## Version 0.19.0
 
 Version 0.19.0 introduces the compact production machine-board runtime used by the optimized TV production overview.
@@ -761,7 +777,7 @@ connection-string fallback exists only for the migration phase and must not cont
 
 ## Installation / update
 
-GitHub Actions builds DynReportSystem-Server-Setup-0.19.0-win-x64.exe.
+GitHub Actions builds DynReportSystem-Server-Setup-0.19.1-win-x64.exe.
 
 For an SSRS migration, keep the setup EXE, MigrationBundle.zip and the optimized Kundencockpit.rdl (when updating it) next to each other. The setup performs an in-place update and preserves the existing production appsettings, local DynReport permissions and IIS/HTTPS bindings.
 
