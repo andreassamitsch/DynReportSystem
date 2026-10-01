@@ -2004,3 +2004,261 @@ button.filter-chip{cursor:pointer}
   .dyn2-machine-board .dyn2-board{grid-template-columns:1fr}
   .dyn2-machine-board .dyn2-board-row.is-expanded{grid-column:auto}
 }
+
+
+/* DynReport 0.19.1 - readable production cockpit
+   Larger desktop typography, three-row mobile machine cards. */
+.dyn2-production-kpis .dyn2-metric{
+  min-height:60px;
+  padding:8px 10px
+}
+.dyn2-production-kpis .dyn2-metric span{font-size:10px}
+.dyn2-production-kpis .dyn2-metric strong{font-size:20px}
+
+.dyn2-machine-board .dyn2-board-section-head h3{font-size:18px}
+.dyn2-machine-board .dyn2-board-section-head small{font-size:9px}
+.dyn2-machine-board .dyn2-board{
+  grid-template-columns:repeat(auto-fit,minmax(350px,1fr));
+  gap:9px
+}
+.dyn2-machine-board .dyn2-board-row{
+  grid-template-columns:24px repeat(11,minmax(0,1fr));
+}
+.dyn2-machine-board .dyn2-cell{
+  padding:7px 8px;
+}
+.dyn2-machine-board .dyn2-cell strong{
+  font-size:11.5px;
+  line-height:1.22
+}
+.dyn2-machine-board .dyn2-cell span{
+  font-size:9.5px;
+  line-height:1.2
+}
+.dyn2-machine-board .dyn2-cell small{
+  font-size:8.3px;
+  line-height:1.2
+}
+.dyn2-machine-board .dyn2-col-agstate{
+  grid-column:1;
+  grid-row:1;
+}
+.dyn2-machine-board .dyn2-col-agstate strong{font-size:12px}
+.dyn2-machine-board .dyn2-col-machine{
+  grid-column:2 / 8;
+  grid-row:1;
+}
+.dyn2-machine-board .dyn2-col-machine strong{font-size:13.5px}
+.dyn2-machine-board .dyn2-col-machine span{font-size:9px}
+.dyn2-machine-board .dyn2-col-status{
+  grid-column:8 / 13;
+  grid-row:1;
+}
+.dyn2-machine-board .dyn2-status-pill{
+  padding:5px 8px;
+  font-size:9.5px
+}
+.dyn2-machine-board .dyn2-status-cell small{font-size:8px}
+
+.dyn2-machine-board .dyn2-col-order{
+  grid-column:1 / 7;
+  grid-row:2;
+}
+.dyn2-machine-board .dyn2-col-order strong{font-size:12.5px}
+.dyn2-machine-board .dyn2-col-order span{font-size:9.5px}
+.dyn2-machine-board .dyn2-col-order small{font-size:8.5px}
+
+.dyn2-machine-board .dyn2-col-operation{
+  grid-column:7 / 13;
+  grid-row:2;
+}
+.dyn2-machine-board .dyn2-col-operation strong{font-size:11.5px}
+.dyn2-machine-board .dyn2-col-operation span{font-size:9px}
+
+.dyn2-machine-board .dyn2-col-warnings{
+  grid-column:1 / 7;
+  grid-row:3;
+  min-height:44px;
+  padding:7px 8px;
+}
+.dyn2-machine-board .dyn2-col-warnings>strong{font-size:10.5px}
+.dyn2-machine-board .dyn2-warning-count{
+  padding:3px 6px;
+  font-size:8.5px!important
+}
+.dyn2-machine-board .dyn2-warning-text{
+  max-width:62%;
+  font-size:8.2px!important
+}
+
+.dyn2-machine-board .dyn2-col-shiftcycle{
+  grid-column:7 / 10;
+  grid-row:3;
+}
+.dyn2-machine-board .dyn2-col-shiftqty{
+  grid-column:10 / 13;
+  grid-row:3;
+}
+.dyn2-machine-board .dyn2-col-shiftcycle,
+.dyn2-machine-board .dyn2-col-shiftqty{
+  min-height:44px;
+  padding:6px 7px
+}
+.dyn2-machine-board .dyn2-col-shiftcycle::before,
+.dyn2-machine-board .dyn2-col-shiftqty::before{
+  font-size:7.5px
+}
+.dyn2-machine-board .dyn2-col-shiftcycle strong,
+.dyn2-machine-board .dyn2-col-shiftqty strong{font-size:12px}
+.dyn2-machine-board .dyn2-col-shiftcycle span,
+.dyn2-machine-board .dyn2-col-shiftqty span{font-size:8.5px}
+.dyn2-machine-board .dyn2-board-expand{
+  right:7px;
+  bottom:4px;
+  font-size:7px
+}
+
+/* Expanded rows keep the compact summary and add the secondary values below it. */
+.dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-em,
+.dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-setup,
+.dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-totalcycle,
+.dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-containercycle,
+.dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-lastcontainer,
+.dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-downtime{
+  min-height:52px;
+  padding:7px 8px
+}
+
+@media(max-width:760px){
+  /* One full-width card is more legible than two narrow cards.  The card itself
+     is compressed to three information rows so considerably more machines fit
+     on screen than in 0.19.0. */
+  .dyn2-machine-board .dyn2-board{
+    grid-template-columns:1fr;
+    gap:6px
+  }
+  .dyn2-machine-board .dyn2-board-row{
+    grid-template-columns:22px repeat(11,minmax(0,1fr));
+    border-radius:9px
+  }
+  .dyn2-machine-board .dyn2-cell{
+    min-height:0;
+    padding:5px 6px
+  }
+
+  .dyn2-machine-board .dyn2-col-agstate{
+    grid-column:1;
+    grid-row:1;
+  }
+  .dyn2-machine-board .dyn2-col-agstate strong{font-size:11px}
+
+  .dyn2-machine-board .dyn2-col-machine{
+    grid-column:2 / 9;
+    grid-row:1;
+  }
+  .dyn2-machine-board .dyn2-col-machine strong{font-size:13px}
+  .dyn2-machine-board .dyn2-col-machine span{font-size:9px}
+
+  .dyn2-machine-board .dyn2-col-status{
+    grid-column:9 / 13;
+    grid-row:1;
+  }
+  .dyn2-machine-board .dyn2-status-pill{
+    padding:4px 6px;
+    font-size:9px
+  }
+  .dyn2-machine-board .dyn2-status-cell small{font-size:7.5px}
+
+  .dyn2-machine-board .dyn2-col-order{
+    grid-column:1 / 7;
+    grid-row:2;
+    padding-top:5px;
+    padding-bottom:5px
+  }
+  .dyn2-machine-board .dyn2-col-order strong{font-size:11.5px}
+  .dyn2-machine-board .dyn2-col-order span{font-size:8.5px}
+  .dyn2-machine-board .dyn2-col-order small{display:none}
+
+  .dyn2-machine-board .dyn2-col-operation{
+    grid-column:7 / 13;
+    grid-row:2;
+    padding-top:5px;
+    padding-bottom:5px
+  }
+  .dyn2-machine-board .dyn2-col-operation strong{font-size:10.5px}
+  .dyn2-machine-board .dyn2-col-operation span{font-size:8px}
+
+  .dyn2-machine-board .dyn2-col-warnings{
+    grid-column:1 / 7;
+    grid-row:3;
+    min-height:36px;
+    padding:5px 6px;
+    gap:4px
+  }
+  .dyn2-machine-board .dyn2-col-warnings>strong{font-size:9.5px}
+  .dyn2-machine-board .dyn2-warning-count{
+    padding:2px 5px;
+    font-size:7.5px!important
+  }
+  .dyn2-machine-board .dyn2-warning-text{display:none}
+
+  .dyn2-machine-board .dyn2-col-shiftcycle{
+    grid-column:7 / 10;
+    grid-row:3
+  }
+  .dyn2-machine-board .dyn2-col-shiftqty{
+    grid-column:10 / 13;
+    grid-row:3
+  }
+  .dyn2-machine-board .dyn2-col-shiftcycle,
+  .dyn2-machine-board .dyn2-col-shiftqty{
+    min-height:36px;
+    padding:4px 5px
+  }
+  .dyn2-machine-board .dyn2-col-shiftcycle::before,
+  .dyn2-machine-board .dyn2-col-shiftqty::before{
+    font-size:6.5px
+  }
+  .dyn2-machine-board .dyn2-col-shiftcycle strong,
+  .dyn2-machine-board .dyn2-col-shiftqty strong{font-size:10.5px}
+  .dyn2-machine-board .dyn2-col-shiftcycle span,
+  .dyn2-machine-board .dyn2-col-shiftqty span{font-size:7.5px}
+
+  .dyn2-machine-board .dyn2-board-row.is-expanded{
+    grid-column:auto
+  }
+  .dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-warning-text{
+    display:block;
+    flex-basis:100%;
+    max-width:none;
+    font-size:8px!important;
+    white-space:normal
+  }
+  .dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-em,
+  .dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-setup,
+  .dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-totalcycle,
+  .dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-containercycle,
+  .dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-lastcontainer,
+  .dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-downtime{
+    min-height:44px;
+    padding:5px 6px
+  }
+  .dyn2-machine-board .dyn2-board-expand{
+    right:5px;
+    bottom:3px;
+    font-size:6.5px
+  }
+
+  .dyn2-production-kpis .dyn2-metric{
+    min-height:46px;
+    padding:5px 4px
+  }
+  .dyn2-production-kpis .dyn2-metric span{font-size:7px}
+  .dyn2-production-kpis .dyn2-metric strong{font-size:13px}
+}
+
+@media(min-width:1800px){
+  .dyn2-machine-board .dyn2-board{
+    grid-template-columns:repeat(auto-fit,minmax(380px,1fr))
+  }
+}
