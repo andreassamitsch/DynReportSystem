@@ -2239,7 +2239,13 @@ button.filter-chip{cursor:pointer}
   .dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-totalcycle,
   .dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-containercycle,
   .dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-lastcontainer,
+  .dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-em,
+  .dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-setup,
+  .dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-totalcycle,
+  .dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-containercycle,
+  .dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-lastcontainer,
   .dyn2-machine-board .dyn2-board-row.is-expanded .dyn2-col-downtime{
+    grid-column:span 4;
     min-height:44px;
     padding:5px 6px
   }
