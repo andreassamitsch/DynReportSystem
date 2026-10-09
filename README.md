@@ -1,3 +1,11 @@
+## Version 0.19.2
+
+Fix for native `.dynreport` stacked-bar total labels. The report's semantic `ShowStackTotal=true` setting was already saved correctly, but ECharts was given a helper line without visible point anchors (`symbol: none` / `symbolSize: 0`). ECharts suppresses line labels in this situation.
+
+The helper now uses a transparent, nonzero symbol so the formatted total can be displayed above each column without drawing a visible line or marker. The stacked-bar responsive layout also stays classified as a stack when the helper line is added. Includes a regression check for the Kundencockpit's three-series monthly column totals (Umsatz + Offener Auftragsbestand + Rahmenplanung).
+
+**No changes to existing .dynreport packages, data sources, SQL, or chart designer options are needed.**
+
 # DynReport System
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.
