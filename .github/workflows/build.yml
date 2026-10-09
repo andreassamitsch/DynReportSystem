@@ -38,6 +38,10 @@ jobs:
           npm install --no-audit --no-fund
           node scripts/vendor-assets.mjs
 
+      - name: Regression test native stacked-total labels
+        shell: pwsh
+        run: dotnet run --project tests/DynReportSystem.ChartRegression/DynReportSystem.ChartRegression.csproj -c Release
+
       - name: Publish web app
         shell: pwsh
         run: |
@@ -67,9 +71,9 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: DynReportSystem-Server-Setup-0.19.1-win-x64
+          name: DynReportSystem-Server-Setup-0.19.2-win-x64
           path: |
-            artifacts/setup/DynReportSystem-Server-Setup-0.19.1-win-x64.exe
+            artifacts/setup/DynReportSystem-Server-Setup-0.19.2-win-x64.exe
             artifacts/setup/001-dynreport-metadata-schema.sql
             artifacts/setup/002-fix-audit-and-reportgrant-index.sql
             artifacts/setup/010-runtime-principal-template.sql
