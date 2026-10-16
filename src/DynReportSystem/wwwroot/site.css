@@ -2561,3 +2561,213 @@ button.filter-chip{cursor:pointer}
     background:#fffefaaf;border-radius:3px;padding:0 2px
   }
 }
+
+
+/* DynReport 0.19.4: full-HD shopfloor density and readable two-line cells */
+/* Only the native TV production matrix opts into these rules. */
+@media (min-width:1101px) {
+  .dyn2-production-shell {
+    position:relative;
+  }
+  .dyn2-production-shell .topbar {
+    height:38px;
+    min-height:38px;
+    padding:0 11px;
+  }
+  .dyn2-production-shell .brand-mark {
+    width:28px;
+    height:28px;
+    border-radius:7px;
+    font-size:17px;
+  }
+  .dyn2-production-shell .brand-text strong {
+    font-size:14px;
+    line-height:1.1;
+  }
+  .dyn2-production-shell .brand-text span {
+    display:none;
+  }
+  /* The collapsed parameter control lives in the header. Expanding it
+     creates a floating, scrollable panel instead of shifting the whole board. */
+  .dyn2-production-shell .report-parameter-shell {
+    position:absolute;
+    top:5px;
+    right:112px;
+    width:auto;
+    margin:0;
+    z-index:21;
+    background:#f8fbfc;
+    box-shadow:none;
+    border-radius:6px;
+  }
+  .dyn2-production-shell .report-parameter-shell > summary {
+    min-height:26px;
+    padding:2px 7px;
+    gap:0;
+    justify-content:center;
+    cursor:pointer;
+  }
+  .dyn2-production-shell .report-parameter-shell > summary > strong,
+  .dyn2-production-shell .report-parameter-shell > summary > span:nth-child(2) {
+    display:none;
+  }
+  .dyn2-production-shell .report-parameter-shell > summary > span:last-child {
+    font-size:0;
+  }
+  .dyn2-production-shell .report-parameter-shell > summary > span:last-child::after {
+    content:"Filter ▾";
+    font-size:10px;
+    font-weight:800;
+    color:#1c6573;
+  }
+  .dyn2-production-shell .report-parameter-shell[open] {
+    min-width:68px;
+    background:#fff;
+    box-shadow:0 7px 25px rgba(15,55,65,.12);
+  }
+  .dyn2-production-shell .report-parameter-shell[open] > .dynamic-parameter-grid {
+    position:absolute;
+    right:0;
+    top:100%;
+    width:min(780px,88vw);
+    max-height:min(65vh,560px);
+    overflow-y:auto;
+    padding:14px;
+    border:1px solid #dbe6e8;
+    border-radius:8px;
+    background:#fff;
+    box-shadow:0 10px 30px rgba(15,55,65,.16);
+  }
+  .dyn2-production-shell .dyn2-run-meta {
+    position:absolute;
+    right:220px;
+    top:7px;
+    z-index:9;
+    margin:0;
+    min-height:23px;
+    gap:8px;
+    white-space:nowrap;
+  }
+  .dyn2-production-shell .dyn2-run-meta span {
+    font-size:10px;
+  }
+  .dyn2-production-shell .dyn2-run-meta span:nth-of-type(2),
+  .dyn2-production-shell .dyn2-run-meta span:nth-of-type(3),
+  .dyn2-production-shell .dyn2-run-meta span:nth-of-type(4) {
+    display:none;
+  }
+  .dyn2-production-shell .dyn2-run-meta .ghost-btn {
+    min-height:23px;
+    padding:2px 7px;
+    font-size:10px;
+  }
+  .dyn2-production-shell .main-area {
+    padding:3px 9px 5px;
+  }
+  .dyn2-production-shell .dyn2-production-kpis {
+    margin:0 0 3px;
+  }
+  .dyn2-production-shell .dyn2-production-kpis .dyn2-metric-strip {
+    min-height:29px;
+    gap:0;
+    padding:2px 7px;
+    border-radius:5px;
+  }
+  .dyn2-production-shell .dyn2-production-kpis .dyn2-metric {
+    gap:5px;
+    padding:2px 10px;
+    line-height:1.05;
+  }
+  .dyn2-production-shell .dyn2-production-kpis .dyn2-metric span {
+    font-size:10px;
+  }
+  .dyn2-production-shell .dyn2-production-kpis .dyn2-metric strong {
+    font-size:15px;
+  }
+  .dyn2-production-matrix .dyn2-board-root {
+    gap:0;
+  }
+  .dyn2-production-matrix .dyn2-board-section-head {
+    min-height:18px;
+    height:18px;
+    padding:1px 6px;
+    margin:0;
+  }
+  .dyn2-production-matrix .dyn2-board-section-head .eyebrow {font-size:7px}
+  .dyn2-production-matrix .dyn2-board-section-head h3 {font-size:12px}
+  .dyn2-production-matrix .dyn2-board-section-head small {font-size:9px}
+  .dyn2-production-matrix .dyn2-board-header {
+    min-height:26px;
+    height:26px;
+  }
+  .dyn2-production-matrix .dyn2-board-header span {
+    min-height:25px;
+    padding:2px 3px;
+    font-size:10px;
+    line-height:1.05;
+  }
+  .dyn2-production-matrix .dyn2-board-row {
+    min-height:30px;
+    height:30px;
+    overflow:hidden;
+  }
+  .dyn2-production-matrix .dyn2-board-row.is-expanded {
+    height:auto;
+    min-height:30px;
+    overflow:visible;
+  }
+  .dyn2-production-matrix .dyn2-cell {
+    min-height:0;
+    height:29px;
+    padding:1px 4px;
+    gap:0;
+    overflow:hidden;
+  }
+  .dyn2-production-matrix .dyn2-cell strong {
+    font-size:11px;
+    line-height:1.16;
+  }
+  .dyn2-production-matrix .dyn2-cell span,
+  .dyn2-production-matrix .dyn2-cell small {
+    font-size:9.5px;
+    line-height:1.12;
+  }
+  .dyn2-production-matrix .dyn2-col-machine strong {
+    font-size:11.5px;
+  }
+  .dyn2-production-matrix .dyn2-col-warnings {
+    display:flex;
+    flex-direction:row;
+    flex-wrap:wrap;
+    align-content:center;
+    justify-content:flex-start;
+    align-items:center;
+    gap:0 4px;
+  }
+  .dyn2-production-matrix .dyn2-col-warnings > strong {
+    flex:1 1 100%;
+    max-width:100%;
+    font-size:10px;
+    line-height:1.12;
+  }
+  .dyn2-production-matrix .dyn2-warning-count {
+    flex:0 0 auto;
+    padding:0 3px;
+    font-size:8.3px!important;
+  }
+  .dyn2-production-matrix .dyn2-warning-text {
+    flex:1 1 auto;
+    min-width:0;
+    font-size:8.5px!important;
+  }
+  .dyn2-production-matrix .dyn2-board-metric strong,
+  .dyn2-production-matrix .dyn2-board-metric span {
+    font-size:10.4px;
+    line-height:1.12;
+  }
+  .dyn2-production-matrix .dyn2-col-order > span,
+  .dyn2-production-matrix .dyn2-col-lastcontainer > span {
+    color:#546f79;
+  }
+}
+/* Compact treatment must never override responsive mobile cards. */
