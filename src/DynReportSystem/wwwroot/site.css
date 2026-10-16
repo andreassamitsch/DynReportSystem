@@ -2299,6 +2299,7 @@ button.filter-chip{cursor:pointer}
 }
 .dyn2-production-matrix .dyn2-visual-head{display:none}
 .dyn2-production-matrix .dyn2-board-root{gap:4px}
+.dyn2-production-matrix .dyn2-legend{display:none}
 .dyn2-production-matrix .dyn2-board-section{margin:0}
 .dyn2-production-matrix .dyn2-board-section-head{
   min-height:20px;display:flex;align-items:center;justify-content:space-between;
