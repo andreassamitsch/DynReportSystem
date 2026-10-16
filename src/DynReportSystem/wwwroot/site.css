@@ -2268,3 +2268,295 @@ button.filter-chip{cursor:pointer}
     grid-template-columns:repeat(auto-fit,minmax(380px,1fr))
   }
 }
+
+
+/* DynReport 0.19.3: dense production matrix / mobile summary cards */
+.dyn2-production-shell .main-area{max-width:none;padding:5px 11px 7px}
+.dyn2-production-shell .topbar{height:46px;padding-inline:13px}
+.dyn2-production-shell .report-parameter-shell{margin:0 0 3px;border-radius:7px}
+.dyn2-production-shell .report-parameter-shell>summary{
+  min-height:27px;padding:4px 8px;gap:8px
+}
+.dyn2-production-shell .report-parameter-shell>summary strong,
+.dyn2-production-shell .report-parameter-shell>summary span{font-size:10px}
+.dyn2-production-shell .dyn2-run-meta{margin:0 0 2px}
+.dyn2-production-shell .dyn2-production-kpis{margin:0 0 5px}
+.dyn2-production-shell .dyn2-production-kpis .dyn2-metric-strip{
+  display:flex;align-items:center;flex-wrap:wrap;gap:4px;
+  padding:4px 7px;border:1px solid #d8e2e6;border-radius:8px;background:#f7fafb
+}
+.dyn2-production-shell .dyn2-production-kpis .dyn2-metric{
+  display:inline-flex;flex:0 0 auto;flex-direction:row;align-items:center;
+  gap:5px;min-height:0;padding:3px 9px;border:0;border-right:1px solid #d4e2e3;
+  border-radius:0;background:transparent;box-shadow:none
+}
+.dyn2-production-shell .dyn2-production-kpis .dyn2-metric:last-child{border-right:0}
+.dyn2-production-shell .dyn2-production-kpis .dyn2-metric span{
+  margin:0;font-size:11px;line-height:1.1;font-weight:650;color:#516e75
+}
+.dyn2-production-shell .dyn2-production-kpis .dyn2-metric strong{
+  margin:0;font-size:16px;line-height:1.1;font-weight:850
+}
+.dyn2-production-matrix .dyn2-visual-head{display:none}
+.dyn2-production-matrix .dyn2-board-root{gap:4px}
+.dyn2-production-matrix .dyn2-board-section{margin:0}
+.dyn2-production-matrix .dyn2-board-section-head{
+  min-height:20px;display:flex;align-items:center;justify-content:space-between;
+  margin:0;padding:2px 8px;border-top:1px solid #c8dddf;background:#eaf2f3
+}
+.dyn2-production-matrix .dyn2-board-section-head>div{
+  display:flex;align-items:center;gap:7px
+}
+.dyn2-production-matrix .dyn2-board-section-head .eyebrow{
+  margin:0;font-size:8px;letter-spacing:.7px
+}
+.dyn2-production-matrix .dyn2-board-section-head h3{
+  margin:0;font-size:13px;line-height:1.1;color:#164850
+}
+.dyn2-production-matrix .dyn2-board-section-head small{
+  font-size:9px;line-height:1.1
+}
+.dyn2-production-matrix .dyn2-board{
+  display:block;border:0;border-radius:0;box-shadow:none;
+  background:#fff;overflow-x:auto;overflow-y:visible
+}
+.dyn2-production-matrix .dyn2-board-header,
+.dyn2-production-matrix .dyn2-board-row{
+  display:grid;width:100%;min-width:1380px;
+  grid-template-columns:var(--dyn-board-template);gap:0
+}
+.dyn2-production-matrix .dyn2-board-header{
+  position:static;border:1px solid #d6e2e5;border-bottom:1px solid #bdcfd3;
+  background:#e6eef0
+}
+.dyn2-production-matrix .dyn2-board-header span{
+  display:flex;align-items:center;justify-content:center;
+  padding:3px 4px;min-height:28px;
+  font-size:10px;font-weight:800;line-height:1.07;
+  white-space:normal;overflow-wrap:anywhere;text-align:center;
+  color:#385861;border-right:1px solid #d5e0e4
+}
+.dyn2-production-matrix .dyn2-board-row{
+  position:relative;min-height:31px;border:1px solid #e2e8ea;
+  border-top:0;background:#fff;cursor:pointer
+}
+.dyn2-production-matrix .dyn2-board-row:nth-child(even){background:#f8fbfb}
+.dyn2-production-matrix .dyn2-board-row:hover{background:#eff8fa}
+.dyn2-production-matrix .dyn2-board-row.has-warning{
+  box-shadow:inset 3px 0 0 #de9e30
+}
+.dyn2-production-matrix .dyn2-cell{
+  min-width:0;min-height:30px;padding:2px 5px;
+  display:flex;flex-direction:column;justify-content:center;
+  border-right:1px solid #dee8e8
+}
+.dyn2-production-matrix .dyn2-cell:last-of-type{border-right:0}
+.dyn2-production-matrix .dyn2-cell strong{
+  font-size:11px;line-height:1.12;font-weight:760;color:#29434a;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+.dyn2-production-matrix .dyn2-cell span,
+.dyn2-production-matrix .dyn2-cell small{
+  margin:0;font-size:9px;line-height:1.11;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#647780
+}
+.dyn2-production-matrix .dyn2-col-agstate{align-items:center;padding-inline:1px}
+.dyn2-production-matrix .dyn2-col-agstate strong{font-size:12px}
+.dyn2-production-matrix .dyn2-col-machine strong{font-size:12px}
+.dyn2-production-matrix .dyn2-status-cell{
+  align-items:flex-start;min-width:0;padding:2px 4px
+}
+.dyn2-production-matrix .dyn2-status-pill{
+  max-width:100%;margin:0;padding:2px 5px;border-radius:4px;
+  font-size:9px;line-height:1.15;white-space:nowrap
+}
+.dyn2-production-matrix .dyn2-status-cell small{font-size:8.5px}
+.dyn2-production-matrix .dyn2-state{align-items:center}
+.dyn2-production-matrix .dyn2-state strong{font-size:10px}
+.dyn2-production-matrix .dyn2-board-metric{
+  display:flex;flex-direction:row;justify-content:center;align-content:center;
+  align-items:center;gap:2px;text-align:center;flex-wrap:wrap
+}
+.dyn2-production-matrix .dyn2-board-metric strong,
+.dyn2-production-matrix .dyn2-board-metric span{
+  margin:0;font-size:10.4px;font-weight:800;color:inherit;line-height:1.15
+}
+.dyn2-production-matrix .dyn2-board-metric span{font-weight:640}
+.dyn2-production-matrix .dyn2-board-metric small{
+  display:none
+}
+.dyn2-production-matrix .dyn2-col-progress{
+  background:#e4f2f4;color:#124f5a
+}
+.dyn2-production-matrix .dyn2-col-progress strong,
+.dyn2-production-matrix .dyn2-col-progress span{
+  color:#174f5a
+}
+.dyn2-production-matrix .dyn2-col-warnings{
+  min-width:0;gap:1px
+}
+.dyn2-production-matrix .dyn2-col-warnings>strong{font-size:10px}
+.dyn2-production-matrix .dyn2-warning-count{
+  display:inline-flex;margin:0;max-width:fit-content;
+  padding:0 3px;border-radius:4px;background:#ffe7bd;
+  font-size:8px!important;font-weight:800;color:#815309!important
+}
+.dyn2-production-matrix .dyn2-warning-text{
+  font-size:8px!important;line-height:1.1;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+.dyn2-production-matrix .dyn2-board-expand{display:none}
+.dyn2-production-matrix .dyn2-board-row.is-expanded{
+  background:#f4fafb
+}
+.dyn2-production-matrix .dyn2-board-row.is-expanded .dyn2-warning-text{
+  white-space:normal
+}
+@media(min-width:1101px){
+  .dyn2-production-matrix .dyn2-board-section:not(:first-of-type) .dyn2-board-header{
+    display:none
+  }
+}
+@media(max-width:1100px){
+  .dyn2-production-shell .main-area{padding:5px 7px 10px}
+  .dyn2-production-shell .topbar{height:49px}
+  .dyn2-production-shell .report-parameter-shell>summary span:nth-child(2){
+    display:none
+  }
+  .dyn2-production-shell .dyn2-production-kpis .dyn2-metric-strip{
+    display:flex;flex-wrap:nowrap;overflow-x:auto;
+    padding:3px;gap:2px
+  }
+  .dyn2-production-shell .dyn2-production-kpis .dyn2-metric{
+    flex:1 0 auto;min-height:32px;flex-direction:column;
+    gap:1px;padding:2px 4px;text-align:center
+  }
+  .dyn2-production-shell .dyn2-production-kpis .dyn2-metric span{
+    font-size:9px;line-height:1
+  }
+  .dyn2-production-shell .dyn2-production-kpis .dyn2-metric strong{
+    font-size:13px;line-height:1.05
+  }
+  .dyn2-production-matrix .dyn2-board{
+    display:flex;flex-direction:column;gap:6px;
+    overflow:visible;border:0;background:transparent
+  }
+  .dyn2-production-matrix .dyn2-board-header{display:none}
+  .dyn2-production-matrix .dyn2-board-section-head{
+    min-height:20px;margin:4px 0 3px;padding:2px 5px
+  }
+  .dyn2-production-matrix .dyn2-board-section-head h3{font-size:13px}
+  .dyn2-production-matrix .dyn2-board-row{
+    display:grid;width:100%;min-width:0;min-height:0;
+    grid-template-columns:24px repeat(11,minmax(0,1fr));
+    border:1px solid #dae5e6;
+    border-left:4px solid var(--dyn-row-accent,#bccbce);
+    border-radius:8px;box-shadow:0 2px 6px rgba(22,79,91,.06);
+    overflow:hidden
+  }
+  .dyn2-production-matrix .dyn2-cell{
+    min-width:0;min-height:0;padding:4px 5px;
+    border-right:1px solid #e1eaec;
+    border-bottom:1px solid #e1eaec
+  }
+  .dyn2-production-matrix .dyn2-cell strong{
+    font-size:11px;line-height:1.16
+  }
+  .dyn2-production-matrix .dyn2-cell span,
+  .dyn2-production-matrix .dyn2-cell small{
+    font-size:9px;line-height:1.12
+  }
+  .dyn2-production-matrix .dyn2-col-agstate{grid-column:1;grid-row:1}
+  .dyn2-production-matrix .dyn2-col-agstate strong{font-size:11px}
+  .dyn2-production-matrix .dyn2-col-machine{
+    grid-column:2 / 8;grid-row:1
+  }
+  .dyn2-production-matrix .dyn2-col-machine strong{font-size:13px}
+  .dyn2-production-matrix .dyn2-col-status{
+    grid-column:8 / 13;grid-row:1;align-items:flex-end;
+    text-align:right
+  }
+  .dyn2-production-matrix .dyn2-status-pill{font-size:10px}
+  .dyn2-production-matrix .dyn2-col-order{
+    grid-column:1 / 7;grid-row:2
+  }
+  .dyn2-production-matrix .dyn2-col-order strong{font-size:10.5px}
+  .dyn2-production-matrix .dyn2-col-order small{display:none}
+  .dyn2-production-matrix .dyn2-col-operation{
+    grid-column:7 / 11;grid-row:2
+  }
+  .dyn2-production-matrix .dyn2-col-operation strong{font-size:10.5px}
+  .dyn2-production-matrix .dyn2-col-operation span{display:none}
+  .dyn2-production-matrix .dyn2-col-progress{
+    grid-column:11 / 13;grid-row:2;display:flex;
+    align-items:center;gap:1px;flex-direction:column
+  }
+  .dyn2-production-matrix .dyn2-col-progress::before{
+    content:"AG";display:block;font-size:8px;font-weight:750
+  }
+  .dyn2-production-matrix .dyn2-col-progress strong,
+  .dyn2-production-matrix .dyn2-col-progress span{font-size:9px}
+  .dyn2-production-matrix .dyn2-col-warnings{
+    grid-column:1 / 7;grid-row:3
+  }
+  .dyn2-production-matrix .dyn2-col-warnings strong{font-size:10px}
+  .dyn2-production-matrix .dyn2-col-warnings .dyn2-warning-text{display:none}
+  .dyn2-production-matrix .dyn2-col-shiftcycle{
+    grid-column:7 / 10;grid-row:3
+  }
+  .dyn2-production-matrix .dyn2-col-shiftqty{
+    grid-column:10 / 13;grid-row:3
+  }
+  .dyn2-production-matrix .dyn2-col-shiftcycle,
+  .dyn2-production-matrix .dyn2-col-shiftqty{
+    display:flex;flex-direction:column;gap:1px;
+    align-items:center;text-align:center
+  }
+  .dyn2-production-matrix .dyn2-col-shiftcycle::before,
+  .dyn2-production-matrix .dyn2-col-shiftqty::before{
+    display:block;content:attr(data-label);
+    font-size:8px;font-weight:760;color:#374f56;
+    line-height:1.05;max-width:100%;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis
+  }
+  .dyn2-production-matrix .dyn2-col-shiftcycle strong,
+  .dyn2-production-matrix .dyn2-col-shiftcycle span,
+  .dyn2-production-matrix .dyn2-col-shiftqty strong,
+  .dyn2-production-matrix .dyn2-col-shiftqty span{
+    font-size:10px
+  }
+  .dyn2-production-matrix .dyn2-col-em,
+  .dyn2-production-matrix .dyn2-col-setup,
+  .dyn2-production-matrix .dyn2-col-totalcycle,
+  .dyn2-production-matrix .dyn2-col-containercycle,
+  .dyn2-production-matrix .dyn2-col-lastcontainer,
+  .dyn2-production-matrix .dyn2-col-downtime{
+    display:none
+  }
+  .dyn2-production-matrix .dyn2-board-row.is-expanded .dyn2-col-em,
+  .dyn2-production-matrix .dyn2-board-row.is-expanded .dyn2-col-setup,
+  .dyn2-production-matrix .dyn2-board-row.is-expanded .dyn2-col-totalcycle,
+  .dyn2-production-matrix .dyn2-board-row.is-expanded .dyn2-col-containercycle,
+  .dyn2-production-matrix .dyn2-board-row.is-expanded .dyn2-col-lastcontainer,
+  .dyn2-production-matrix .dyn2-board-row.is-expanded .dyn2-col-downtime{
+    display:flex;grid-column:span 4;min-height:36px;
+    grid-row:auto
+  }
+  .dyn2-production-matrix .dyn2-board-row.is-expanded .dyn2-col-em::before,
+  .dyn2-production-matrix .dyn2-board-row.is-expanded .dyn2-col-setup::before,
+  .dyn2-production-matrix .dyn2-board-row.is-expanded .dyn2-col-totalcycle::before,
+  .dyn2-production-matrix .dyn2-board-row.is-expanded .dyn2-col-containercycle::before,
+  .dyn2-production-matrix .dyn2-board-row.is-expanded .dyn2-col-lastcontainer::before,
+  .dyn2-production-matrix .dyn2-board-row.is-expanded .dyn2-col-downtime::before{
+    display:block;content:attr(data-label);font-size:9px;
+    color:#49616a;font-weight:750
+  }
+  .dyn2-production-matrix .dyn2-board-row.is-expanded .dyn2-col-warnings .dyn2-warning-text{
+    display:block;white-space:normal;font-size:9px!important
+  }
+  .dyn2-production-matrix .dyn2-board-expand{
+    display:block;position:absolute;bottom:2px;right:4px;
+    color:#567078;font-size:8px;pointer-events:none;
+    background:#fffefaaf;border-radius:3px;padding:0 2px
+  }
+}
