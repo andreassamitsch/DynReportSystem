@@ -318,7 +318,8 @@ else
             .SelectMany(page => page.Components)
             .Any(visual => HasCssClass(
                 visual.CssClass,
-                "dyn2-machine-board")) == true
+                "dyn2-machine-board")
+                || HasCssClass(visual.CssClass, "dyn2-production-matrix")) == true
             ? "dyn2-production-shell"
             : "";
 
