@@ -503,7 +503,9 @@ else
     private RenderFragment GroupedBoard(DynVisual visual) => builder =>
     {
         var board = visual.Board!;
-        var compactBoard = HasCssClass(visual.CssClass, "dyn2-machine-board");
+        var compactBoard = HasCssClass(visual.CssClass, "dyn2-machine-board")
+            || HasCssClass(visual.CssClass, "dyn2-production-matrix");
+        var productionMatrix = HasCssClass(visual.CssClass, "dyn2-production-matrix");
         var sourceRows = Rows(visual.Dataset);
         var sections = BuildGroups(sourceRows, board.SectionGroupBy);
         var seq = 0;
@@ -614,7 +616,7 @@ else
                 }
 
                 foreach (var column in board.Columns)
-                    builder.AddContent(seq++, BoardCell(column, rowGroup.Rows, warnings));
+                    builder.AddContent(seq++, BoardCell(column, rowGroup.Rows, warnings, productionMatrix));
 
                 if (compactBoard)
                 {
@@ -637,7 +639,8 @@ else
     private RenderFragment BoardCell(
         DynBoardColumn column,
         IReadOnlyList<Dictionary<string, object?>> rows,
-        IReadOnlyList<string> warnings) => builder =>
+        IReadOnlyList<string> warnings,
+        bool productionMatrix = false) => builder =>
     {
         var seq = 0;
         var value = Expressions.Evaluate(column.Value, Package.Document, rows, ParameterValues);
@@ -701,6 +704,14 @@ else
             builder.OpenElement(seq++, "div");
             builder.AddAttribute(seq++, "class", $"dyn2-cell dyn2-board-metric {tone} {ColumnClass(column)}");
             builder.AddAttribute(seq++, "data-label", column.Header);
+
+            if (productionMatrix && column.Heatmap)
+            {
+                var heatmap = MetricHeatmapStyle(column, value, target);
+                if (!string.IsNullOrWhiteSpace(heatmap))
+                    builder.AddAttribute(seq++, "style", heatmap);
+            }
+
             builder.OpenElement(seq++, "strong");
             builder.AddContent(seq++, Expressions.FormatValue(value, column.Format));
             builder.CloseElement();
@@ -822,6 +833,59 @@ else
 
         return "neutral";
     }
+
+    private static string MetricHeatmapStyle(
+        DynBoardColumn column,
+        object? actual,
+        object? target)
+    {
+        if (!column.Heatmap
+            || !TryDecimal(actual, out var value)
+            || !TryDecimal(target, out var planned)
+            || planned <= 0m)
+            return "";
+
+        // For time values, more than planned is adverse. For throughput, less
+        // than planned is adverse. No synthetic severity is shown without a
+        // positive target (for example 0 / 0 on an idle operation).
+        var higherIsBetter = column.Direction.Equals(
+            "HigherIsBetter",
+            StringComparison.OrdinalIgnoreCase);
+        var deviation = higherIsBetter
+            ? (planned - value) / planned
+            : (value - planned) / planned;
+
+        if (deviation <= 0m)
+            return "background-color:#c8efcf;color:#183e30";
+
+        // Continuously interpolate the severity instead of the old binary
+        // green/red treatment. 10% deviation = warm yellow, 50% = orange/red,
+        // 100% or more = saturated red.
+        var amount = Math.Clamp((double)deviation, 0d, 1d);
+        byte red, green, blue;
+        if (amount <= 0.10d)
+        {
+            var t = amount / 0.10d;
+            red = Interpolate(255, 255, t);
+            green = Interpolate(245, 221, t);
+            blue = Interpolate(182, 139, t);
+        }
+        else
+        {
+            var t = (amount - 0.10d) / 0.90d;
+            red = Interpolate(255, 238, t);
+            green = Interpolate(221, 67, t);
+            blue = Interpolate(139, 67, t);
+        }
+
+        return $"background-color:rgb({red},{green},{blue});color:#2b2323";
+    }
+
+    private static byte Interpolate(int from, int to, double fraction) =>
+        (byte)Math.Clamp(
+            (int)Math.Round(from + (to - from) * fraction),
+            0,
+            255);
 
     private string MetricTone(
         DynBoardColumn column,
