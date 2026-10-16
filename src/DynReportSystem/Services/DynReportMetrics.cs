@@ -8,7 +8,7 @@ namespace DynReportSystem.Services;
 /// </summary>
 public sealed class DynReportMetrics : IDisposable
 {
-    private readonly Meter _meter = new("DynReportSystem", "0.19.1");
+    private readonly Meter _meter = new("DynReportSystem", "0.19.3");
 
     public Counter<long> ReportExecutions { get; }
     public Counter<long> DatasetExecutions { get; }
