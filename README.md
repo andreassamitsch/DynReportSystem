@@ -1,3 +1,20 @@
+## Version 0.19.4 – kompakte Full-HD-Produktionstabelle
+
+TV/PC: Kopf- und Filterelemente platzsparend in der oberen Leiste; bestehende
+Auftrags-, Artikel-/Kunden- und Behälterdaten auf jeweils zwei lesbaren Zeilen
+zusammengefasst, ohne Informationsverlust. Tabellenzeilen circa 30 px
+und weiterhin gut lesbare Schrift; mobile Karten bleiben unverändert.
+
+Die fachlichen SQL-Daten, Kennzahlen und Heatmap-Schwellen werden absichtlich
+nicht geändert. Das getrennte TV-Paket 2.2.1 ist inhaltlich auf 2.2.0 aufgebaut.
+Die fachliche Prüfliste und die offen gebliebene 346-Minuten-Interpretation:
+`docs/qa/production-overview-ssrs-dynreport-audit-2026-10-16.md`.
+
+CI: bisherige Stacktotal-Regression plus neue Tests für Heatmap-Richtung,
+Schweregrad, Statusminuten-Deduplizierung und 0-Stück-Fallback.
+Für Zahlen-/Farbgleichheit mit SSRS bleibt die Original-RDL erforderlich.
+PR #14 basiert weiterhin auf PR #13 (Diagrammkorrektur).
+
 ## Version 0.19.3 — production TV matrix and mobile cockpit
 
 This release restores the high-density SSRS production overview without giving up the compact mobile drill-down UI. It is based on the **0.19.2 chart total-label fix (PR #13)**; merging/deploying the production-matrix branch must retain that fix.
