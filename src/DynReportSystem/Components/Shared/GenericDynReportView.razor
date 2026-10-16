@@ -748,18 +748,40 @@ else
         builder.AddContent(seq++, Expressions.FormatValue(value, column.Format, column.Unit));
         builder.CloseElement();
 
-        if (!IsEmpty(secondary))
+        // Preserve all production values, but combine article/customer and
+        // last-container quantity/person on one line in the desktop matrix.
+        // This saves a full line per operation without shrinking the type.
+        var inlineMetadata = productionMatrix
+            && (column.Id.Equals("order", StringComparison.OrdinalIgnoreCase)
+                || column.Id.Equals("lastcontainer", StringComparison.OrdinalIgnoreCase));
+
+        if (inlineMetadata && (!IsEmpty(secondary) || !IsEmpty(tertiary)))
         {
+            var detail = string.Join(" · ", new[]
+            {
+                IsEmpty(secondary) ? "" : Expressions.FormatValue(secondary, column.TargetFormat),
+                IsEmpty(tertiary) ? "" : Expressions.FormatValue(tertiary, "")
+            }.Where(text => !string.IsNullOrWhiteSpace(text)));
             builder.OpenElement(seq++, "span");
-            builder.AddContent(seq++, Expressions.FormatValue(secondary, column.TargetFormat));
+            builder.AddAttribute(seq++, "title", detail);
+            builder.AddContent(seq++, detail);
             builder.CloseElement();
         }
-
-        if (!IsEmpty(tertiary))
+        else
         {
-            builder.OpenElement(seq++, "small");
-            builder.AddContent(seq++, Expressions.FormatValue(tertiary, ""));
-            builder.CloseElement();
+            if (!IsEmpty(secondary))
+            {
+                builder.OpenElement(seq++, "span");
+                builder.AddContent(seq++, Expressions.FormatValue(secondary, column.TargetFormat));
+                builder.CloseElement();
+            }
+
+            if (!IsEmpty(tertiary))
+            {
+                builder.OpenElement(seq++, "small");
+                builder.AddContent(seq++, Expressions.FormatValue(tertiary, ""));
+                builder.CloseElement();
+            }
         }
 
         if (column.Id.Equals("warnings", StringComparison.OrdinalIgnoreCase)
