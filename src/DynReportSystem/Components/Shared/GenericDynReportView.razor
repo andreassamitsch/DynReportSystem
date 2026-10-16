@@ -745,7 +745,20 @@ else
         builder.AddAttribute(seq++, "class", $"dyn2-cell dyn2-text-cell {ColumnClass(column)}");
         builder.AddAttribute(seq++, "data-label", column.Header);
         builder.OpenElement(seq++, "strong");
-        builder.AddContent(seq++, Expressions.FormatValue(value, column.Format, column.Unit));
+        if (productionMatrix
+            && column.Id.Equals("order", StringComparison.OrdinalIgnoreCase)
+            && !IsEmpty(tertiary))
+        {
+            // Put the customer next to the short order number. Keeping it
+            // after a potentially very long article often hid the customer.
+            builder.AddContent(
+                seq++,
+                $"{Expressions.FormatValue(value, column.Format, column.Unit)} · {Expressions.FormatValue(tertiary, "")}");
+        }
+        else
+        {
+            builder.AddContent(seq++, Expressions.FormatValue(value, column.Format, column.Unit));
+        }
         builder.CloseElement();
 
         // Preserve all production values, but combine article/customer and
@@ -757,10 +770,14 @@ else
 
         if (inlineMetadata && (!IsEmpty(secondary) || !IsEmpty(tertiary)))
         {
+            // Order: article on second line; customer already on first line.
+            // Last container: quantity and reporting person on second line.
             var detail = string.Join(" · ", new[]
             {
                 IsEmpty(secondary) ? "" : Expressions.FormatValue(secondary, column.TargetFormat),
-                IsEmpty(tertiary) ? "" : Expressions.FormatValue(tertiary, "")
+                (column.Id.Equals("order", StringComparison.OrdinalIgnoreCase) || IsEmpty(tertiary))
+                    ? ""
+                    : Expressions.FormatValue(tertiary, "")
             }.Where(text => !string.IsNullOrWhiteSpace(text)));
             builder.OpenElement(seq++, "span");
             builder.AddAttribute(seq++, "title", detail);
