@@ -112,3 +112,85 @@ foreach (var horizontal in new[] { false, true })
         "the three stacked values must sum correctly");
 }
 Console.WriteLine("PASS stacked totals: positive label anchors, hidden markers, currency, correct sums and layout");
+
+
+// Production cockpit regression: test only the known rendering and expression
+// invariants. Exact SSRS equivalence requires the source RDL and same-time data.
+var heatmap = ProductionMetricHeatmap.Style(8.7m, 6m, "LowerIsBetter");
+Require(heatmap.Contains("background-color:rgb(", StringComparison.Ordinal),
+    "overdue setup must receive a continuous severity shade");
+Require(ProductionMetricHeatmap.Style(4m, 6m, "LowerIsBetter").Contains("#c8efcf"),
+    "better-than-target setup must stay green");
+Require(ProductionMetricHeatmap.Style(7m, 10m, "HigherIsBetter").Contains("background-color:rgb("),
+    "quantity below expected target is adverse");
+Require(ProductionMetricHeatmap.Style(12m, 10m, "HigherIsBetter").Contains("#c8efcf"),
+    "quantity ahead of plan is green");
+Require(ProductionMetricHeatmap.Style(null, 10m, "LowerIsBetter") == "",
+    "null actual value must not be color-coded");
+Require(ProductionMetricHeatmap.Style(346m, 0m, "LowerIsBetter") == "",
+    "zero targets must not be color-coded");
+Require(ProductionMetricHeatmap.AdverseDeviation(14m, 5m, "LowerIsBetter")
+    > ProductionMetricHeatmap.AdverseDeviation(6m, 5m, "LowerIsBetter"),
+    "more severe overruns must receive stronger shading");
+Require(ProductionMetricHeatmap.AdverseDeviation(0m, 10m, "HigherIsBetter")
+    > ProductionMetricHeatmap.AdverseDeviation(8m, 10m, "HigherIsBetter"),
+    "larger production shortages must receive stronger shading");
+
+var productionEngine = new DynExpressionEngine();
+var duplicatedStatusRows = new List<Dictionary<string, object?>>
+{
+    new() { ["Period"] = "P1", ["Minutes"] = 100m },
+    new() { ["Period"] = "P1", ["Minutes"] = 100m },
+    new() { ["Period"] = "P2", ["Minutes"] = 24m },
+};
+var unduplicatedDuration = productionEngine.Evaluate(
+    new DynExpr
+    {
+        Op = "sumDistinct",
+        Field = "Minutes",
+        DistinctBy = ["Period"]
+    },
+    new DynReportDocument(),
+    duplicatedStatusRows);
+Require(Convert.ToDecimal(unduplicatedDuration) == 124m,
+    "status duration must not be counted twice across duplicate rows");
+
+// KNOWN LEGACY CAVEAT: when no released parts are recorded, the existing
+// divide-by-one fallback turns 346 production minutes into '346 min/part'.
+// No SSRS business expression is changed by the 0.19.4 layout update.
+var minutesWithNoReleases = productionEngine.Evaluate(
+    new DynExpr
+    {
+        Op = "divide",
+        Args =
+        [
+            new DynExpr
+            {
+                Op = "const",
+                Value = JsonSerializer.SerializeToElement(346m)
+            },
+            new DynExpr
+            {
+                Op = "maxOf",
+                Args =
+                [
+                    new DynExpr
+                    {
+                        Op = "const",
+                        Value = JsonSerializer.SerializeToElement(0m)
+                    },
+                    new DynExpr
+                    {
+                        Op = "const",
+                        Value = JsonSerializer.SerializeToElement(1m)
+                    }
+                ]
+            }
+        ]
+    },
+    new DynReportDocument(),
+    duplicatedStatusRows);
+Require(Convert.ToDecimal(minutesWithNoReleases) == 346m,
+    "known zero-release fallback must be documented before changing any business logic");
+
+Console.WriteLine("PASS production heatmap: direction, continuous severity, missing target, distinct status duration and zero-release fallback");
