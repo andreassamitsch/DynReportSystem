@@ -1,3 +1,43 @@
+## Version 0.19.4 – kompakte Full-HD-Produktionstabelle
+
+TV/PC: Kopf- und Filterelemente platzsparend in der oberen Leiste; bestehende
+Auftrags-, Artikel-/Kunden- und Behälterdaten auf jeweils zwei lesbaren Zeilen
+zusammengefasst, ohne Informationsverlust. Tabellenzeilen circa 30 px
+und weiterhin gut lesbare Schrift; mobile Karten bleiben unverändert.
+
+Die fachlichen SQL-Daten, Kennzahlen und Heatmap-Schwellen werden absichtlich
+nicht geändert. Das getrennte TV-Paket 2.2.1 ist inhaltlich auf 2.2.0 aufgebaut.
+Die fachliche Prüfliste und die offen gebliebene 346-Minuten-Interpretation:
+`docs/qa/production-overview-ssrs-dynreport-audit-2026-10-16.md`.
+
+CI: bisherige Stacktotal-Regression plus neue Tests für Heatmap-Richtung,
+Schweregrad, Statusminuten-Deduplizierung und 0-Stück-Fallback.
+Für Zahlen-/Farbgleichheit mit SSRS bleibt die Original-RDL erforderlich.
+PR #14 basiert weiterhin auf PR #13 (Diagrammkorrektur).
+
+## Version 0.19.3 — production TV matrix and mobile cockpit
+
+This release restores the high-density SSRS production overview without giving up the compact mobile drill-down UI. It is based on the **0.19.2 chart total-label fix (PR #13)**; merging/deploying the production-matrix branch must retain that fix.
+
+- Generic grouped-board runtime supports `dyn2-production-matrix` for responsive matrix/card presentation; other reports are unaffected.
+- Desktop/TV: continuous matrix with original machine/AG hierarchy, status, order, operator, EM, setup actual/target, shift cycle actual/target, shift quantities actual/target, total cycle, container cycle, latest container posting and unplanned downtime.
+- An additional AG-progress metric shows `AgGutmenge / ORDERAMOUNT` independently from shift quantities; the portable 2.2.0 report package remains separate and is **not committed** (it contains private production SQL and existing Windows grants).
+- Continuous severity heatmap on selected `DynBoardColumn.Heatmap` metrics based on positive target and `Direction`: green on target, progressively yellow/orange/red with deterioration; no severity for zero/unknown targets.
+- Mobile: three summary rows, tap to expand detailed EM, setup, total takt, container takt, last report and downtime.
+- Grouped board row scope for TV package 2.2.0 is department + machine + order + article + workstep, so parallel operations of one machine remain visible separately.
+- Release artifact: `DynReportSystem-Server-Setup-0.19.3-win-x64.exe`.
+- Requires native TV package 2.2.0 for the new layout and runtime >= 0.19.3. Existing report packages remain compatible.
+
+Upgrade: first install 0.19.3 on APP-01, then import the separate TV package 2.2.0. Verify in the production browser on desktop and mobile. No SQL metadata schema migration is required.
+
+## Version 0.19.2
+
+Fix for native `.dynreport` stacked-bar total labels. The report's semantic `ShowStackTotal=true` setting was already saved correctly, but ECharts was given a helper line without visible point anchors (`symbol: none` / `symbolSize: 0`). ECharts suppresses line labels in this situation.
+
+The helper now uses a transparent, nonzero symbol so the formatted total can be displayed above each column without drawing a visible line or marker. The stacked-bar responsive layout also stays classified as a stack when the helper line is added. Includes a regression check for the Kundencockpit's three-series monthly column totals (Umsatz + Offener Auftragsbestand + Rahmenplanung).
+
+**No changes to existing .dynreport packages, data sources, SQL, or chart designer options are needed.**
+
 # DynReport System
 
 DynReport System is an internal reporting and analytics platform for Windows Server / IIS. It provides a modern migration path from SQL Server Reporting Services while keeping Windows SSO, AD-based permissions and the existing report data/business logic.

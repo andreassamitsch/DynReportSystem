@@ -503,7 +503,9 @@ else
     private RenderFragment GroupedBoard(DynVisual visual) => builder =>
     {
         var board = visual.Board!;
-        var compactBoard = HasCssClass(visual.CssClass, "dyn2-machine-board");
+        var compactBoard = HasCssClass(visual.CssClass, "dyn2-machine-board")
+            || HasCssClass(visual.CssClass, "dyn2-production-matrix");
+        var productionMatrix = HasCssClass(visual.CssClass, "dyn2-production-matrix");
         var sourceRows = Rows(visual.Dataset);
         var sections = BuildGroups(sourceRows, board.SectionGroupBy);
         var seq = 0;
@@ -610,11 +612,21 @@ else
                         EventCallback.Factory.Create(this, () => ToggleBoardRow(rowKey)));
                     builder.AddAttribute(seq++, "role", "button");
                     builder.AddAttribute(seq++, "tabindex", "0");
+                    builder.AddAttribute(
+                        seq++,
+                        "onkeydown",
+                        EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs>(
+                            this,
+                            key =>
+                            {
+                                if (key.Key is "Enter" or " ")
+                                    ToggleBoardRow(rowKey);
+                            }));
                     builder.AddAttribute(seq++, "aria-expanded", expanded ? "true" : "false");
                 }
 
                 foreach (var column in board.Columns)
-                    builder.AddContent(seq++, BoardCell(column, rowGroup.Rows, warnings));
+                    builder.AddContent(seq++, BoardCell(column, rowGroup.Rows, warnings, productionMatrix));
 
                 if (compactBoard)
                 {
@@ -637,7 +649,8 @@ else
     private RenderFragment BoardCell(
         DynBoardColumn column,
         IReadOnlyList<Dictionary<string, object?>> rows,
-        IReadOnlyList<string> warnings) => builder =>
+        IReadOnlyList<string> warnings,
+        bool productionMatrix = false) => builder =>
     {
         var seq = 0;
         var value = Expressions.Evaluate(column.Value, Package.Document, rows, ParameterValues);
@@ -701,6 +714,14 @@ else
             builder.OpenElement(seq++, "div");
             builder.AddAttribute(seq++, "class", $"dyn2-cell dyn2-board-metric {tone} {ColumnClass(column)}");
             builder.AddAttribute(seq++, "data-label", column.Header);
+
+            if (productionMatrix && column.Heatmap)
+            {
+                var heatmap = MetricHeatmapStyle(column, value, target);
+                if (!string.IsNullOrWhiteSpace(heatmap))
+                    builder.AddAttribute(seq++, "style", heatmap);
+            }
+
             builder.OpenElement(seq++, "strong");
             builder.AddContent(seq++, Expressions.FormatValue(value, column.Format));
             builder.CloseElement();
@@ -724,21 +745,60 @@ else
         builder.AddAttribute(seq++, "class", $"dyn2-cell dyn2-text-cell {ColumnClass(column)}");
         builder.AddAttribute(seq++, "data-label", column.Header);
         builder.OpenElement(seq++, "strong");
-        builder.AddContent(seq++, Expressions.FormatValue(value, column.Format, column.Unit));
+        if (productionMatrix
+            && column.Id.Equals("order", StringComparison.OrdinalIgnoreCase)
+            && !IsEmpty(tertiary))
+        {
+            // Put the customer next to the short order number. Keeping it
+            // after a potentially very long article often hid the customer.
+            builder.AddContent(
+                seq++,
+                $"{Expressions.FormatValue(value, column.Format, column.Unit)} · {Expressions.FormatValue(tertiary, "")}");
+        }
+        else
+        {
+            builder.AddContent(seq++, Expressions.FormatValue(value, column.Format, column.Unit));
+        }
         builder.CloseElement();
 
-        if (!IsEmpty(secondary))
+        // Preserve all production values, but combine article/customer and
+        // last-container quantity/person on one line in the desktop matrix.
+        // This saves a full line per operation without shrinking the type.
+        var inlineMetadata = productionMatrix
+            && (column.Id.Equals("order", StringComparison.OrdinalIgnoreCase)
+                || column.Id.Equals("lastcontainer", StringComparison.OrdinalIgnoreCase));
+
+        if (inlineMetadata && (!IsEmpty(secondary) || !IsEmpty(tertiary)))
         {
+            // Order: article on second line; customer already on first line.
+            // Last container: quantity and reporting person on second line.
+            var detail = string.Join(" · ", new[]
+            {
+                IsEmpty(secondary) ? "" : Expressions.FormatValue(secondary, column.TargetFormat),
+                (column.Id.Equals("order", StringComparison.OrdinalIgnoreCase) || IsEmpty(tertiary))
+                    ? ""
+                    : Expressions.FormatValue(tertiary, "")
+            }.Where(text => !string.IsNullOrWhiteSpace(text)));
             builder.OpenElement(seq++, "span");
-            builder.AddContent(seq++, Expressions.FormatValue(secondary, column.TargetFormat));
+            builder.AddAttribute(seq++, "title", detail);
+            builder.AddContent(seq++, detail);
             builder.CloseElement();
         }
-
-        if (!IsEmpty(tertiary))
+        else
         {
-            builder.OpenElement(seq++, "small");
-            builder.AddContent(seq++, Expressions.FormatValue(tertiary, ""));
-            builder.CloseElement();
+            if (!IsEmpty(secondary))
+            {
+                builder.OpenElement(seq++, "span");
+                builder.AddContent(seq++, Expressions.FormatValue(secondary, column.TargetFormat));
+                builder.CloseElement();
+            }
+
+            if (!IsEmpty(tertiary))
+            {
+                builder.OpenElement(seq++, "small");
+                builder.AddContent(seq++, Expressions.FormatValue(tertiary, ""));
+                builder.CloseElement();
+            }
         }
 
         if (column.Id.Equals("warnings", StringComparison.OrdinalIgnoreCase)
@@ -821,6 +881,20 @@ else
         }
 
         return "neutral";
+    }
+
+    private static string MetricHeatmapStyle(
+        DynBoardColumn column,
+        object? actual,
+        object? target)
+    {
+        if (!column.Heatmap
+            || actual is null || target is null
+            || !TryDecimal(actual, out var value)
+            || !TryDecimal(target, out var planned))
+            return "";
+
+        return ProductionMetricHeatmap.Style(value, planned, column.Direction);
     }
 
     private string MetricTone(

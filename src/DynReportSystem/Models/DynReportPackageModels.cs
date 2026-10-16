@@ -255,6 +255,9 @@ public sealed class DynBoardColumn
     public string TargetFormat { get; set; } = "";
     public string Unit { get; set; } = "";
     public string Direction { get; set; } = "LowerIsBetter";
+    // Optional continuous severity color scale for actual/target metric cells.
+    // Old report packages remain unchanged because the default is false.
+    public bool Heatmap { get; set; }
     public Dictionary<string, string> ColorMap { get; set; } =
         new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, DynStatePresentation> StateMap { get; set; } =
