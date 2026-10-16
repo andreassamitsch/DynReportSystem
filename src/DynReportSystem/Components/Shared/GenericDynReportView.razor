@@ -612,6 +612,16 @@ else
                         EventCallback.Factory.Create(this, () => ToggleBoardRow(rowKey)));
                     builder.AddAttribute(seq++, "role", "button");
                     builder.AddAttribute(seq++, "tabindex", "0");
+                    builder.AddAttribute(
+                        seq++,
+                        "onkeydown",
+                        EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs>(
+                            this,
+                            key =>
+                            {
+                                if (key.Key is "Enter" or " ")
+                                    ToggleBoardRow(rowKey);
+                            }));
                     builder.AddAttribute(seq++, "aria-expanded", expanded ? "true" : "false");
                 }
 
@@ -840,6 +850,8 @@ else
         object? target)
     {
         if (!column.Heatmap
+            || actual is null
+            || target is null
             || !TryDecimal(actual, out var value)
             || !TryDecimal(target, out var planned)
             || planned <= 0m)
