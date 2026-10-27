@@ -101,7 +101,7 @@
                             <div class="dyn-hierarchy-summaries">
                                 @foreach (var summary in summaries)
                                 {
-                                    <div class="dyn-hierarchy-summary">
+                                    <div class="dyn-hierarchy-summary" title="@($"{summary.Label}: {summary.Text}")">
                                         @if (!string.IsNullOrWhiteSpace(summary.Label))
                                         {
                                             <strong>@summary.Label</strong>
