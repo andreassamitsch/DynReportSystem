@@ -1,0 +1,378 @@
+@inject IJSRuntime JS
+
+<div class="dyn-hierarchy-root">
+    <div class="table-toolbar dyn-hierarchy-toolbar">
+        @if (Definition.Searchable)
+        {
+            <label class="table-search">
+                <span>Suche</span>
+                <input type="search"
+                       placeholder="Auftrag, Position, Abteilung, Aufgabe …"
+                       value="@search"
+                       @oninput="SearchChanged" />
+            </label>
+        }
+        <button type="button" class="ghost-btn" @onclick="ExpandAll">Alle aufklappen</button>
+        <button type="button" class="ghost-btn" @onclick="CollapseAll">Alle zuklappen</button>
+        <label class="page-size">
+            <span>Gruppen / Seite</span>
+            <select @bind="PageSize">
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="250">250</option>
+            </select>
+        </label>
+        <button type="button" class="ghost-btn" @onclick="ExportAsync">CSV</button>
+    </div>
+
+    @if (Result.Truncated)
+    {
+        <div class="notice warn compact-notice">
+            Die Daten wurden beim Laden begrenzt. Gruppensummen und Abschlussdaten
+            beziehen sich nur auf die geladenen Datensätze. Bitte den Filter einschränken.
+        </div>
+    }
+
+    @if (Hierarchy is null || Hierarchy.Levels.Count == 0)
+    {
+        <div class="notice warn compact-notice">
+            Mindestens eine Hierarchieebene muss im Designer eingerichtet sein.
+        </div>
+    }
+    else if (roots.Count == 0)
+    {
+        <div class="panel empty">Keine passenden Einträge.</div>
+    }
+    else
+    {
+        <div class="dyn-hierarchy-list">
+            @foreach (var entry in VisibleEntries())
+            {
+                var node = entry.Node;
+                var level = Hierarchy.Levels[node.Depth];
+                @if (!entry.IsDetail)
+                {
+                    var openCount = DynTableHierarchy.MaxOpenCount(node, level.OpenCountField);
+                    var lastFinished = DynTableHierarchy.LatestCompleted(node, level.CompletedDateField);
+                    var subtitle = DynTableHierarchy.Value(
+                        QueryResult.Get(node.Rows[0], level.SubtitleField));
+                    var summaries = DynTableHierarchy.Summaries(node, level);
+                    var expanded = IsExpanded(node);
+                    <article @key="node.Path"
+                             class="dyn-hierarchy-group @(expanded ? "is-expanded" : "")"
+                             style="@($"--dyn-tree-level:{node.Depth}")">
+                        <div class="dyn-hierarchy-group-heading">
+                            <button type="button"
+                                    class="dyn-hierarchy-toggle"
+                                    aria-expanded="@expanded"
+                                    aria-label="@($"{(expanded ? "Zuklappen" : "Aufklappen")}: {level.Label} {node.Key}")"
+                                    @onclick="() => Toggle(node)">
+                                <span class="dyn-hierarchy-chevron" aria-hidden="true">@(expanded ? "▾" : "▸")</span>
+                                @if (!string.IsNullOrWhiteSpace(level.Label))
+                                {
+                                    <span class="dyn-hierarchy-kind">@level.Label</span>
+                                }
+                                <strong>@node.Key</strong>
+                                @if (!string.IsNullOrWhiteSpace(subtitle))
+                                {
+                                    <span class="dyn-hierarchy-subtitle">@subtitle</span>
+                                }
+                                <small>@(node.Children.Count > 0 ? $"{node.Children.Count} Untergruppen" : $"{node.Rows.Count} Einträge")</small>
+                            </button>
+                            @if (openCount is > 0)
+                            {
+                                <span class="dyn-hierarchy-status is-open">@openCount offen</span>
+                            }
+                            else if (openCount == 0)
+                            {
+                                <span class="dyn-hierarchy-status is-finished">
+                                    ✓ Erledigt@(lastFinished.HasValue ? $" · {lastFinished.Value:dd.MM.yyyy HH:mm}" : "")
+                                </span>
+                            }
+                            else if (lastFinished.HasValue)
+                            {
+                                <span class="dyn-hierarchy-status is-neutral">Zuletzt: @lastFinished.Value.ToString("dd.MM.yyyy HH:mm")</span>
+                            }
+                        </div>
+
+                        @if (summaries.Count > 0)
+                        {
+                            <div class="dyn-hierarchy-summaries">
+                                @foreach (var summary in summaries)
+                                {
+                                    <div class="dyn-hierarchy-summary">
+                                        @if (!string.IsNullOrWhiteSpace(summary.Label))
+                                        {
+                                            <strong>@summary.Label</strong>
+                                        }
+                                        <span>@summary.Text</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </article>
+                }
+                else
+                {
+                    <div class="dyn-hierarchy-detail" style="@($"--dyn-tree-level:{node.Depth + 1}")">
+                        <div class="table-scroll">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        @foreach (var column in DisplayColumns)
+                                        {
+                                            <th>@Header(column)</th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in node.Rows)
+                                    {
+                                        <tr>
+                                            @foreach (var column in DisplayColumns)
+                                            {
+                                                <td class="dyn-hierarchy-value @(IsInteractiveColumn(column) ? "dyn2-interactive-cell" : "")"
+                                                    @onclick="() => CellClickedAsync(row, column)">
+                                                    @Cell(row, column)
+                                                </td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+        <div class="pagination">
+            <span>
+                @roots.Count.ToString("N0", DeAt) Hauptgruppen ·
+                @filteredRows.Count.ToString("N0", DeAt) Datenzeilen ·
+                Seite @(page + 1) / @PageCount
+            </span>
+            <div>
+                <button disabled="@(page == 0)" @onclick="() => page--">←</button>
+                <button disabled="@(page + 1 >= PageCount)" @onclick="() => page++">→</button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public QueryResult Result { get; set; } = null!;
+    [Parameter, EditorRequired] public DynTableDefinition Definition { get; set; } = null!;
+    [Parameter] public string ExportName { get; set; } = "DynReport";
+    [Parameter] public EventCallback<DynReportInteractionEvent> OnInteraction { get; set; }
+
+    private static readonly CultureInfo DeAt = CultureInfo.GetCultureInfo("de-AT");
+    private readonly HashSet<string> expandedPaths = new(StringComparer.Ordinal);
+    private readonly HashSet<string> collapsedPaths = new(StringComparer.Ordinal);
+    private readonly List<Dictionary<string, object?>> filteredRows = [];
+    private IReadOnlyList<DynHierarchyNode> roots = [];
+    private QueryResult? lastResult;
+    private DynHierarchyDefinition? Hierarchy => Definition.Hierarchy;
+    private string search = "";
+    private int page;
+    private int pageSize = 25;
+    private bool expandAll;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(lastResult, Result))
+            return;
+
+        lastResult = Result;
+        page = 0;
+        search = "";
+        expandedPaths.Clear();
+        collapsedPaths.Clear();
+        expandAll = false;
+        pageSize = Math.Clamp(Definition.PageSize, 1, 5000);
+        Rebuild();
+    }
+
+    private IReadOnlyList<string> DisplayColumns
+    {
+        get
+        {
+            var requested = Definition.Columns
+                .Where(column => !column.Hidden && !string.IsNullOrWhiteSpace(column.Field))
+                .Select(column => column.Field)
+                .ToArray();
+            if (requested.Length == 0)
+                return Result.Columns;
+
+            return requested
+                .Select(field => Result.Columns.FirstOrDefault(column =>
+                    column.Equals(field, StringComparison.OrdinalIgnoreCase)))
+                .Where(field => !string.IsNullOrWhiteSpace(field))
+                .Cast<string>()
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+    }
+
+    private string Header(string column)
+    {
+        var configured = Definition.Columns.FirstOrDefault(x =>
+            x.Field.Equals(column, StringComparison.OrdinalIgnoreCase))?.Header;
+        return string.IsNullOrWhiteSpace(configured) ? column : configured;
+    }
+
+    private string Cell(IReadOnlyDictionary<string, object?> row, string column) =>
+        DynTableHierarchy.Value(QueryResult.Get(row, column));
+
+    private bool IsInteractiveColumn(string column) =>
+        Definition.Interaction.ColumnParameterMap.ContainsKey(column);
+
+    private async Task CellClickedAsync(
+        IReadOnlyDictionary<string, object?> row,
+        string column)
+    {
+        if (!OnInteraction.HasDelegate
+            || !Definition.Interaction.ColumnParameterMap.TryGetValue(
+                column, out var parameter)
+            || string.IsNullOrWhiteSpace(parameter))
+            return;
+
+        var raw = QueryResult.Get(row, column);
+        var value = raw switch
+        {
+            DateTime date => date.ToString("O", CultureInfo.InvariantCulture),
+            DateTimeOffset date => date.ToString("O", CultureInfo.InvariantCulture),
+            _ => Convert.ToString(raw, CultureInfo.InvariantCulture) ?? ""
+        };
+
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+
+        await OnInteraction.InvokeAsync(new DynReportInteractionEvent(
+            "", new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            { [parameter] = value },
+            Definition.Interaction.RunReportAfterFilter));
+    }
+
+    private int PageSize
+    {
+        get => pageSize;
+        set
+        {
+            pageSize = Math.Clamp(value, 1, 5000);
+            page = 0;
+        }
+    }
+
+    private int PageCount =>
+        Math.Max(1, (int)Math.Ceiling(roots.Count / (double)pageSize));
+
+    private void SearchChanged(ChangeEventArgs args)
+    {
+        search = args.Value?.ToString()?.Trim() ?? "";
+        page = 0;
+        expandedPaths.Clear();
+        collapsedPaths.Clear();
+        Rebuild();
+    }
+
+    private void Rebuild()
+    {
+        filteredRows.Clear();
+        var rows = Result.Rows.AsEnumerable();
+        if (Definition.Searchable && !string.IsNullOrWhiteSpace(search))
+        {
+            // Include hidden grouping and summary columns in search as well.
+            rows = rows.Where(row =>
+                Result.Columns.Any(column =>
+                    Cell(row, column).Contains(
+                        search, StringComparison.CurrentCultureIgnoreCase)));
+        }
+        filteredRows.AddRange(rows);
+
+        roots = Hierarchy?.Levels.Count > 0
+            ? DynTableHierarchy.Build(filteredRows, Hierarchy.Levels)
+            : [];
+    }
+
+    private bool IsExpanded(DynHierarchyNode node) =>
+        !collapsedPaths.Contains(node.Path)
+        && (expandAll
+            || expandedPaths.Contains(node.Path)
+            || node.Depth < (Hierarchy?.InitiallyExpandedDepth ?? 0));
+
+    private void Toggle(DynHierarchyNode node)
+    {
+        if (IsExpanded(node))
+        {
+            expandedPaths.Remove(node.Path);
+            collapsedPaths.Add(node.Path);
+        }
+        else
+        {
+            collapsedPaths.Remove(node.Path);
+            expandedPaths.Add(node.Path);
+        }
+    }
+
+    private void ExpandAll()
+    {
+        expandAll = true;
+        collapsedPaths.Clear();
+    }
+
+    private void CollapseAll()
+    {
+        expandAll = false;
+        expandedPaths.Clear();
+        // Prevent the initial-open setting from forcing groups open.
+        foreach (var node in roots)
+            collapsedPaths.Add(node.Path);
+    }
+
+    private IEnumerable<HierarchyEntry> VisibleEntries()
+    {
+        foreach (var node in roots.Skip(page * pageSize).Take(pageSize))
+        {
+            foreach (var item in Flatten(node))
+                yield return item;
+        }
+    }
+
+    private IEnumerable<HierarchyEntry> Flatten(DynHierarchyNode node)
+    {
+        yield return new HierarchyEntry(node, false);
+        if (!IsExpanded(node))
+            yield break;
+
+        if (node.Children.Count == 0)
+        {
+            yield return new HierarchyEntry(node, true);
+        }
+        else
+        {
+            foreach (var child in node.Children)
+                foreach (var item in Flatten(child))
+                    yield return item;
+        }
+    }
+
+    private async Task ExportAsync()
+    {
+        var data = filteredRows.Select(row =>
+            DisplayColumns.ToDictionary(
+                column => column,
+                column => (object?)Cell(row, column))).ToArray();
+        var safe = string.Concat(ExportName.Select(ch =>
+            Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
+
+        await JS.InvokeVoidAsync(
+            "DynReportCharts.downloadCsv",
+            $"{safe}_{DateTime.Now:yyyyMMdd_HHmm}.csv",
+            DisplayColumns,
+            data,
+            DisplayColumns.Select(Header).ToArray());
+    }
+
+    private sealed record HierarchyEntry(DynHierarchyNode Node, bool IsDetail);
+}
