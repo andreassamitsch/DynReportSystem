@@ -205,9 +205,9 @@
                 return Result.Columns;
 
             return requested
-                .Select(field => Result.Columns.FirstOrDefault(column =>
-                    column.Equals(field, StringComparison.OrdinalIgnoreCase)))
-                .Where(field => !string.IsNullOrWhiteSpace(field))
+                .Select(requestedField => Result.Columns.FirstOrDefault(column =>
+                    column.Equals(requestedField, StringComparison.OrdinalIgnoreCase)))
+                .Where(requestedField => !string.IsNullOrWhiteSpace(requestedField))
                 .Cast<string>()
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
