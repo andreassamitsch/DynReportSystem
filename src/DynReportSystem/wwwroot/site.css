@@ -2862,3 +2862,52 @@ button.filter-chip{cursor:pointer}
   .dyn-hierarchy-toggle strong{font-size:14px}
   .dyn-hierarchy-toolbar .table-search{flex:1 1 100%}
 }
+
+
+/* One closed order = one desktop overview row. Expanded groups show full text. */
+@media(min-width:960px){
+  .dyn-hierarchy-group:not(.is-expanded){
+    display:flex;
+    align-items:center;
+    min-height:46px
+  }
+  .dyn-hierarchy-group:not(.is-expanded) .dyn-hierarchy-group-heading{
+    flex:0 0 auto;
+    min-width:270px;
+    max-width:42%;
+    padding:7px 10px
+  }
+  .dyn-hierarchy-group:not(.is-expanded) .dyn-hierarchy-toggle{
+    flex:0 1 auto;
+    min-width:0
+  }
+  .dyn-hierarchy-group:not(.is-expanded) .dyn-hierarchy-toggle small{
+    display:none
+  }
+  .dyn-hierarchy-group:not(.is-expanded) .dyn-hierarchy-summaries{
+    flex:1 1 0;
+    min-width:0;
+    display:flex;
+    flex-wrap:nowrap;
+    align-items:center;
+    overflow-x:auto;
+    gap:5px;
+    padding:5px 10px 5px 0
+  }
+  .dyn-hierarchy-group:not(.is-expanded) .dyn-hierarchy-summary{
+    flex:0 0 auto;
+    min-width:120px;
+    max-width:290px;
+    padding:3px 7px;
+    display:flex;
+    align-items:center;
+    gap:5px
+  }
+  .dyn-hierarchy-group:not(.is-expanded) .dyn-hierarchy-summary span{
+    display:block;
+    max-width:220px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis
+  }
+}
