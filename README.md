@@ -1,3 +1,22 @@
+## Version 0.19.5 – SSRS-artige aufklappbare Tabellen
+
+Neuer renderer-neutraler Tabellenmodus `Hierarchy` für **Auftrag → Position → Aufgaben**;
+mehrere parallel offene Aufgaben bleiben in den Positionsdetails erhalten. Geschlossene
+Aufträge erscheinen kompakt in einer Zeile mit Status und Abteilungszusammenfassungen,
+ohne offene Aufgabe wird das letzte Abschlussdatum angezeigt. Suche, CSV-Export,
+Gruppenseiten und mobil zugängliches Auf-/Zuklappen.
+
+Im Designer sind Gruppierungsfelder, Ebenentitel, offener Status, Abschlussdatum
+und pro Abteilung zusammengefasste Texte frei konfigurierbar. Serverseitiges
+**Zeilenpaging** wird in diesem Modus nicht verwendet, um Kinder und Summen nicht
+willkürlich abzuschneiden. Ein Truncation-Hinweis ist sichtbar.
+
+Round-Table-Beispiel und konkrete Feldzuordnung:
+`docs/reports/roundtable-2.0-hierarchical-table.md`.
+Keine SQL-Migration, vorhandene Reportpakete bleiben kompatibel.
+Installer `DynReportSystem-Server-Setup-0.19.5-win-x64.exe`.
+Basiert auf noch offenem PR #14 (enthält #13); CI- und APP-01-Abnahme beachten.
+
 ## Version 0.19.4 – kompakte Full-HD-Produktionstabelle
 
 TV/PC: Kopf- und Filterelemente platzsparend in der oberen Leiste; bestehende
