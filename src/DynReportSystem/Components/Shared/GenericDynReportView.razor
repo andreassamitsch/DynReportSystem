@@ -162,7 +162,6 @@ else
             builder.AddContent(sequence++, VisualHead(visual));
 
             if (visual.Table?.PresentationMode.Equals("Hierarchy", StringComparison.OrdinalIgnoreCase) == true
-                && visual.Table.Hierarchy?.Levels.Count > 0
                 && Run.Results.TryGetValue(visual.Dataset, out var hierarchyRows))
             {
                 builder.OpenComponent<HierarchicalResultTable>(sequence++);
