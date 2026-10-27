@@ -2771,3 +2771,94 @@ button.filter-chip{cursor:pointer}
   }
 }
 /* Compact treatment must never override responsive mobile cards. */
+
+
+/* Native expandable table groups (e.g. Round Table 2.0: order > position > task).
+   The tree is semantic; no SSRS-specific layout assumptions are embedded. */
+.dyn-hierarchy-root{min-width:0}
+.dyn-hierarchy-toolbar{gap:8px;flex-wrap:wrap}
+.dyn-hierarchy-list{display:grid;gap:7px;margin:12px 0}
+.dyn-hierarchy-group{
+  margin-inline-start:calc(var(--dyn-tree-level,0) * 20px);
+  border:1px solid var(--line,#dce4e9);
+  border-radius:10px;
+  background:var(--surface,#fff);
+  box-shadow:0 1px 3px #17324c0c;
+  overflow:hidden;
+}
+.dyn-hierarchy-group.is-expanded{border-color:#9fc5d0}
+.dyn-hierarchy-group-heading{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:8px;
+  padding:7px 12px
+}
+.dyn-hierarchy-toggle{
+  flex:1 1 240px;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:7px;
+  padding:4px 0;
+  border:0;
+  background:transparent;
+  color:inherit;
+  text-align:left;
+  cursor:pointer;
+  font:inherit
+}
+.dyn-hierarchy-toggle:focus-visible{outline:2px solid #087e9a;outline-offset:3px}
+.dyn-hierarchy-chevron{color:#087e9a;font-size:17px;width:16px;flex-shrink:0}
+.dyn-hierarchy-kind{color:#667887;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.dyn-hierarchy-toggle strong{font-size:15px;color:#1c3546}
+.dyn-hierarchy-subtitle{color:#536a79;font-size:13px}
+.dyn-hierarchy-toggle small{color:#78909c}
+.dyn-hierarchy-status{
+  white-space:nowrap;
+  font-size:12px;
+  border-radius:6px;
+  padding:4px 9px;
+  font-weight:700
+}
+.dyn-hierarchy-status.is-open{color:#a43620;background:#fff0e9}
+.dyn-hierarchy-status.is-finished{color:#196b46;background:#eaf6ef}
+.dyn-hierarchy-status.is-neutral{color:#43586c;background:#edf2f7}
+.dyn-hierarchy-summaries{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:6px;
+  padding:0 12px 10px 36px
+}
+.dyn-hierarchy-summary{
+  background:#f3f7f9;
+  border-left:3px solid #8aaebb;
+  border-radius:5px;
+  min-width:0;
+  padding:7px 9px;
+  display:grid;
+  gap:3px;
+  font-size:12px
+}
+.dyn-hierarchy-summary strong{font-size:11px;color:#326176}
+.dyn-hierarchy-summary span{white-space:pre-line;overflow-wrap:anywhere}
+.dyn-hierarchy-detail{
+  margin-inline-start:calc(var(--dyn-tree-level,1) * 20px);
+  margin-bottom:8px;
+  border:1px solid #d7e2e8;
+  border-radius:7px;
+  overflow:hidden;
+  background:#fff
+}
+.dyn-hierarchy-detail .data-table{margin:0}
+.dyn-hierarchy-detail .data-table th{font-size:11px}
+.dyn-hierarchy-value{white-space:pre-line;overflow-wrap:anywhere}
+@media(max-width:700px){
+  .dyn-hierarchy-group{margin-inline-start:calc(var(--dyn-tree-level,0) * 10px)}
+  .dyn-hierarchy-detail{margin-inline-start:calc(var(--dyn-tree-level,1) * 10px)}
+  .dyn-hierarchy-group-heading{padding:7px 8px}
+  .dyn-hierarchy-summaries{padding:0 8px 9px 14px;grid-template-columns:1fr}
+  .dyn-hierarchy-toggle strong{font-size:14px}
+  .dyn-hierarchy-toolbar .table-search{flex:1 1 100%}
+}
