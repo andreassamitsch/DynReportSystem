@@ -42,3 +42,8 @@ Clicking one of these table cells updates the corresponding report parameter and
 - `Aktualisieren`: force a fresh active-page execution
 
 No connection strings or deployment-specific grants are stored in the package.
+
+
+## Stacked total labels – runtime 0.19.2 fix
+
+The `dashboard-main` visual in Kundencockpit 1.5.9 uses `Stacked=true`, `ShowStackTotal=true` and `StackTotalFormat=currency`. The options are correct; native DynReport prior to runtime 0.19.2 created an invisible ECharts line without a marker, which caused the total labels to be absent. The 0.19.2 renderer draws labels via tiny transparent point anchors and preserves the "primary-stack" responsive profile. The same runtime fix applies to other stacked charts with `ShowStackTotal=true`, including the Bestelleingang chart. Report data and package content stay unchanged.

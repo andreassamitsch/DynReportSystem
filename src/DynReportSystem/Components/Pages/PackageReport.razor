@@ -258,7 +258,7 @@ else
             </div>
         }
 
-        <footer>DynReport System 0.19.1 · Designer-first package runtime · Windows SSO</footer>
+        <footer>DynReport System 0.19.5 · Designer-first package runtime · Windows SSO</footer>
     </main>
 </div>
 }
@@ -318,7 +318,8 @@ else
             .SelectMany(page => page.Components)
             .Any(visual => HasCssClass(
                 visual.CssClass,
-                "dyn2-machine-board")) == true
+                "dyn2-machine-board")
+                || HasCssClass(visual.CssClass, "dyn2-production-matrix")) == true
             ? "dyn2-production-shell"
             : "";
 
