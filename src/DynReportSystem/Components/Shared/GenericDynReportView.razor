@@ -161,7 +161,18 @@ else
         {
             builder.AddContent(sequence++, VisualHead(visual));
 
-            if (DynReportInteractiveQueryRules.ShouldUseServerMode(Package, visual))
+            if (visual.Table?.PresentationMode.Equals("Hierarchy", StringComparison.OrdinalIgnoreCase) == true
+                && visual.Table.Hierarchy?.Levels.Count > 0
+                && Run.Results.TryGetValue(visual.Dataset, out var hierarchyRows))
+            {
+                builder.OpenComponent<HierarchicalResultTable>(sequence++);
+                builder.AddAttribute(sequence++, "Result", hierarchyRows);
+                builder.AddAttribute(sequence++, "Definition", visual.Table);
+                builder.AddAttribute(sequence++, "ExportName", Package.Manifest.Title);
+                builder.AddAttribute(sequence++, "OnInteraction", OnInteraction);
+                builder.CloseComponent();
+            }
+            else if (DynReportInteractiveQueryRules.ShouldUseServerMode(Package, visual))
             {
                 builder.OpenComponent<ServerDynamicResultTable>(sequence++);
                 builder.AddAttribute(sequence++, "Package", Package);
