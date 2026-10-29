@@ -149,7 +149,7 @@ public sealed class ManagedSqlDataSources(
         try
         {
             var entries = ReadEntries();
-            if (!entries.RemoveAll(x => x.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).Equals(0))
+            if (entries.RemoveAll(x => x.Key.Equals(key, StringComparison.OrdinalIgnoreCase)) > 0)
                 await WriteAsync(entries, cancellationToken);
             logger.LogInformation("Managed SQL data source {Key} deleted.", key);
         }
