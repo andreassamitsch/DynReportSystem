@@ -24,6 +24,7 @@
   </ItemGroup>
   <ItemGroup>
     <Content Update="config/permissions.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Tools/Manage-DynReportSystemAdmins.ps1" CopyToPublishDirectory="Always" />
     <Content Update="ReportDefinitions/**/*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
