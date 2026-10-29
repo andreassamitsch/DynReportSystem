@@ -32,11 +32,33 @@ jobs:
             throw 'App.razor must contain <base href="/" /> so relative Blazor framework endpoints resolve at the site root.'
           }
 
+      - name: Verify visible runtime version is not hard-coded
+        shell: pwsh
+        run: |
+          $pages = Get-ChildItem src/DynReportSystem/Components/Pages -Filter '*.razor'
+          foreach ($page in $pages) {
+            $source = Get-Content $page.FullName -Raw
+            if ($source -match 'DynReport (?:System|Designer) 0\.[0-9]+\.[0-9]+') {
+              throw "Hard-coded DynReport UI version in $($page.Name)"
+            }
+          }
+          if (-not (Test-Path src/DynReportSystem/Services/DynReportVersion.cs)) {
+            throw 'Assembly-derived runtime version service is missing.'
+          }
+
       - name: Vendor chart assets
         shell: pwsh
         run: |
           npm install --no-audit --no-fund
           node scripts/vendor-assets.mjs
+
+      - name: Regression test native stacked-total labels
+        shell: pwsh
+        run: dotnet run --project tests/DynReportSystem.ChartRegression/DynReportSystem.ChartRegression.csproj -c Release
+
+      - name: Regression test SSRS-like hierarchy tables
+        shell: pwsh
+        run: dotnet run --project tests/DynReportSystem.HierarchyRegression/DynReportSystem.HierarchyRegression.csproj -c Release
 
       - name: Publish web app
         shell: pwsh
@@ -67,9 +89,9 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: DynReportSystem-Server-Setup-0.19.1-win-x64
+          name: DynReportSystem-Server-Setup-0.19.8-win-x64
           path: |
-            artifacts/setup/DynReportSystem-Server-Setup-0.19.1-win-x64.exe
+            artifacts/setup/DynReportSystem-Server-Setup-0.19.8-win-x64.exe
             artifacts/setup/001-dynreport-metadata-schema.sql
             artifacts/setup/002-fix-audit-and-reportgrant-index.sql
             artifacts/setup/010-runtime-principal-template.sql

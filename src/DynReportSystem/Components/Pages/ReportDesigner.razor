@@ -603,7 +603,7 @@ else
 
                                                 <label>
                                                     <span>Datenmodus</span>
-                                                    <select @bind="selected.Table.DataMode">
+                                                    <select @bind="selected.Table.DataMode" disabled="@(selected.Table.PresentationMode == "Hierarchy")">
                                                         <option value="Auto">Automatisch / lokal</option>
                                                         <option value="Client">Lokal im geladenen Dataset</option>
                                                         <option value="Server">Serverseitig paginiert</option>
@@ -617,6 +617,7 @@ else
                                                         <option value="Rows">Detailzeilen</option>
                                                         <option value="Grouped">Aggregierte Gruppen</option>
                                                         <option value="Pivot">Pivot-Matrix</option>
+                                                         <option value="Hierarchy">Auf-/zuklappbare Hierarchie (SSRS)</option>
                                                     </select>
                                                 </label>
 
@@ -735,6 +736,92 @@ else
                                                            @onchange="e => SetStringList(selected.Table.GroupBy, e.Value?.ToString())"
                                                            placeholder="Geschäftsbereich; Kunde" />
                                                 </label>
+
+                                                @if (selected.Table.PresentationMode.Equals("Hierarchy", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    var hierarchy = selected.Table.Hierarchy ??= new DynHierarchyDefinition();
+                                                    <div class="designer-inspector-section">
+                                                        <div class="designer-inspector-section-head">
+                                                            <strong>Aufklappbare Ebenen</strong>
+                                                            <button type="button" @onclick="() => AddHierarchyLevel(selected)">+ Ebene</button>
+                                                        </div>
+                                                        <small>
+                                                            Jede Ebene gruppiert die geladenen Datasetzeilen. Beispiel:
+                                                            Auftrag → Position → Detailzeilen. Es erfolgt kein zusätzlicher SQL-Aufruf
+                                                            beim Aufklappen; Paginierung zählt Hauptgruppen statt einzelne Aufgaben.
+                                                        </small>
+                                                        <label>
+                                                            <span>Anfangs geöffnete Ebenen</span>
+                                                            <input type="number" min="0" max="5" @bind="hierarchy.InitiallyExpandedDepth" />
+                                                        </label>
+                                                        @foreach (var level in hierarchy.Levels.ToArray())
+                                                        {
+                                                            <div class="designer-metric-editor">
+                                                                <div class="designer-metric-editor-head">
+                                                                    <strong>Ebene @(hierarchy.Levels.IndexOf(level) + 1)</strong>
+                                                                    <button type="button" class="danger"
+                                                                            @onclick="() => hierarchy.Levels.Remove(level)">×</button>
+                                                                </div>
+                                                                <label>
+                                                                    <span>Gruppierungsfeld</span>
+                                                                    <select @bind="level.Field">
+                                                                        <option value="">– Feld –</option>
+                                                                        @foreach (var field in FieldsFor(selected.Dataset))
+                                                                        {
+                                                                            <option value="@field">@field</option>
+                                                                        }
+                                                                    </select>
+                                                                </label>
+                                                                <div class="designer-inspector-grid">
+                                                                    <label>
+                                                                        <span>Ebenenbeschriftung</span>
+                                                                        <input @bind="level.Label" placeholder="Auftrag / Position" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Zusatzfeld (z. B. Kunde)</span>
+                                                                        <input @bind="level.SubtitleField" placeholder="Kunde" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Offen-Anzahl-Feld</span>
+                                                                        <input @bind="level.OpenCountField" placeholder="OffenAuftrag" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Letzter Abschluss</span>
+                                                                        <input @bind="level.CompletedDateField" placeholder="LetztesAuftragDatum" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Zusammenfassung (Textfeld)</span>
+                                                                        <input @bind="level.SummaryField" placeholder="AuftragAnzeige" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Überschrift Zusammenfassung</span>
+                                                                        <input @bind="level.SummaryLabelField" placeholder="Abteilung" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Nur einmal je Feld</span>
+                                                                        <input @bind="level.SummaryDistinctField" placeholder="Abteilung" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Sortierfeld Zusammenfassung</span>
+                                                                        <input @bind="level.SummarySortField" placeholder="AbteilungSortNr" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Offen-Anzahl je Zusammenfassung</span>
+                                                                        <input @bind="level.SummaryOpenCountField" placeholder="OffenAbteilung" />
+                                                                    </label>
+                                                                    <label class="designer-check">
+                                                                        <input type="checkbox" @bind="level.SummaryOpenOnly" />
+                                                                        <span>Bei offenen Aufgaben nur offene Gruppen zeigen</span>
+                                                                    </label>
+                                                                </div>
+                                                            </div>
+                                                        }
+                                                        <div class="notice info compact-notice">
+                                                            Hierarchie läuft bewusst im Clientmodus. Bei abgeschnittenen Datasets
+                                                            werden Gruppensummen nicht als vollständig ausgewiesen.
+                                                        </div>
+                                                    </div>
+                                                }
 
                                                 @if (selected.Table.PresentationMode.Equals("Grouped", StringComparison.OrdinalIgnoreCase))
                                                 {
@@ -1194,7 +1281,7 @@ else
             </section>
         }
 
-        <footer>DynReport Designer 0.19.1 · Runtime und Designer verwenden dasselbe Paketmodell</footer>
+        <footer>DynReport Designer @DynReportVersion.Current · Runtime und Designer verwenden dasselbe Paketmodell</footer>
     </main>
 </div>
 }
@@ -1754,11 +1841,16 @@ else
 
     private void SetTablePresentationMode(DynTableDefinition table, string? value)
     {
-        table.PresentationMode = value is "Grouped" or "Pivot"
+        table.PresentationMode = value is "Grouped" or "Pivot" or "Hierarchy"
             ? value
             : "Rows";
 
-        if (!table.PresentationMode.Equals("Rows", StringComparison.OrdinalIgnoreCase)
+        if (table.PresentationMode == "Hierarchy")
+        {
+            table.DataMode = "Client";
+            table.Hierarchy ??= new DynHierarchyDefinition();
+        }
+        else if (!table.PresentationMode.Equals("Rows", StringComparison.OrdinalIgnoreCase)
             && string.Equals(table.DataMode, "Client", StringComparison.OrdinalIgnoreCase))
         {
             table.DataMode = "Auto";
@@ -1766,6 +1858,24 @@ else
 
         if (table.PresentationMode.Equals("Pivot", StringComparison.OrdinalIgnoreCase))
             table.Pivot ??= new DynTablePivotDefinition();
+    }
+
+    private void AddHierarchyLevel(DynVisual visual)
+    {
+        var hierarchy = visual.Table?.Hierarchy;
+        if (hierarchy is null || hierarchy.Levels.Count >= 5)
+            return;
+
+        var fields = FieldsFor(visual.Dataset).ToArray();
+        var candidate = fields.FirstOrDefault(field =>
+            !hierarchy.Levels.Any(level => level.Field.Equals(
+                field, StringComparison.OrdinalIgnoreCase))) ?? "";
+
+        hierarchy.Levels.Add(new DynHierarchyLevel
+        {
+            Field = candidate,
+            Label = hierarchy.Levels.Count == 0 ? "Auftrag" : "Position"
+        });
     }
 
     private void AddTableAggregate(bool pivotMeasure)

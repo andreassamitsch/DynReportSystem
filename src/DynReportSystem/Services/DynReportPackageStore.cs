@@ -84,7 +84,8 @@ public sealed class DynReportPackageStore(
     public async Task<LoadedDynReportPackage> ImportAsync(
         Stream stream,
         string? importedBy = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? destinationFolderPath = null)
     {
         using var mutation = await EnterMutationAsync(cancellationToken);
 
@@ -106,6 +107,12 @@ public sealed class DynReportPackageStore(
                 throw new InvalidDataException("Die DynReport-Datei muss zwischen 1 Byte und 25 MB groß sein.");
 
             var loaded = LoadFile(temp);
+            if (destinationFolderPath is not null)
+            {
+                RelocatePackageManifest(temp, loaded.Manifest, destinationFolderPath);
+                loaded = LoadFile(temp); // Revalidate all entries after rewriting metadata.
+            }
+
             var target = Path.Combine(_root, SafeFileName(loaded.Manifest.ReportId) + ".dynreport");
             rollbackTemp = target + ".rollback-import";
 
@@ -156,6 +163,42 @@ public sealed class DynReportPackageStore(
             if (rollbackTemp is not null)
                 TryDelete(rollbackTemp);
         }
+    }
+
+    private void RelocatePackageManifest(
+        string packagePath,
+        DynReportManifest manifest,
+        string folderPath)
+    {
+        var normalizedFolder = "/" + string.Join("/",
+            (folderPath ?? "").Replace('\\', '/')
+                .Split('/', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+
+        if (normalizedFolder == "/")
+            throw new InvalidDataException("Ein Zielordner muss ausgewählt werden.");
+
+        var original = (manifest.Path ?? "").Replace('\\', '/').TrimEnd('/');
+        var fileName = original[(original.LastIndexOf('/') + 1)..];
+
+        if (string.IsNullOrWhiteSpace(fileName)
+            || fileName is "." or "..")
+            throw new InvalidDataException("Berichtspfad im Paket ist ungültig.");
+
+        manifest.FolderPath = normalizedFolder;
+        manifest.Path = normalizedFolder + "/" + fileName;
+        manifest.ModifiedUtc = DateTime.UtcNow;
+
+        using var zip = new ZipArchive(
+            new FileStream(packagePath, FileMode.Open, FileAccess.ReadWrite),
+            ZipArchiveMode.Update,
+            leaveOpen: false);
+        var manifestEntry = FindEntry(zip, ManifestEntry)
+            ?? throw new InvalidDataException("manifest.json fehlt.");
+
+        manifestEntry.Delete();
+        var updated = zip.CreateEntry(ManifestEntry, CompressionLevel.Optimal);
+        using var writer = new StreamWriter(updated.Open());
+        writer.Write(JsonSerializer.Serialize(manifest, _json));
     }
 
     public async Task<LoadedDynReportPackage> SaveDesignerPackageAsync(
