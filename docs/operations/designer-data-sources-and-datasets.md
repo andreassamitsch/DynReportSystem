@@ -46,7 +46,10 @@ Designer ein Dataset eines **anderen installierten nativen
 in das aktuelle Dataset übernehmen.
 
 Dabei werden SQL-Datei, Datenquelle-ConfigKey, Parameterbindung,
-CommandType und erwartete Felder kopiert. Die Ziel-Dataset-ID bleibt
+CommandType und erwartete Felder kopiert. Fehlende Reportparameter
+werden vor der Übernahme gemeldet. Wird dieselbe SQL-Datei von einem
+weiteren Dataset verwendet, erhält das ersetzte Dataset eine eigene
+SQL-Datei (Copy-on-write), damit die anderen Datasets unverändert bleiben. Die Ziel-Dataset-ID bleibt
 unverändert, sodass vorhandene Visualisierungen weiterhin darauf
 zeigen. Geänderte Parameter und Spalten müssen in der Vorschau
 geprüft werden. Bei „Speichern“ greift die bestehende Revisionierung.
