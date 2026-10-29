@@ -279,6 +279,21 @@ public sealed class FolderAccess(
         return false;
     }
 
+    /// <summary>Server-wide settings require Manage across every top-level folder;
+    /// Manage on a single report alone is not enough.</summary>
+    public bool CanManageGlobalConfiguration(ClaimsPrincipal user)
+    {
+        if (user.Identity?.IsAuthenticated != true)
+            return false;
+
+        var roots = Catalog.Folders
+            .Where(folder => string.IsNullOrWhiteSpace(folder.ParentId))
+            .ToArray();
+
+        return roots.Length > 0
+            && roots.All(folder => CanFolder(user, folder.Id, "Manage"));
+    }
+
     public bool CanManageAny(ClaimsPrincipal user) =>
         Catalog.Reports.Any(report => Can(user, report.Id, "Manage"))
         || Catalog.Folders.Any(folder => CanFolder(user, folder.Id, "Manage"));
