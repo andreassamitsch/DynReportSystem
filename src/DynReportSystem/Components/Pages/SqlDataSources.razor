@@ -2,7 +2,7 @@
 @attribute [Authorize]
 @inject ManagedSqlDataSources Sources
 @inject DynReportPackageStore Packages
-@inject FolderAccess Access
+@inject SystemAdministratorAccess SystemAdmins
 @inject AuthenticationStateProvider Authentication
 @inject IConfiguration Configuration
 @using System.Security.Claims
@@ -36,19 +36,13 @@
         {
             <div class="page-loading">Zugriffsrechte werden geprüft …</div>
         }
-        else if (user is null || !Access.CanManageGlobalConfiguration(user))
+        else if (user is null || !SystemAdmins.IsSystemAdministrator(user))
         {
             <div class="notice error">
-                SQL-Datenquellen sind eine systemweite Einstellung.
-                Dafür ist Manage auf allen Hauptordnern des lokalen
-                Berechtigungskatalogs erforderlich – nicht auf den
-                zusätzlich aus SSRS importierten Ordnern.
-                @if (user is not null)
-                {
-                    <p>Fehlende Manage-Rechte:
-                        @string.Join(", ", Access.MissingGlobalAdministrationFolders(user))
-                    </p>
-                }
+                SQL-Datenquellen dürfen nur von DynReport-Systemadministratoren
+                verwaltet werden. Die Freigabe erfolgt ausschließlich lokal
+                auf APP-01 durch einen Windows-Administrator. Berichts- oder
+                Ordnerrechte (Manage) berechtigen nicht zur Systemverwaltung.
             </div>
         }
         else
@@ -257,7 +251,7 @@
 
     private async Task TestAsync()
     {
-        if (busy || user is null || !Access.CanManageGlobalConfiguration(user))
+        if (busy || user is null || !SystemAdmins.IsSystemAdministrator(user))
             return;
 
         busy = true;
@@ -283,7 +277,7 @@
 
     private async Task SaveAsync()
     {
-        if (busy || user is null || !Access.CanManageGlobalConfiguration(user))
+        if (busy || user is null || !SystemAdmins.IsSystemAdministrator(user))
             return;
 
         busy = true;
@@ -311,7 +305,7 @@
 
     private async Task DeleteAsync()
     {
-        if (busy || user is null || !Access.CanManageGlobalConfiguration(user)
+        if (busy || user is null || !SystemAdmins.IsSystemAdministrator(user)
             || deleteCandidate != form.Key)
             return;
 
