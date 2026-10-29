@@ -1,3 +1,17 @@
+## Berechtigungskorrektur in 0.19.8
+
+**Symptom:** DynReport 0.19.7 zeigt im Portal zwar „Berechtigungen“ und
+„Ordner anlegen“, jedoch keinen Menüpunkt „SQL-Datenquellen“. Der neue
+globale Admin-Check hatte fälschlich **alle** aus SSRS importierten
+Hauptordner verlangt. Diese fremden Hauptordner haben andere ACLs.
+
+Ab 0.19.8 werden ausschließlich die lokalen Root-Folder aus
+`config/permissions.json` als Verwaltungsberechtigung geprüft; weiterhin
+müssen **alle** diese Root-Folder `Manage` gewähren. Importierte
+Root-Folder zählen nicht mehr. Der Menüpunkt ist für Manager sichtbar
+und das Admin-UI zeigt fehlende Basis-Root-Rechte bei tatsächlicher
+Zugriffsverweigerung. Kein pauschales Gewähren an beliebige Ordner-Manager.
+
 # SQL-Datenquellen im DynReport-Portal (ab 0.19.7)
 
 ## Ziel
@@ -24,9 +38,10 @@ Portal → **SQL-Datenquellen** → bei benötigtem Schlüssel **Einrichten**:
 
 ## Berechtigungen und Datenfluss
 
-- Nur authentifizierte Benutzer mit **Manage auf allen Hauptordnern** können
+- Nur authentifizierte Benutzer mit **Manage auf allen Hauptordnern der lokalen Basisberechtigungen** können
   die serverweiten Verbindungen sehen/ändern. Report-Designer-/Publish-Rechte
   reichen nicht aus.
+- Aus SSRS migrierte Root-Ordner wie `Reports`, `Datasets` und `System Resources` müssen hierfür nicht zusätzlich verwaltet werden. Der Menüpunkt wird für bereits vorhandene Reporting-Manager sichtbar; fehlende globale Rechte werden auf der Seite konkret angezeigt. Die Prüfung der Berechtigungen selbst bleibt serverseitig.
 - Die Portalverbindung hat Vorrang vor \`DataSources:<ConfigKey>\` aus
   \`appsettings.Production.json\` und vor dem alten Fallback.
 - Vorhandene Appsettings-Verbindungen bleiben weiterhin funktionsfähig.
