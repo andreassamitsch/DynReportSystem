@@ -15,7 +15,7 @@ public sealed class SystemAdministratorAccess(
 {
     private readonly string _path = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-        "DynReportSystem", "Config", "system-administrators.json");
+        "DynReportSystem", "Security", "system-administrators.json");
 
     private static readonly Regex SidFormat = new(
         @"^S-1-(?:\d+-){1,14}\d+$",
