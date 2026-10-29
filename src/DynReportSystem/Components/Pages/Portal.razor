@@ -61,6 +61,11 @@
                 + Berichtsdatei importieren
             </a>
 
+            @if (user is not null && Access.CanManageGlobalConfiguration(user))
+            {
+                <a class="ghost-btn" href="/admin/datasources">SQL-Datenquellen</a>
+            }
+
             @if (user is not null && Access.CanManageAny(user))
             {
                 <a class="ghost-btn" href="/folders/manage">+ Ordner anlegen</a>
