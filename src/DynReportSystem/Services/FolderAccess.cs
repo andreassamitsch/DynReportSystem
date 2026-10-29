@@ -279,45 +279,6 @@ public sealed class FolderAccess(
         return false;
     }
 
-    /// <summary>
-    /// Global settings are controlled by the authoritative local root-folder ACL,
-    /// not by every folder imported from SSRS. The imported migration commonly
-    /// adds "Reports", "Datasets" and "System Resources" root folders that do
-    /// not carry the installer's administrative grants. Counting those as
-    /// mandatory administrative roots accidentally locks out site administrators.
-    ///
-    /// A manager of only one department is not a global administrator: Manage
-    /// on ALL locally configured root folders is still required. Runtime
-    /// overrides may remove those rights. Missing/empty bootstrap ACL fails
-    /// closed, never grants access based merely on the login name.
-    /// </summary>
-    public bool CanManageGlobalConfiguration(ClaimsPrincipal user) =>
-        MissingGlobalAdministrationFolders(user).Count == 0
-        && LocalAdministrationRoots().Count > 0;
-
-    public IReadOnlyList<string> MissingGlobalAdministrationFolders(ClaimsPrincipal user)
-    {
-        var roots = LocalAdministrationRoots();
-
-        if (user.Identity?.IsAuthenticated != true)
-            return roots.Select(x => x.Title).ToArray();
-
-        return roots
-            .Where(folder => !CanFolder(user, folder.Id, "Manage"))
-            .Select(folder => folder.Title)
-            .ToArray();
-    }
-
-    private IReadOnlyList<ReportFolder> LocalAdministrationRoots()
-    {
-        // Read only the original local permissions catalog, not the merged
-        // SSRS migration or newly imported report-created folder hierarchy.
-        var local = Read(_path);
-        return local.Folders
-            .Where(folder => string.IsNullOrWhiteSpace(folder.ParentId))
-            .ToArray();
-    }
-
     public bool CanManageAny(ClaimsPrincipal user) =>
         Catalog.Reports.Any(report => Can(user, report.Id, "Manage"))
         || Catalog.Folders.Any(folder => CanFolder(user, folder.Id, "Manage"));
