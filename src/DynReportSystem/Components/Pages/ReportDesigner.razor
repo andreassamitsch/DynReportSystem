@@ -146,8 +146,8 @@ else
                 {
                     <div class="designer-form-grid">
                         <label>
-                            <span>Datenquelle</span>
-                            <select @bind="dataSet.DataSourceId" disabled="@(!canEditData)">
+                            <span>Paketinterne Datenquellenreferenz</span>
+                            <select @bind="dataSet.DataSourceId" disabled="@(!canEditData || !isSystemAdmin)">
                                 @foreach (var source in draft.Document.DataSources)
                                 {
                                     <option value="@source.Id">@source.Id (@source.ConfigKey)</option>
@@ -1407,7 +1407,8 @@ else
         CentralSources.List().Select(x => x.Key)
             .Concat(Configuration.GetSection("DataSources").GetChildren()
                 .Where(x => !string.IsNullOrWhiteSpace(x["ConnectionString"])
-                    || !string.IsNullOrWhiteSpace(x["Database"]))
+                    || (!string.IsNullOrWhiteSpace(x["Database"])
+                        && !string.IsNullOrWhiteSpace(Configuration["Cockpit:ConnectionString"])))
                 .Select(x => x.Key))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
