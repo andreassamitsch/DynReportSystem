@@ -60,8 +60,14 @@ function Read-Config {
 }
 
 function Set-SecureFileAcl([string]$FileName) {
-    $acl = New-Object System.Security.AccessControl.FileSecurity
+    # Preserve the file owner, remove inherited/explicit ACEs, then grant
+    # only intended principals. Constructing FileSecurity without an owner
+    # can fail when Set-Acl applies it.
+    $acl = Get-Acl -LiteralPath $FileName
     $acl.SetAccessRuleProtection($true, $false)
+    foreach ($rule in @($acl.Access)) {
+        [void]$acl.RemoveAccessRuleSpecific($rule)
+    }
 
     $system = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18')
     $administrators = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
