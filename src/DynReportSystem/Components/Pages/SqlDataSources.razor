@@ -39,8 +39,16 @@
         else if (user is null || !Access.CanManageGlobalConfiguration(user))
         {
             <div class="notice error">
-                Datenquellen sind eine systemweite Einstellung.
-                Dafür ist Manage auf allen Hauptordnern erforderlich.
+                SQL-Datenquellen sind eine systemweite Einstellung.
+                Dafür ist Manage auf allen Hauptordnern des lokalen
+                Berechtigungskatalogs erforderlich – nicht auf den
+                zusätzlich aus SSRS importierten Ordnern.
+                @if (user is not null)
+                {
+                    <p>Fehlende Manage-Rechte:
+                        @string.Join(", ", Access.MissingGlobalAdministrationFolders(user))
+                    </p>
+                }
             </div>
         }
         else
