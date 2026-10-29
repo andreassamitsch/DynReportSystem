@@ -34,6 +34,7 @@ builder.Services.AddSingleton<DashboardCatalog>();
 builder.Services.AddSingleton<ChartOptionFactory>();
 builder.Services.AddSingleton<ImportedPortalCatalog>();
 builder.Services.AddSingleton<DynReportMetadataStore>();
+builder.Services.AddSingleton<ManagedSqlDataSources>();
 builder.Services.AddSingleton<DynReportDataSourceRegistry>();
 builder.Services.AddSingleton<DynReportSqlPolicyValidator>();
 builder.Services.AddSingleton<DynReportExecutionGate>();
