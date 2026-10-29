@@ -64,11 +64,16 @@ public sealed class FolderAccess(
         "DynReportSystem",
         "Config",
         "permissions-overrides.json");
+    // Portal-managed folders survive deployment and do not depend on reports.
+    private readonly string _portalFoldersPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        "DynReportSystem", "Config", "portal-folders.json");
     private readonly object _lock = new();
     private PlatformCatalog? _catalog;
     private DateTime _mtime;
     private DateTime _migrationMtime;
     private DateTime _overrideMtime;
+    private DateTime _portalFoldersMtime;
     private long _packageGeneration = -1;
     private Dictionary<string, ReportItem> _reportsById =
         new(StringComparer.OrdinalIgnoreCase);
@@ -92,6 +97,9 @@ public sealed class FolderAccess(
             var overrideTime = File.Exists(_overridePath)
                 ? File.GetLastWriteTimeUtc(_overridePath)
                 : DateTime.MinValue;
+            var portalFoldersTime = File.Exists(_portalFoldersPath)
+                ? File.GetLastWriteTimeUtc(_portalFoldersPath)
+                : DateTime.MinValue;
             var packageGeneration = packageStore.Generation;
 
             lock (_lock)
@@ -100,6 +108,7 @@ public sealed class FolderAccess(
                     && time == _mtime
                     && migrationTime == _migrationMtime
                     && overrideTime == _overrideMtime
+                    && portalFoldersTime == _portalFoldersMtime
                     && packageGeneration == _packageGeneration)
                     return _catalog;
             }
@@ -116,6 +125,7 @@ public sealed class FolderAccess(
                     && time == _mtime
                     && migrationTime == _migrationMtime
                     && overrideTime == _overrideMtime
+                    && portalFoldersTime == _portalFoldersMtime
                     && packageGeneration == _packageGeneration)
                     return _catalog;
 
@@ -124,6 +134,7 @@ public sealed class FolderAccess(
                 if (File.Exists(_migrationPath))
                     Merge(config, Read(_migrationPath));
 
+                MergePortalFolders(config, ReadPortalFolders());
                 MergePackages(config, packages);
 
                 if (File.Exists(_overridePath))
@@ -141,6 +152,7 @@ public sealed class FolderAccess(
                 _mtime = time;
                 _migrationMtime = migrationTime;
                 _overrideMtime = overrideTime;
+                _portalFoldersMtime = portalFoldersTime;
                 _packageGeneration = packageGeneration;
                 return config;
             }
@@ -267,6 +279,21 @@ public sealed class FolderAccess(
         return false;
     }
 
+    /// <summary>Server-wide settings require Manage across every top-level folder;
+    /// Manage on a single report alone is not enough.</summary>
+    public bool CanManageGlobalConfiguration(ClaimsPrincipal user)
+    {
+        if (user.Identity?.IsAuthenticated != true)
+            return false;
+
+        var roots = Catalog.Folders
+            .Where(folder => string.IsNullOrWhiteSpace(folder.ParentId))
+            .ToArray();
+
+        return roots.Length > 0
+            && roots.All(folder => CanFolder(user, folder.Id, "Manage"));
+    }
+
     public bool CanManageAny(ClaimsPrincipal user) =>
         Catalog.Reports.Any(report => Can(user, report.Id, "Manage"))
         || Catalog.Folders.Any(folder => CanFolder(user, folder.Id, "Manage"));
@@ -311,6 +338,177 @@ public sealed class FolderAccess(
             || CanFolder(user, folderId, "Manage");
     }
 
+
+
+    /// <summary>
+    /// Resolve a folder ID to a canonical portal path for import destination choices.
+    /// </summary>
+    public string FolderPath(string folderId)
+    {
+        _ = Catalog;
+        var parts = new List<string>();
+        var current = folderId;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (!string.IsNullOrWhiteSpace(current) && seen.Add(current))
+        {
+            if (!_foldersById.TryGetValue(current, out var folder))
+                throw new KeyNotFoundException($"Ordner '{folderId}' wurde nicht gefunden.");
+
+            parts.Add(folder.Title);
+            current = folder.ParentId ?? "";
+        }
+
+        if (!string.IsNullOrWhiteSpace(current))
+            throw new InvalidDataException("Zyklische Ordnerhierarchie.");
+
+        parts.Reverse();
+        return "/" + string.Join("/", parts);
+    }
+
+    /// <summary>
+    /// Explicit folder creation. A new child requires Manage on the nearest
+    /// existing parent. Creating at portal root requires existing Manage rights
+    /// and assigns ownership only to the creator (not to Everyone).
+    /// </summary>
+    public string CreateFolderPath(ClaimsPrincipal actor, string requestedPath)
+    {
+        if (actor.Identity?.IsAuthenticated != true)
+            throw new UnauthorizedAccessException("Zum Anlegen ist eine Windows-Anmeldung erforderlich.");
+
+        var segments = (requestedPath ?? "").Replace('\\', '/')
+            .Split('/', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        if (segments.Length is < 1 or > 12
+            || segments.Any(segment => segment.Length is < 1 or > 100
+                || segment is "." or ".."
+                || segment.Any(ch => char.IsControl(ch) || ch is '<' or '>' or ':')))
+            throw new InvalidDataException("Ungültiger Ordnerpfad (maximal 12 Ebenen, keine Sonderzeichen wie ':' oder '..').");
+
+        _ = Catalog;
+        var targetPath = "/" + string.Join("/", segments);
+        var existing = ResolveFolderPath(targetPath);
+        if (existing is not null)
+            return existing;
+
+        // Validate the nearest existing ancestor before any persistent write.
+        string? parentId = null;
+        var missingIndex = 0;
+        for (; missingIndex < segments.Length; missingIndex++)
+        {
+            var child = _foldersById.Values.FirstOrDefault(candidate =>
+                string.Equals(candidate.ParentId, parentId, StringComparison.OrdinalIgnoreCase)
+                && candidate.Title.Equals(segments[missingIndex], StringComparison.CurrentCultureIgnoreCase));
+            if (child is null)
+                break;
+            parentId = child.Id;
+        }
+
+        if (parentId is null)
+        {
+            var roots = Catalog.Folders
+                .Where(folder => string.IsNullOrWhiteSpace(folder.ParentId))
+                .ToArray();
+            if (roots.Length == 0
+                || roots.Any(folder => !CanFolder(actor, folder.Id, "Manage")))
+            {
+                throw new UnauthorizedAccessException(
+                    "Neue Hauptordner dürfen nur von Administratoren mit Manage auf allen bestehenden Hauptordnern angelegt werden.");
+            }
+        }
+        else if (!CanFolder(actor, parentId, "Manage"))
+        {
+            throw new UnauthorizedAccessException(
+                "Ein neuer Unterordner erfordert Manage auf dem übergeordneten Ordner.");
+        }
+
+        lock (_lock)
+        {
+            // Recheck existing persistent folder identities under lock.
+            var stored = ReadPortalFolders();
+            var all = CatalogSnapshotForCreation(stored);
+            parentId = null;
+            var prefix = "";
+            foreach (var segment in segments)
+            {
+                prefix += "/" + segment;
+                var candidate = all.FirstOrDefault(folder =>
+                    string.Equals(folder.ParentId, parentId, StringComparison.OrdinalIgnoreCase)
+                    && folder.Title.Equals(segment, StringComparison.CurrentCultureIgnoreCase));
+
+                if (candidate is null)
+                {
+                    candidate = new ReportFolder
+                    {
+                        Id = StableFolderId(prefix),
+                        ParentId = parentId,
+                        Title = segment,
+                        Grants = parentId is null
+                            ? [new ReportGrant
+                            {
+                                PrincipalType = "User",
+                                Principal = actor.Identity!.Name
+                                    ?? throw new UnauthorizedAccessException("Windows-Benutzername fehlt."),
+                                Permissions = ["View", "Run", "EditLayout", "Edit", "Publish", "Manage"]
+                            }]
+                            : []
+                    };
+                    stored.Add(candidate);
+                    all.Add(candidate);
+                }
+                parentId = candidate.Id;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(_portalFoldersPath)!);
+            var temp = _portalFoldersPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllText(temp, JsonSerializer.Serialize(stored, new JsonSerializerOptions { WriteIndented = true }));
+                File.Move(temp, _portalFoldersPath, true);
+            }
+            finally
+            {
+                if (File.Exists(temp))
+                    File.Delete(temp);
+            }
+
+            _catalog = null;
+            _foldersById.Clear();
+            _reportsById.Clear();
+            _principalMatchCache.Clear();
+        }
+
+        return ResolveFolderPath(targetPath)
+            ?? throw new InvalidDataException("Der angelegte Zielordner konnte nicht aufgelöst werden.");
+    }
+
+    private List<ReportFolder> CatalogSnapshotForCreation(List<ReportFolder> custom) =>
+        _foldersById.Values
+            .Concat(custom)
+            .GroupBy(folder => folder.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+
+    private List<ReportFolder> ReadPortalFolders()
+    {
+        if (!File.Exists(_portalFoldersPath))
+            return [];
+        return JsonSerializer.Deserialize<List<ReportFolder>>(
+            File.ReadAllText(_portalFoldersPath),
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+            ?? [];
+    }
+
+    private static void MergePortalFolders(PlatformCatalog catalog, List<ReportFolder> stored)
+    {
+        // Existing source folders keep their ACL; folder definitions created in
+        // the portal may be managed through the normal permission override UI.
+        foreach (var folder in stored)
+        {
+            if (!catalog.Folders.Any(x => x.Id.Equals(folder.Id, StringComparison.OrdinalIgnoreCase)))
+                catalog.Folders.Add(folder);
+        }
+    }
 
     public IReadOnlyList<ReportGrant> InheritedFolderGrants(string folderId)
     {
