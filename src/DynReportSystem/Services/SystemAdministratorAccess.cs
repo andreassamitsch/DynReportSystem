@@ -41,6 +41,7 @@ public sealed class SystemAdministratorAccess(
         catch (Exception ex) when (ex is IOException
                                    or UnauthorizedAccessException
                                    or JsonException
+                                   or InvalidDataException
                                    or ArgumentException)
         {
             // Fail closed on missing/invalid or unreadable ACL configuration.
@@ -49,7 +50,7 @@ public sealed class SystemAdministratorAccess(
         }
     }
 
-    public string? ConfigurationPath => _path;
+    public string ConfigurationPath => _path;
 
     private IReadOnlyList<SecurityIdentifier> ReadAdministrators()
     {
