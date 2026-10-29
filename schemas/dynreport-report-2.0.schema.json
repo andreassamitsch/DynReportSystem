@@ -309,11 +309,22 @@
           "enum": [
             "Rows",
             "Grouped",
-            "Pivot"
+            "Pivot",
+            "Hierarchy"
           ]
         },
         "Interaction": {
           "$ref": "#/$defs/tableInteraction"
+        },
+        "Hierarchy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/tableHierarchy"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -677,6 +688,75 @@
           }
         },
         "RunReportAfterFilter": {
+          "type": "boolean"
+        }
+      }
+    },
+    "tableHierarchy": {
+      "type": "object",
+      "properties": {
+        "Levels": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "$ref": "#/$defs/tableHierarchyLevel"
+          }
+        },
+        "InitiallyExpandedDepth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        }
+      }
+    },
+    "tableHierarchyLevel": {
+      "type": "object",
+      "required": [
+        "Field"
+      ],
+      "properties": {
+        "Field": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "Label": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "SubtitleField": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "OpenCountField": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "CompletedDateField": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "SummaryField": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "SummaryLabelField": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "SummaryDistinctField": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "SummarySortField": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "SummaryOpenCountField": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "SummaryOpenOnly": {
           "type": "boolean"
         }
       }

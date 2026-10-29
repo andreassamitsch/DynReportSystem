@@ -1,0 +1,107 @@
+@page "/folders/manage"
+@attribute [Authorize]
+@inject FolderAccess Access
+@inject AuthenticationStateProvider Authentication
+@inject NavigationManager Navigation
+
+<PageTitle>Ordnerverwaltung · DynReport</PageTitle>
+
+<div class="shell">
+    <header class="topbar">
+        <div class="brand-mark">D</div>
+        <div class="brand-text">
+            <strong>Ordnerverwaltung</strong>
+            <span>Reporting · Windows/AD-Berechtigungen</span>
+        </div>
+        <div class="topbar-tag">v@DynReportVersion.Current</div>
+    </header>
+
+    <main class="main-area">
+        <div class="heading-line">
+            <div>
+                <p class="eyebrow">REPORTING-ORDNER</p>
+                <h1>Neuen Ordner anlegen</h1>
+                <p class="subtitle">
+                    Ordner werden dauerhaft gespeichert, auch ohne Berichte.
+                    Vorhandene Zugriffsrechte werden von den Elternordnern geerbt.
+                </p>
+            </div>
+            <a class="ghost-btn" href="/">← Reporting</a>
+        </div>
+
+        @if (!initialized)
+        {
+            <div class="page-loading">Berechtigungen werden geprüft …</div>
+        }
+        else if (user is null || !Access.CanManageAny(user))
+        {
+            <div class="notice error">Zum Anlegen von Ordnern ist mindestens ein Manage-Recht erforderlich.</div>
+        }
+        else
+        {
+            <section class="panel">
+                <label>
+                    <span>Vollständiger Ordnerpfad</span>
+                    <input @bind="folderPath" placeholder="/Fuchshofer/Round Table 2.0" />
+                </label>
+                <p class="subtitle">Für Unterordner brauchst du Manage auf dem übergeordneten Ordner.
+                    Neue Hauptordner benötigen Manage auf allen bestehenden Hauptordnern.</p>
+                <button type="button" class="primary-btn"
+                        disabled="@(saving || string.IsNullOrWhiteSpace(folderPath))"
+                        @onclick="CreateAsync">
+                    @(saving ? "Wird angelegt …" : "+ Ordner anlegen")
+                </button>
+                @if (!string.IsNullOrWhiteSpace(message))
+                {
+                    <div class="notice @(success ? "info" : "error")">@message</div>
+                }
+                @if (success)
+                {
+                    <a class="ghost-btn" href="/reports/import">Bericht in neuen Ordner importieren</a>
+                    <a class="ghost-btn" href="/permissions">Berechtigungen bearbeiten</a>
+                }
+            </section>
+        }
+    </main>
+</div>
+
+@code {
+    private ClaimsPrincipal? user;
+    private bool initialized;
+    private bool saving;
+    private bool success;
+    private string folderPath = "";
+    private string message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        user = (await Authentication.GetAuthenticationStateAsync()).User;
+        initialized = true;
+    }
+
+    private Task CreateAsync()
+    {
+        if (user is null || saving)
+            return Task.CompletedTask;
+
+        saving = true;
+        success = false;
+        message = "";
+        try
+        {
+            var id = Access.CreateFolderPath(user, folderPath);
+            folderPath = Access.FolderPath(id);
+            success = true;
+            message = $"Ordner '{folderPath}' ist im Reporting-Portal verfügbar.";
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+        return Task.CompletedTask;
+    }
+}
