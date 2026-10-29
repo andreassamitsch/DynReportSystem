@@ -61,6 +61,36 @@
                 </div>
             </div>
 
+            @if (selectedFile is not null && preview is not null)
+            {
+                <div class="import-destination">
+                    <strong>Zielordner</strong>
+                    <p>Im Paket vorgesehen: <code>@originalFolderPath</code></p>
+                    <label>
+                        <span>Bericht installieren in</span>
+                        <select @bind="destinationFolderPath" disabled="@busy">
+                            <option value="">– Zielordner auswählen –</option>
+                            @foreach (var folder in WritableFolders)
+                            {
+                                <option value="@folder.Path">@folder.Path</option>
+                            }
+                        </select>
+                    </label>
+                    <div class="import-create-folder">
+                        <label>
+                            <span>Neuen Ordner anlegen</span>
+                            <input type="text" @bind="newFolderPath"
+                                   placeholder="/Fuchshofer/Round Table 2.0"
+                                   disabled="@busy" />
+                        </label>
+                        <button type="button" class="ghost-btn"
+                                disabled="@(busy || string.IsNullOrWhiteSpace(newFolderPath))"
+                                @onclick="CreateDestinationFolder">+ Ordner anlegen</button>
+                    </div>
+                    <small>Zum Anlegen benötigst du Manage auf dem Elternordner; zum Importieren Publish oder Manage auf dem Zielordner.</small>
+                </div>
+            }
+
             <div class="import-actions">
                 <div class="import-action-hint">
                     @if (selectedFile is null)
@@ -69,12 +99,12 @@
                     }
                     else
                     {
-                        <span>Datei ausgewählt. Neue Berichte dürfen in vorhandenen Ordnern mit Publish/Manage-Recht angelegt werden.</span>
+                        <span>Datei geprüft. Zielordner auswählen oder anlegen.</span>
                     }
                 </div>
 
                 <button class="primary-btn import-submit"
-                        disabled="@(busy || selectedFile is null)"
+                        disabled="@(busy || selectedFile is null || preview is null || string.IsNullOrWhiteSpace(destinationFolderPath))"
                         @onclick="ImportSelectedAsync">
                     @(busy ? "Wird importiert …" : "Paket importieren")
                 </button>
@@ -177,6 +207,38 @@
     private string message = "";
     private IBrowserFile? selectedFile;
     private LoadedDynReportPackage? imported;
+    private LoadedDynReportPackage? preview;
+    private string originalFolderPath = "";
+    private string destinationFolderPath = "";
+    private string newFolderPath = "";
+
+    private IReadOnlyList<(string Path, string Id)> WritableFolders =>
+        user is null ? [] : Access.Catalog.Folders
+            .Where(folder => Access.CanFolder(user, folder.Id, "Publish")
+                || Access.CanFolder(user, folder.Id, "Manage"))
+            .Select(folder => (Path: Access.FolderPath(folder.Id), Id: folder.Id))
+            .OrderBy(folder => folder.Path, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
+    private void CreateDestinationFolder()
+    {
+        success = false;
+        try
+        {
+            if (user is null)
+                throw new UnauthorizedAccessException("Keine Windows-Anmeldung.");
+
+            var id = Access.CreateFolderPath(user, newFolderPath);
+            destinationFolderPath = Access.FolderPath(id);
+            newFolderPath = destinationFolderPath;
+            success = true;
+            message = $"Zielordner '{destinationFolderPath}' wurde angelegt und ausgewählt.";
+        }
+        catch (Exception ex)
+        {
+            message = ex.Message;
+        }
+    }
 
     private IReadOnlyList<LoadedDynReportPackage> Installed => Packages.List();
 
@@ -196,36 +258,62 @@
             || Access.Can(user, reportId, "Edit")
             || CanPublish(reportId));
 
-    private void SelectFile(InputFileChangeEventArgs e)
+    private async Task SelectFile(InputFileChangeEventArgs e)
     {
         success = false;
         imported = null;
+        preview = null;
+        selectedFile = null;
+        originalFolderPath = "";
+        destinationFolderPath = "";
+        newFolderPath = "";
         message = "";
-
         var file = e.File;
 
         if (!file.Name.EndsWith(".dynreport", StringComparison.OrdinalIgnoreCase))
         {
-            selectedFile = null;
             message = "Bitte eine .dynreport-Datei auswählen.";
             return;
         }
-
         if (file.Size > 25 * 1024 * 1024)
         {
-            selectedFile = null;
             message = "Die ausgewählte Datei ist größer als 25 MB.";
             return;
         }
 
-        selectedFile = file;
-        success = true;
-        message = $"'{file.Name}' wurde ausgewählt. Mit „Paket importieren“ wird die Datei geprüft und installiert.";
+        try
+        {
+            await using var source = file.OpenReadStream(25 * 1024 * 1024);
+            using var stream = new MemoryStream();
+            await source.CopyToAsync(stream);
+            stream.Position = 0;
+            preview = Packages.Validate(stream);
+            selectedFile = file;
+            originalFolderPath = string.IsNullOrWhiteSpace(preview.Manifest.FolderPath)
+                ? ParentPath(preview.Manifest.Path)
+                : preview.Manifest.FolderPath;
+            originalFolderPath = "/" + string.Join("/",
+                originalFolderPath.Replace('\\', '/')
+                    .Split('/', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+            newFolderPath = originalFolderPath;
+            destinationFolderPath = WritableFolders.Any(folder =>
+                folder.Path.Equals(originalFolderPath, StringComparison.OrdinalIgnoreCase))
+                ? originalFolderPath
+                : "";
+            success = true;
+            message = $"'{file.Name}' geprüft. Bitte Zielordner auswählen oder anlegen.";
+        }
+        catch (Exception ex)
+        {
+            selectedFile = null;
+            preview = null;
+            message = ex.Message;
+        }
     }
 
     private async Task ImportSelectedAsync()
     {
-        if (selectedFile is null || busy)
+        if (selectedFile is null || preview is null || busy)
             return;
 
         busy = true;
@@ -245,9 +333,9 @@
             var existing = Access.Catalog.Reports.Any(x =>
                 x.Id.Equals(preview.Manifest.ReportId, StringComparison.OrdinalIgnoreCase));
 
-            var targetFolderPath = string.IsNullOrWhiteSpace(preview.Manifest.FolderPath)
-                ? ParentPath(preview.Manifest.Path)
-                : preview.Manifest.FolderPath;
+            var targetFolderPath = destinationFolderPath;
+            if (Access.ResolveFolderPath(targetFolderPath) is null)
+                throw new InvalidDataException("Bitte einen vorhandenen Zielordner auswählen.");
 
             if (existing)
             {
@@ -256,6 +344,9 @@
                     throw new UnauthorizedAccessException(
                         "Für den Zielbericht ist Publish oder Manage erforderlich.");
                 }
+
+                if (user is null || !Access.CanPublishToFolderPath(user, targetFolderPath))
+                    throw new UnauthorizedAccessException("Für den Zielordner fehlt Publish oder Manage.");
 
                 if (preview.Manifest.Grants.Count > 0
                     && (user is null || !Access.Can(user, preview.Manifest.ReportId, "Manage")))
@@ -289,7 +380,8 @@
             memory.Position = 0;
             imported = await Packages.ImportAsync(
                 memory,
-                user?.Identity?.Name);
+                user?.Identity?.Name,
+                destinationFolderPath: targetFolderPath);
 
             success = true;
             message = existing
@@ -298,6 +390,7 @@
                 : $"'{imported.Manifest.Title}' v{imported.Manifest.Version} wurde als neuer Bericht installiert.";
 
             selectedFile = null;
+            preview = null;
         }
         catch (Exception ex)
         {
