@@ -391,9 +391,15 @@ public sealed class FolderAccess(
 
         if (parentId is null)
         {
-            if (!CanManageAny(actor))
+            var roots = Catalog.Folders
+                .Where(folder => string.IsNullOrWhiteSpace(folder.ParentId))
+                .ToArray();
+            if (roots.Length == 0
+                || roots.Any(folder => !CanFolder(actor, folder.Id, "Manage")))
+            {
                 throw new UnauthorizedAccessException(
-                    "Ein neuer Hauptordner erfordert ein bestehendes Manage-Recht im Reporting-Portal.");
+                    "Neue Hauptordner dürfen nur von Administratoren mit Manage auf allen bestehenden Hauptordnern angelegt werden.");
+            }
         }
         else if (!CanFolder(actor, parentId, "Manage"))
         {
