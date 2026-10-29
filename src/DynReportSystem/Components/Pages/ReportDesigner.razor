@@ -1582,6 +1582,24 @@ else
             return;
         }
 
+        // A copied query must not silently reference parameters absent from
+        // the destination report. Reject before modifying any draft state.
+        var availableParameters = draft.Document.Parameters.Select(p => p.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var missingParameters = donor.Parameters
+            .Where(p => !string.IsNullOrWhiteSpace(p.ParameterName)
+                && !availableParameters.Contains(p.ParameterName))
+            .Select(p => p.ParameterName).Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (missingParameters.Length > 0)
+        {
+            success = false;
+            message = "Dataset nicht übernommen. Diese Reportparameter fehlen: " +
+                string.Join(", ", missingParameters) +
+                ". Bitte zuerst die Parameter im Zielbericht einrichten.";
+            return;
+        }
+
         var local = draft.Document.DataSources.FirstOrDefault(item =>
             item.ConfigKey.Equals(donorSource.ConfigKey, StringComparison.OrdinalIgnoreCase));
         if (local is null)
@@ -1596,6 +1614,19 @@ else
                 DefaultConnectionString = "" // never copy connection secrets
             };
             draft.Document.DataSources.Add(local);
+        }
+
+        // Do not overwrite a SQL file shared by another dataset in this
+        // package. Copy on write preserves those other datasets.
+        if (draft.Document.Datasets.Any(item => !ReferenceEquals(item, target)
+            && item.QueryFile.Equals(target.QueryFile, StringComparison.OrdinalIgnoreCase)))
+        {
+            var usedFiles = draft.TextFiles.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var seed = "queries/" + SafeId(target.Id) + "-imported";
+            var fileName = seed + ".sql";
+            for (var count = 2; usedFiles.Contains(fileName) && count < 10000; count++)
+                fileName = seed + "-" + count + ".sql";
+            target.QueryFile = fileName;
         }
 
         target.DataSourceId = local.Id;
