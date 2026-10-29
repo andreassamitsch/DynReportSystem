@@ -35,7 +35,7 @@ function Resolve-Sid([string]$IdentityName) {
     if ([string]::IsNullOrWhiteSpace($IdentityName)) {
         throw 'Bitte -Account DOMAIN\Name oder DOMAIN\Gruppe angeben.'
     }
-    $account = New-Object System.Security.Principal.NTAccount($IdentityName)
+    $account = [System.Security.Principal.NTAccount]::new($IdentityName)
     $sid = $account.Translate([System.Security.Principal.SecurityIdentifier])
     $value = $sid.Value
     if ($value -in @('S-1-1-0', 'S-1-5-11', 'S-1-5-32-545') -or
@@ -63,9 +63,9 @@ function Set-SecureFileAcl([string]$FileName) {
     $acl = New-Object System.Security.AccessControl.FileSecurity
     $acl.SetAccessRuleProtection($true, $false)
 
-    $system = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-18')
-    $administrators = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')
-    $appPool = (New-Object System.Security.Principal.NTAccount($appPoolIdentity)).
+    $system = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+    $administrators = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
+    $appPool = ([System.Security.Principal.NTAccount]::new($appPoolIdentity)).
         Translate([System.Security.Principal.SecurityIdentifier])
 
     foreach ($item in @(
@@ -73,8 +73,10 @@ function Set-SecureFileAcl([string]$FileName) {
         @{ Sid = $administrators; Rights = [System.Security.AccessControl.FileSystemRights]::FullControl },
         @{ Sid = $appPool; Rights = [System.Security.AccessControl.FileSystemRights]::Read }
     )) {
-        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
-            $item.Sid, $item.Rights, [System.Security.AccessControl.AccessControlType]::Allow)))
+        $acl.AddAccessRule(
+            [System.Security.AccessControl.FileSystemAccessRule]::new(
+                $item.Sid, $item.Rights,
+                [System.Security.AccessControl.AccessControlType]::Allow))
     }
     Set-Acl -LiteralPath $FileName -AclObject $acl
 }
