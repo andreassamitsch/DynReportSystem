@@ -63,6 +63,7 @@
 
             @if (user is not null && Access.CanManageAny(user))
             {
+                <a class="ghost-btn" href="/folders/manage">+ Ordner anlegen</a>
                 <a class="ghost-btn portal-permissions-btn" href="/permissions">
                     Berechtigungen
                 </a>
@@ -147,7 +148,7 @@
             @if (VisibleSubFolders.Count == 0 && DirectReports.Count == 0)
             {
                 <div class="notice error">
-                    Für diesen Windows-Benutzer sind in diesem Bereich keine Berichte freigegeben.
+                    In diesem Ordner sind aktuell keine Berichte verfügbar.
                 </div>
             }
         }
@@ -207,7 +208,8 @@
                 .Where(folder =>
                     string.Equals(folder.ParentId, parent, StringComparison.OrdinalIgnoreCase)
                     && (showHidden || !IsHiddenFolder(folder.Id))
-                    && DescendantReportCount(folder.Id) > 0)
+                    && (DescendantReportCount(folder.Id) > 0
+                        || (user is not null && Access.CanFolder(user, folder.Id, "Manage"))))
                 .OrderBy(folder => folder.Title, StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
         }
