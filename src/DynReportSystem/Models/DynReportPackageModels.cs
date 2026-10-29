@@ -134,6 +134,32 @@ public sealed class DynTableDefinition
     public int PageSize { get; set; } = 100;
     public string DataMode { get; set; } = "Auto";
     public string PresentationMode { get; set; } = "Rows";
+    public DynHierarchyDefinition? Hierarchy { get; set; }
+}
+
+/// <summary>
+/// SSRS-like expandable row groups. Levels use the same dataset; no extra
+/// SQL statement or renderer-specific report markup is required.
+/// </summary>
+public sealed class DynHierarchyDefinition
+{
+    public List<DynHierarchyLevel> Levels { get; set; } = [];
+    public int InitiallyExpandedDepth { get; set; }
+}
+
+public sealed class DynHierarchyLevel
+{
+    public string Field { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string SubtitleField { get; set; } = "";
+    public string OpenCountField { get; set; } = "";
+    public string CompletedDateField { get; set; } = "";
+    public string SummaryField { get; set; } = "";
+    public string SummaryLabelField { get; set; } = "";
+    public string SummaryDistinctField { get; set; } = "";
+    public string SummarySortField { get; set; } = "";
+    public string SummaryOpenCountField { get; set; } = "";
+    public bool SummaryOpenOnly { get; set; }
 }
 
 public sealed class DynTableInteractionDefinition
@@ -255,6 +281,9 @@ public sealed class DynBoardColumn
     public string TargetFormat { get; set; } = "";
     public string Unit { get; set; } = "";
     public string Direction { get; set; } = "LowerIsBetter";
+    // Optional continuous severity color scale for actual/target metric cells.
+    // Old report packages remain unchanged because the default is false.
+    public bool Heatmap { get; set; }
     public Dictionary<string, string> ColorMap { get; set; } =
         new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, DynStatePresentation> StateMap { get; set; } =
