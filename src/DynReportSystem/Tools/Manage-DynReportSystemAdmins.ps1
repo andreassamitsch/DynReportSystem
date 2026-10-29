@@ -4,7 +4,7 @@
 .SYNOPSIS
   Manage DynReport System administrators on APP-01 (Windows administrators only).
 .DESCRIPTION
-  Manages %ProgramData%\DynReportSystem\Config\system-administrators.json.
+  Manages %ProgramData%\DynReportSystem\Security\system-administrators.json.
   Does not grant any reporting permissions and does not alter AD memberships.
   Requires an elevated local/server PowerShell session. The DynReport IIS
   application pool receives READ only to this specific file.
@@ -27,7 +27,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 # App code cannot modify this file; only elevated server administrators can.
-$configDir = Join-Path $env:ProgramData 'DynReportSystem\Config'
+$configDir = Join-Path $env:ProgramData 'DynReportSystem\Security'
 $configFile = Join-Path $configDir 'system-administrators.json'
 $appPoolIdentity = 'IIS AppPool\DynReportSystem'
 
