@@ -199,7 +199,7 @@ else
                                     Bestätigung übernommen werden. SSRS-Shared-Datasets werden nicht automatisch konvertiert.
                                 </small>
                                 <select value="@selectedReusableDataset"
-                                        @onchange="e => { selectedReusableDataset = e.Value?.ToString() ?? ""; confirmDatasetReplacement = false; }">
+                                        @onchange="ReusableDatasetChanged">
                                     <option value="">– Vorhandenes Dataset auswählen –</option>
                                     @foreach (var option in AvailableReusableDatasets)
                                     {
@@ -1503,6 +1503,12 @@ else
                     package.Manifest.ReportId, dataset.Id)))
             .OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
+    }
+
+    private void ReusableDatasetChanged(ChangeEventArgs args)
+    {
+        selectedReusableDataset = args.Value?.ToString() ?? "";
+        confirmDatasetReplacement = false;
     }
 
     private void UseCentralSource(DynReportDataset dataset, string? key)
