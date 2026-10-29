@@ -699,7 +699,7 @@ New-Item -ItemType Directory -Force -Path $configDir | Out-Null
 New-Item -ItemType Directory -Force -Path $securityDir | Out-Null
 icacls $securityDir /inheritance:r | Out-Null
 if ($LASTEXITCODE -ne 0) {{ throw 'Sicherheitsverzeichnis konnte nicht abgesichert werden.' }}
-icacls $securityDir /grant:r 'SYSTEM:(OI)(CI)(F)' 'BUILTIN\Administrators:(OI)(CI)(F)' 'IIS AppPool\{AppPool}:(OI)(CI)(RX)' | Out-Null
+icacls $securityDir /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' 'IIS AppPool\{AppPool}:(OI)(CI)(RX)' | Out-Null
 if ($LASTEXITCODE -ne 0) {{ throw 'Die ACL für Systemadministratoren konnte nicht gesetzt werden.' }}
 icacls $packageDir /grant 'IIS AppPool\{AppPool}:(OI)(CI)(M)' /T /C | Out-Null
 icacls $revisionDir /grant 'IIS AppPool\{AppPool}:(OI)(CI)(M)' /T /C | Out-Null
