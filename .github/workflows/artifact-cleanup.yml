@@ -1,0 +1,87 @@
+# Trim GitHub Actions artifacts, not Releases, Git branches or repository files.
+# Keep latest per artifact family, latest default-branch build and designated independent variants.
+name: Cleanup Actions artifacts
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "13 4 * * *"
+  workflow_run:
+    workflows: ["Build server installer"]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/artifact-cleanup.yml"
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: actions-artifact-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Remove obsolete artifacts, preserving latest and independent variants
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const defaultBranch = context.payload.repository?.default_branch || 'main';
+            const independentBranches = new Set([]);
+            const GRACE_MS = 30 * 60 * 1000; // Do not delete artifacts potentially used by a running workflow.
+            const artifacts = await github.paginate(github.rest.actions.listArtifactsForRepo,
+              {owner, repo, per_page: 100});
+            const active = artifacts.filter(a => !a.expired && a.size_in_bytes > 0);
+            active.sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id);
+
+            function family(a) {
+              return a.name.toLowerCase()
+                .replace(/\b20\d{2}[-._]\d{2}[-._]\d{2}(?:[-._]\d{2}[-._]\d{2}[-._]\d{2})?/g, '<date>')
+                .replace(/\bv?\d+(?:[._]\d+){1,5}\b/g, '<version>')
+                .replace(/\b\d{8,}\b/g, '<build>')
+                .replace(/[-_]+/g, '-');
+            }
+
+            const keep = new Set();
+            const newestGlobal = new Set();
+            const newestDefault = new Set();
+            const newestIndependent = new Set();
+            for (const a of active) {
+              const kind = family(a);
+              const branch = a.workflow_run?.head_branch || '';
+              if (!newestGlobal.has(kind)) {
+                newestGlobal.add(kind); keep.add(a.id);
+              }
+              if (branch === defaultBranch && !newestDefault.has(kind)) {
+                newestDefault.add(kind); keep.add(a.id);
+              }
+              if (independentBranches.has(branch) && !newestIndependent.has(branch + '|' + kind)) {
+                newestIndependent.add(branch + '|' + kind); keep.add(a.id);
+              }
+              if (Date.now() - Date.parse(a.created_at) < GRACE_MS) keep.add(a.id);
+            }
+
+            if (active.length && !keep.size) throw new Error('Refusing cleanup: no artifacts selected for retention');
+            const toDelete = active.filter(a => !keep.has(a.id));
+            const bytes = toDelete.reduce((sum, a) => sum + a.size_in_bytes, 0);
+            core.info(`Artifacts: ${active.length}; keep: ${keep.size}; delete: ${toDelete.length}; recover: ${(bytes / 2**30).toFixed(2)} GiB`);
+            for (let i=0; i<toDelete.length; i+=5) {
+              const batch = toDelete.slice(i, i+5);
+              const results = await Promise.allSettled(batch.map(a =>
+                github.rest.actions.deleteArtifact({owner, repo, artifact_id: a.id})));
+              for (let j=0; j<results.length; j++) {
+                if (results[j].status === 'rejected') {
+                  const r = results[j].reason;
+                  if (r.status !== 404) throw new Error(`Deleting ${batch[j].id} (${batch[j].name}): ${r.message}`);
+                }
+              }
+            }
+            await core.summary.addHeading('Actions artifact cleanup')
+              .addRaw(`Found: ${active.length} | Kept: ${keep.size} | Deleted: ${toDelete.length} | Reclaimed: ${(bytes/2**30).toFixed(2)} GiB`)
+              .write();
