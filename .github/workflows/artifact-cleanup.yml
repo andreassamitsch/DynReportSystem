@@ -49,14 +49,24 @@ jobs:
             }
 
             const keep = new Set();
-            const newestGlobal = new Set();
+            const bestGlobal = new Map(); // highest semantic version, not merely latest build time
+            function compareVersions(a, b) {
+              for (let i=0; i<Math.max(a.length,b.length); i++) {
+                const diff = (a[i] || 0) - (b[i] || 0);
+                if (diff) return diff;
+              }
+              return 0;
+            }
             const newestDefault = new Set();
             const newestIndependent = new Set();
             for (const a of active) {
               const kind = family(a);
               const branch = a.workflow_run?.head_branch || '';
-              if (!newestGlobal.has(kind)) {
-                newestGlobal.add(kind); keep.add(a.id);
+              const match = a.name.match(/(?:^|[-_])v?(\d+(?:\.\d+){1,5})(?=[-_]|$)/i);
+              const version = match ? match[1].split('.').map(Number) : [];
+              const prior = bestGlobal.get(kind);
+              if (!prior || (version.length && (!prior.version.length || compareVersions(version, prior.version) > 0))) {
+                bestGlobal.set(kind, {id:a.id, version});
               }
               if (branch === defaultBranch && !newestDefault.has(kind)) {
                 newestDefault.add(kind); keep.add(a.id);
@@ -67,6 +77,7 @@ jobs:
               if (Date.now() - Date.parse(a.created_at) < GRACE_MS) keep.add(a.id);
             }
 
+            for (const candidate of bestGlobal.values()) keep.add(candidate.id);
             if (active.length && !keep.size) throw new Error('Refusing cleanup: no artifacts selected for retention');
             const toDelete = active.filter(a => !keep.has(a.id));
             const bytes = toDelete.reduce((sum, a) => sum + a.size_in_bytes, 0);
