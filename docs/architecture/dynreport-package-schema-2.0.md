@@ -182,6 +182,21 @@ See:
 
 - `docs/architecture/ADR-0008-server-aggregate-and-pivot.md`
 
+## Expandable hierarchical table groups (0.19.5)
+
+`PresentationMode = "Hierarchy"` activates SSRS-style expand/collapse within
+one materialized dataset: a set of `Hierarchy.Levels` defines order, position,
+or other hierarchy keys. Each level can expose a subtitle, open count, latest
+completion, summary text, summary label, dedupe key, summary sort and an
+optional open-only summary filter. Root groups are paginated as whole units.
+
+`DataMode` is forced to `Client` for this mode: materialized sibling rows
+must not be cut off by server row paging. Truncated source data triggers an
+explicit warning. This feature is compatible with the existing 2.0 schema;
+reports without a `Hierarchy` keep previous behavior.
+
+See `docs/reports/roundtable-2.0-hierarchical-table.md`.
+
 ## Designer contract
 
 The runtime renders only schema-defined components. The designer edits only schema-defined components.

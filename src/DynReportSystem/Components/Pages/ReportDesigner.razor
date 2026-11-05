@@ -3,6 +3,9 @@
 @inject DynReportPackageStore Packages
 @inject DynReportMetadataStore Metadata
 @inject FolderAccess Access
+@inject ManagedSqlDataSources CentralSources
+@inject SystemAdministratorAccess SystemAdmins
+@inject IConfiguration Configuration
 @inject AuthenticationStateProvider Authentication
 @inject NavigationManager Navigation
 
@@ -143,14 +146,94 @@ else
                 {
                     <div class="designer-form-grid">
                         <label>
-                            <span>Datenquelle</span>
-                            <select @bind="dataSet.DataSourceId" disabled="@(!canEditData)">
+                            <span>Paketinterne Datenquellenreferenz</span>
+                            <select @bind="dataSet.DataSourceId" disabled="@(!canEditData || !isSystemAdmin)">
                                 @foreach (var source in draft.Document.DataSources)
                                 {
                                     <option value="@source.Id">@source.Id (@source.ConfigKey)</option>
                                 }
                             </select>
                         </label>
+                        <label>
+                            <span>Zentrale SQL-Verbindung</span>
+                            @if (CurrentSource is DynReportDataSource configuredSource)
+                            {
+                                <select value="@configuredSource.ConfigKey"
+                                        @onchange="e => UseCentralSource(dataSet, e.Value?.ToString())"
+                                        disabled="@(!canEditData || !isSystemAdmin)">
+                                    @if (!AvailableCentralSourceKeys.Any(key =>
+                                        key.Equals(configuredSource.ConfigKey, StringComparison.OrdinalIgnoreCase)))
+                                    {
+                                        <option value="@configuredSource.ConfigKey">
+                                            @configuredSource.ConfigKey (nur Paket, nicht im Adminbereich sichtbar)
+                                        </option>
+                                    }
+                                    @foreach (var key in AvailableCentralSourceKeys)
+                                    {
+                                        <option value="@key">@key @(CentralSources.Get(key) is not null ? "(zentral verwaltet)" : "(Serverkonfiguration)")</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <span class="notice warn">Im Paket ist keine gültige Datenquelle zugeordnet.</span>
+                            }
+                        </label>
+                        <div class="notice info" style="grid-column:1/-1">
+                            <strong>Dataset ≠ Datenquelle:</strong>
+                            <code>@dataSet.Id</code> ist die SQL-Abfrage.
+                            Die zentrale Verbindung bestimmt nur Server und Datenbank.
+                            Bei der Auswahl bleiben SQL und Dataset-ID unverändert.
+                            @if (!isSystemAdmin)
+                            {
+                                <strong>Neue zentrale Verbindungen darf nur ein Systemadministrator zuordnen.</strong>
+                            }
+                        </div>
+                        @if (canEditData && isSystemAdmin)
+                        {
+                            <div class="designer-inspector-section" style="grid-column:1/-1">
+                                <strong>SQL-Dataset eines anderen nativen Berichts übernehmen</strong>
+                                <small>
+                                    Falls nicht nur die Verbindung, sondern tatsächlich die SQL-Abfrage falsch ist:
+                                    Ein bereits vorhandenes .dynreport-Dataset kann hier nach ausdrücklicher
+                                    Bestätigung übernommen werden. SSRS-Shared-Datasets werden nicht automatisch konvertiert.
+                                </small>
+                                <select value="@selectedReusableDataset"
+                                        @onchange="ReusableDatasetChanged">
+                                    <option value="">– Vorhandenes Dataset auswählen –</option>
+                                    @foreach (var option in AvailableReusableDatasets)
+                                    {
+                                        <option value="@option.Selector">@option.Label</option>
+                                    }
+                                </select>
+                                @if (!string.IsNullOrWhiteSpace(selectedReusableDataset))
+                                {
+                                    @if (confirmDatasetReplacement)
+                                    {
+                                        <div class="designer-actions">
+                                            <button type="button" class="ghost-btn" @onclick="() => confirmDatasetReplacement = false">
+                                                Abbrechen
+                                            </button>
+                                            <button type="button" class="primary-btn" @onclick="ReplaceDatasetFromExisting">
+                                                SQL und Datasetdefinition wirklich ersetzen
+                                            </button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="ghost-btn" @onclick="() => confirmDatasetReplacement = true">
+                                            Bestehendes Dataset übernehmen …
+                                        </button>
+                                    }
+                                }
+                                <small>
+                                    Alle Visualisierungen behalten die bisherige Dataset-ID
+                                    <code>@dataSet.Id</code>. Die Übernahme ändert den SQL-Text
+                                    und dessen Parameterbindung im Entwurf; gespeichert wird erst mit „Speichern“
+                                    einschließlich Revision.
+                                </small>
+                            </div>
+                        }
                         <label>
                             <span>Command Type</span>
                             <select @bind="dataSet.CommandType" disabled="@(!canEditData)">
@@ -603,7 +686,7 @@ else
 
                                                 <label>
                                                     <span>Datenmodus</span>
-                                                    <select @bind="selected.Table.DataMode">
+                                                    <select @bind="selected.Table.DataMode" disabled="@(selected.Table.PresentationMode == "Hierarchy")">
                                                         <option value="Auto">Automatisch / lokal</option>
                                                         <option value="Client">Lokal im geladenen Dataset</option>
                                                         <option value="Server">Serverseitig paginiert</option>
@@ -617,6 +700,7 @@ else
                                                         <option value="Rows">Detailzeilen</option>
                                                         <option value="Grouped">Aggregierte Gruppen</option>
                                                         <option value="Pivot">Pivot-Matrix</option>
+                                                         <option value="Hierarchy">Auf-/zuklappbare Hierarchie (SSRS)</option>
                                                     </select>
                                                 </label>
 
@@ -735,6 +819,92 @@ else
                                                            @onchange="e => SetStringList(selected.Table.GroupBy, e.Value?.ToString())"
                                                            placeholder="Geschäftsbereich; Kunde" />
                                                 </label>
+
+                                                @if (selected.Table.PresentationMode.Equals("Hierarchy", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    var hierarchy = selected.Table.Hierarchy ??= new DynHierarchyDefinition();
+                                                    <div class="designer-inspector-section">
+                                                        <div class="designer-inspector-section-head">
+                                                            <strong>Aufklappbare Ebenen</strong>
+                                                            <button type="button" @onclick="() => AddHierarchyLevel(selected)">+ Ebene</button>
+                                                        </div>
+                                                        <small>
+                                                            Jede Ebene gruppiert die geladenen Datasetzeilen. Beispiel:
+                                                            Auftrag → Position → Detailzeilen. Es erfolgt kein zusätzlicher SQL-Aufruf
+                                                            beim Aufklappen; Paginierung zählt Hauptgruppen statt einzelne Aufgaben.
+                                                        </small>
+                                                        <label>
+                                                            <span>Anfangs geöffnete Ebenen</span>
+                                                            <input type="number" min="0" max="5" @bind="hierarchy.InitiallyExpandedDepth" />
+                                                        </label>
+                                                        @foreach (var level in hierarchy.Levels.ToArray())
+                                                        {
+                                                            <div class="designer-metric-editor">
+                                                                <div class="designer-metric-editor-head">
+                                                                    <strong>Ebene @(hierarchy.Levels.IndexOf(level) + 1)</strong>
+                                                                    <button type="button" class="danger"
+                                                                            @onclick="() => hierarchy.Levels.Remove(level)">×</button>
+                                                                </div>
+                                                                <label>
+                                                                    <span>Gruppierungsfeld</span>
+                                                                    <select @bind="level.Field">
+                                                                        <option value="">– Feld –</option>
+                                                                        @foreach (var field in FieldsFor(selected.Dataset))
+                                                                        {
+                                                                            <option value="@field">@field</option>
+                                                                        }
+                                                                    </select>
+                                                                </label>
+                                                                <div class="designer-inspector-grid">
+                                                                    <label>
+                                                                        <span>Ebenenbeschriftung</span>
+                                                                        <input @bind="level.Label" placeholder="Auftrag / Position" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Zusatzfeld (z. B. Kunde)</span>
+                                                                        <input @bind="level.SubtitleField" placeholder="Kunde" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Offen-Anzahl-Feld</span>
+                                                                        <input @bind="level.OpenCountField" placeholder="OffenAuftrag" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Letzter Abschluss</span>
+                                                                        <input @bind="level.CompletedDateField" placeholder="LetztesAuftragDatum" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Zusammenfassung (Textfeld)</span>
+                                                                        <input @bind="level.SummaryField" placeholder="AuftragAnzeige" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Überschrift Zusammenfassung</span>
+                                                                        <input @bind="level.SummaryLabelField" placeholder="Abteilung" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Nur einmal je Feld</span>
+                                                                        <input @bind="level.SummaryDistinctField" placeholder="Abteilung" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Sortierfeld Zusammenfassung</span>
+                                                                        <input @bind="level.SummarySortField" placeholder="AbteilungSortNr" />
+                                                                    </label>
+                                                                    <label>
+                                                                        <span>Offen-Anzahl je Zusammenfassung</span>
+                                                                        <input @bind="level.SummaryOpenCountField" placeholder="OffenAbteilung" />
+                                                                    </label>
+                                                                    <label class="designer-check">
+                                                                        <input type="checkbox" @bind="level.SummaryOpenOnly" />
+                                                                        <span>Bei offenen Aufgaben nur offene Gruppen zeigen</span>
+                                                                    </label>
+                                                                </div>
+                                                            </div>
+                                                        }
+                                                        <div class="notice info compact-notice">
+                                                            Hierarchie läuft bewusst im Clientmodus. Bei abgeschnittenen Datasets
+                                                            werden Gruppensummen nicht als vollständig ausgewiesen.
+                                                        </div>
+                                                    </div>
+                                                }
 
                                                 @if (selected.Table.PresentationMode.Equals("Grouped", StringComparison.OrdinalIgnoreCase))
                                                 {
@@ -1194,7 +1364,7 @@ else
             </section>
         }
 
-        <footer>DynReport Designer 0.19.1 · Runtime und Designer verwenden dasselbe Paketmodell</footer>
+        <footer>DynReport Designer @DynReportVersion.Current · Runtime und Designer verwenden dasselbe Paketmodell</footer>
     </main>
 </div>
 }
@@ -1210,6 +1380,10 @@ else
     private bool canEditLayout;
     private bool canEditData;
     private bool canPublish;
+    private bool isSystemAdmin;
+    private string selectedReusableDataset = "";
+    private bool confirmDatasetReplacement;
+    private IReadOnlyList<ReusableDatasetOption> reusableDatasets = [];
     private Guid? pendingRestoreRevision;
     private Guid? restoringRevision;
     private string message = "";
@@ -1224,6 +1398,23 @@ else
     private DynReportDataset? CurrentDataset =>
         draft?.Document.Datasets.FirstOrDefault(x =>
             x.Id.Equals(activeDataset, StringComparison.OrdinalIgnoreCase));
+
+    private DynReportDataSource? CurrentSource =>
+        draft?.Document.DataSources.FirstOrDefault(source =>
+            source.Id.Equals(CurrentDataset?.DataSourceId, StringComparison.OrdinalIgnoreCase));
+
+    private IReadOnlyList<string> AvailableCentralSourceKeys =>
+        CentralSources.List().Select(x => x.Key)
+            .Concat(Configuration.GetSection("DataSources").GetChildren()
+                .Where(x => !string.IsNullOrWhiteSpace(x["ConnectionString"])
+                    || (!string.IsNullOrWhiteSpace(x["Database"])
+                        && !string.IsNullOrWhiteSpace(Configuration["Cockpit:ConnectionString"])))
+                .Select(x => x.Key))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    private IReadOnlyList<ReusableDatasetOption> AvailableReusableDatasets => reusableDatasets;
 
     private string CurrentSql =>
         CurrentDataset is not null
@@ -1249,6 +1440,7 @@ else
         try
         {
             user = (await Authentication.GetAuthenticationStateAsync()).User;
+            isSystemAdmin = SystemAdmins.IsSystemAdministrator(user);
 
             var source = Packages.Get(ReportId)
                 ?? throw new FileNotFoundException("DynReport-Paket wurde nicht gefunden.");
@@ -1275,6 +1467,9 @@ else
             activeDataset = draft.Document.Datasets.FirstOrDefault()?.Id ?? "";
             activePageId = draft.Document.Pages.FirstOrDefault()?.Id ?? "";
             selectedComponentId = null;
+            selectedReusableDataset = "";
+            confirmDatasetReplacement = false;
+            LoadReusableDatasets();
             await ReloadRevisionsAsync();
         }
         catch (Exception ex)
@@ -1285,6 +1480,166 @@ else
         {
             initialized = true;
         }
+    }
+
+    private sealed record ReusableDatasetOption(string Selector, string Label, string SourceReportId, string DatasetId);
+
+    private void LoadReusableDatasets()
+    {
+        if (!canEditData || !isSystemAdmin || user is null)
+        {
+            reusableDatasets = [];
+            return;
+        }
+
+        reusableDatasets = Packages.List()
+            .Where(package => !package.Manifest.ReportId.Equals(ReportId, StringComparison.OrdinalIgnoreCase)
+                && (Access.Can(user, package.Manifest.ReportId, "EditData")
+                    || Access.Can(user, package.Manifest.ReportId, "Publish")
+                    || Access.Can(user, package.Manifest.ReportId, "Manage")))
+            .SelectMany(package => package.Document.Datasets.Select(dataset =>
+                new ReusableDatasetOption(
+                    $"{package.Manifest.ReportId}::{dataset.Id}",
+                    $"{package.Manifest.Title} · {dataset.Id}",
+                    package.Manifest.ReportId, dataset.Id)))
+            .OrderBy(x => x.Label, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+    }
+
+    private void ReusableDatasetChanged(ChangeEventArgs args)
+    {
+        selectedReusableDataset = args.Value?.ToString() ?? "";
+        confirmDatasetReplacement = false;
+    }
+
+    private void UseCentralSource(DynReportDataset dataset, string? key)
+    {
+        if (!canEditData || !isSystemAdmin || draft is null
+            || string.IsNullOrWhiteSpace(key)
+            || !AvailableCentralSourceKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
+            return;
+
+        // A package-local source ID can be referenced by multiple datasets.
+        // Never silently retarget the other datasets: instead reuse or create
+        // an independent package reference to the selected central ConfigKey.
+        var source = draft.Document.DataSources.FirstOrDefault(item =>
+            item.ConfigKey.Equals(key, StringComparison.OrdinalIgnoreCase)
+            && item.Provider.Equals("SQL", StringComparison.OrdinalIgnoreCase));
+
+        if (source is null)
+        {
+            var usedIds = draft.Document.DataSources.Select(item => item.Id)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var seed = "central-" + SafeId(key);
+            source = new DynReportDataSource
+            {
+                Id = UniqueId(seed, usedIds),
+                Provider = "SQL",
+                ConfigKey = key,
+                DefaultConnectionString = ""
+            };
+            draft.Document.DataSources.Add(source);
+        }
+
+        dataset.DataSourceId = source.Id;
+        success = true;
+        message = $"Dataset '{dataset.Id}' verwendet jetzt die zentrale Verbindung '{key}'. " +
+            "Der SQL-Text wurde nicht verändert. Zum Übernehmen bitte Bericht speichern.";
+    }
+
+    private void ReplaceDatasetFromExisting()
+    {
+        if (!canEditData || !isSystemAdmin || !confirmDatasetReplacement
+            || draft is null || CurrentDataset is not DynReportDataset target || user is null)
+            return;
+
+        var selected = reusableDatasets.FirstOrDefault(option =>
+            option.Selector.Equals(selectedReusableDataset, StringComparison.Ordinal));
+        if (selected is null
+            || !(Access.Can(user, selected.SourceReportId, "EditData")
+                 || Access.Can(user, selected.SourceReportId, "Publish")
+                 || Access.Can(user, selected.SourceReportId, "Manage")))
+            return;
+
+        var package = Packages.Get(selected.SourceReportId);
+        var donor = package?.Document.Datasets.FirstOrDefault(item =>
+            item.Id.Equals(selected.DatasetId, StringComparison.OrdinalIgnoreCase));
+        if (package is null || donor is null
+            || !package.TextFiles.TryGetValue(donor.QueryFile, out var sql)
+            || string.IsNullOrWhiteSpace(sql))
+        {
+            success = false;
+            message = "Das ausgewählte Dataset enthält keine lesbare SQL-Abfrage.";
+            return;
+        }
+
+        var donorSource = package.Document.DataSources.FirstOrDefault(item =>
+            item.Id.Equals(donor.DataSourceId, StringComparison.OrdinalIgnoreCase));
+        if (donorSource is null)
+        {
+            success = false;
+            message = "Die Datenquelle des ausgewählten Datasets fehlt.";
+            return;
+        }
+
+        // A copied query must not silently reference parameters absent from
+        // the destination report. Reject before modifying any draft state.
+        var availableParameters = draft.Document.Parameters.Select(p => p.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var missingParameters = donor.Parameters
+            .Where(p => !string.IsNullOrWhiteSpace(p.ParameterName)
+                && !availableParameters.Contains(p.ParameterName))
+            .Select(p => p.ParameterName).Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (missingParameters.Length > 0)
+        {
+            success = false;
+            message = "Dataset nicht übernommen. Diese Reportparameter fehlen: " +
+                string.Join(", ", missingParameters) +
+                ". Bitte zuerst die Parameter im Zielbericht einrichten.";
+            return;
+        }
+
+        var local = draft.Document.DataSources.FirstOrDefault(item =>
+            item.ConfigKey.Equals(donorSource.ConfigKey, StringComparison.OrdinalIgnoreCase));
+        if (local is null)
+        {
+            var used = draft.Document.DataSources.Select(item => item.Id)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            local = new DynReportDataSource
+            {
+                Id = UniqueId("copied-" + SafeId(donorSource.ConfigKey), used),
+                Provider = "SQL",
+                ConfigKey = donorSource.ConfigKey,
+                DefaultConnectionString = "" // never copy connection secrets
+            };
+            draft.Document.DataSources.Add(local);
+        }
+
+        // Do not overwrite a SQL file shared by another dataset in this
+        // package. Copy on write preserves those other datasets.
+        if (draft.Document.Datasets.Any(item => !ReferenceEquals(item, target)
+            && item.QueryFile.Equals(target.QueryFile, StringComparison.OrdinalIgnoreCase)))
+        {
+            var usedFiles = draft.TextFiles.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var seed = "queries/" + SafeId(target.Id) + "-imported";
+            var fileName = seed + ".sql";
+            for (var count = 2; usedFiles.Contains(fileName) && count < 10000; count++)
+                fileName = seed + "-" + count + ".sql";
+            target.QueryFile = fileName;
+        }
+
+        target.DataSourceId = local.Id;
+        target.CommandType = donor.CommandType;
+        target.Fields = donor.Fields.ToList();
+        target.Parameters = JsonSerializer.Deserialize<List<DynReportQueryParameter>>(
+            JsonSerializer.Serialize(donor.Parameters)) ?? [];
+        ((Dictionary<string, string>)draft.TextFiles)[target.QueryFile] = sql;
+        selectedReusableDataset = "";
+        confirmDatasetReplacement = false;
+        success = true;
+        message = $"SQL und Parameterbindung aus '{package.Manifest.Title} / {donor.Id}' " +
+            $"in '{target.Id}' übernommen. Bitte Parameter und Felder prüfen und speichern.";
     }
 
     private void SqlChanged(ChangeEventArgs args)
@@ -1754,11 +2109,16 @@ else
 
     private void SetTablePresentationMode(DynTableDefinition table, string? value)
     {
-        table.PresentationMode = value is "Grouped" or "Pivot"
+        table.PresentationMode = value is "Grouped" or "Pivot" or "Hierarchy"
             ? value
             : "Rows";
 
-        if (!table.PresentationMode.Equals("Rows", StringComparison.OrdinalIgnoreCase)
+        if (table.PresentationMode == "Hierarchy")
+        {
+            table.DataMode = "Client";
+            table.Hierarchy ??= new DynHierarchyDefinition();
+        }
+        else if (!table.PresentationMode.Equals("Rows", StringComparison.OrdinalIgnoreCase)
             && string.Equals(table.DataMode, "Client", StringComparison.OrdinalIgnoreCase))
         {
             table.DataMode = "Auto";
@@ -1766,6 +2126,24 @@ else
 
         if (table.PresentationMode.Equals("Pivot", StringComparison.OrdinalIgnoreCase))
             table.Pivot ??= new DynTablePivotDefinition();
+    }
+
+    private void AddHierarchyLevel(DynVisual visual)
+    {
+        var hierarchy = visual.Table?.Hierarchy;
+        if (hierarchy is null || hierarchy.Levels.Count >= 5)
+            return;
+
+        var fields = FieldsFor(visual.Dataset).ToArray();
+        var candidate = fields.FirstOrDefault(field =>
+            !hierarchy.Levels.Any(level => level.Field.Equals(
+                field, StringComparison.OrdinalIgnoreCase))) ?? "";
+
+        hierarchy.Levels.Add(new DynHierarchyLevel
+        {
+            Field = candidate,
+            Label = hierarchy.Levels.Count == 0 ? "Auftrag" : "Position"
+        });
     }
 
     private void AddTableAggregate(bool pivotMeasure)

@@ -5,10 +5,24 @@ namespace DynReportSystem.Services;
 
 public sealed class DynReportDataSourceRegistry(
     IConfiguration config,
-    ILogger<DynReportDataSourceRegistry> logger)
+    ILogger<DynReportDataSourceRegistry> logger,
+    ManagedSqlDataSources managed)
 {
     public string ResolveConnectionString(DynReportDataSource source)
     {
+        // Report packages provide only an identifier; the portal administrator
+        // manages its actual connection outside the package.
+        var central = managed.Resolve(source.ConfigKey);
+        if (!string.IsNullOrWhiteSpace(central))
+            return ValidateServerConnection(source.Id, central);
+
+        if (!source.Id.Equals(source.ConfigKey, StringComparison.OrdinalIgnoreCase))
+        {
+            central = managed.Resolve(source.Id);
+            if (!string.IsNullOrWhiteSpace(central))
+                return ValidateServerConnection(source.Id, central);
+        }
+
         var direct = config[$"DataSources:{source.ConfigKey}:ConnectionString"];
         if (string.IsNullOrWhiteSpace(direct))
             direct = config[$"DataSources:{source.Id}:ConnectionString"];

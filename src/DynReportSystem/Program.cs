@@ -26,6 +26,7 @@ builder.Services.AddRazorComponents().AddInteractiveServerComponents(options =>
     options.DisconnectedCircuitMaxRetained = 250;
 });
 builder.Services.AddSingleton<FolderAccess>();
+builder.Services.AddSingleton<SystemAdministratorAccess>();
 builder.Services.AddSingleton<PermissionAdministrationService>();
 builder.Services.AddSingleton<RdlCatalog>();
 builder.Services.AddSingleton<ReportVisualThemeService>();
@@ -34,6 +35,7 @@ builder.Services.AddSingleton<DashboardCatalog>();
 builder.Services.AddSingleton<ChartOptionFactory>();
 builder.Services.AddSingleton<ImportedPortalCatalog>();
 builder.Services.AddSingleton<DynReportMetadataStore>();
+builder.Services.AddSingleton<ManagedSqlDataSources>();
 builder.Services.AddSingleton<DynReportDataSourceRegistry>();
 builder.Services.AddSingleton<DynReportSqlPolicyValidator>();
 builder.Services.AddSingleton<DynReportExecutionGate>();

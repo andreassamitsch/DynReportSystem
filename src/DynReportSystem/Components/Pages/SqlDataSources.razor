@@ -1,0 +1,333 @@
+@page "/admin/datasources"
+@attribute [Authorize]
+@inject ManagedSqlDataSources Sources
+@inject DynReportPackageStore Packages
+@inject SystemAdministratorAccess SystemAdmins
+@inject AuthenticationStateProvider Authentication
+@inject IConfiguration Configuration
+@using System.Security.Claims
+
+<PageTitle>SQL-Datenquellen · DynReport</PageTitle>
+
+<div class="shell">
+    <header class="topbar">
+        <div class="brand-mark">D</div>
+        <div class="brand-text">
+            <strong>SQL-Datenquellen</strong>
+            <span>Zentrale Verbindungen für .dynreport-Pakete</span>
+        </div>
+        <span class="topbar-tag">DynReport @DynReportVersion.Current</span>
+    </header>
+
+    <main class="main-area">
+        <div class="heading-line">
+            <div>
+                <p class="eyebrow">ADMINISTRATION</p>
+                <h1>SQL-Datenquellen verwalten</h1>
+                <p class="subtitle">
+                    Verbindung einmalig zentral einrichten, danach von beliebigen
+                    Berichten über die Datenquellenkennung verwenden.
+                </p>
+            </div>
+            <a class="ghost-btn" href="/">← Reporting</a>
+        </div>
+
+        @if (!initialized)
+        {
+            <div class="page-loading">Zugriffsrechte werden geprüft …</div>
+        }
+        else if (user is null || !SystemAdmins.IsSystemAdministrator(user))
+        {
+            <div class="notice error">
+                SQL-Datenquellen dürfen nur von DynReport-Systemadministratoren
+                verwaltet werden. Die Freigabe erfolgt ausschließlich lokal
+                auf APP-01 durch einen Windows-Administrator. Berichts- oder
+                Ordnerrechte (Manage) berechtigen nicht zur Systemverwaltung.
+            </div>
+        }
+        else
+        {
+            @if (!string.IsNullOrWhiteSpace(message))
+            {
+                <div class="notice @(success ? "info" : "error")">@message</div>
+            }
+
+            <section class="panel">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">VON BERICHTEN VERWENDET</p>
+                        <h2>Benötigte Verbindungen</h2>
+                    </div>
+                </div>
+                <div class="dyn-sql-source-list">
+                    @foreach (var source in RequiredSources)
+                    {
+                        <div class="dyn-sql-source-item">
+                            <div>
+                                <strong>@source.Key</strong>
+                                <small>@string.Join(", ", source.Reports)</small>
+                            </div>
+                            <span class="dyn-sql-source-state">
+                                @(IsManaged(source.Key) ? "Im Portal eingerichtet"
+                                    : IsConfigured(source.Key) ? "Aus Serverkonfiguration"
+                                    : "Nicht konfiguriert")
+                            </span>
+                            <button type="button" class="ghost-btn"
+                                    @onclick="() => Edit(source.Key)">
+                                @(IsManaged(source.Key) ? "Bearbeiten" : "Einrichten")
+                            </button>
+                        </div>
+                    }
+                    @if (RequiredSources.Count == 0)
+                    {
+                        <p>Aktuell verwendet kein installiertes Paket eine SQL-Datenquelle.</p>
+                    }
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">SERVERWEIT</p>
+                        <h2>Verwaltete Datenquellen</h2>
+                    </div>
+                    <button type="button" class="ghost-btn" @onclick="New">+ Datenquelle</button>
+                </div>
+                <div class="dyn-sql-source-list">
+                    @foreach (var source in AllSources)
+                    {
+                        <div class="dyn-sql-source-item">
+                            <div>
+                                <strong>@source.Key</strong>
+                                <small>@source.Server / @source.Database ·
+                                    @(source.Authentication == "Windows" ? "Windows-Authentifizierung" : "SQL-Login")</small>
+                            </div>
+                            <button type="button" class="ghost-btn" @onclick="() => Edit(source.Key)">Bearbeiten</button>
+                        </div>
+                    }
+                </div>
+            </section>
+
+            <section class="panel dyn-sql-editor">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">VERBINDUNG</p>
+                        <h2>@(editingExisting ? $"Datenquelle {form.Key} bearbeiten" : "Neue SQL-Datenquelle")</h2>
+                    </div>
+                </div>
+
+                <div class="dyn-sql-form-grid">
+                    <label>
+                        <span>Kennung im DynReport (ConfigKey)</span>
+                        <input @bind="form.Key" disabled="@editingExisting"
+                               autocomplete="off" placeholder="oxaion-stg" />
+                    </label>
+                    <label>
+                        <span>SQL-Server / Instanz</span>
+                        <input @bind="form.Server" autocomplete="off"
+                               placeholder="SQL-SERVER\INSTANZ oder Servername" />
+                    </label>
+                    <label>
+                        <span>Datenbank</span>
+                        <input @bind="form.Database" autocomplete="off"
+                               placeholder="oxaion-stg" />
+                    </label>
+                    <label>
+                        <span>Anmeldung</span>
+                        <select @bind="form.Authentication">
+                            <option value="Windows">Windows (IIS-Anwendungspool)</option>
+                            <option value="Sql">SQL Server-Benutzername und Passwort</option>
+                        </select>
+                    </label>
+                    @if (form.Authentication == "Sql")
+                    {
+                        <label>
+                            <span>SQL-Benutzername</span>
+                            <input @bind="form.Username" autocomplete="off" />
+                        </label>
+                        <label>
+                            <span>SQL-Passwort @(editingExisting ? "(leer = vorhandenes behalten)" : "")</span>
+                            <input type="password" @bind="form.Password"
+                                   autocomplete="new-password" />
+                        </label>
+                    }
+                    <label class="designer-check">
+                        <input type="checkbox" @bind="form.Encrypt" />
+                        <span>SQL-Verbindung verschlüsseln (empfohlen)</span>
+                    </label>
+                    <label class="designer-check">
+                        <input type="checkbox" @bind="form.TrustServerCertificate" />
+                        <span>SQL-Server-Zertifikat ohne Prüfung akzeptieren (nur Übergang)</span>
+                    </label>
+                </div>
+
+                <div class="dyn-sql-editor-actions">
+                    <button type="button" class="ghost-btn" disabled="@busy" @onclick="TestAsync">
+                        Verbindung testen
+                    </button>
+                    <button type="button" class="primary-btn" disabled="@busy" @onclick="SaveAsync">
+                        @(busy ? "Prüfung läuft …" : "Testen und speichern")
+                    </button>
+                    @if (editingExisting)
+                    {
+                        @if (deleteCandidate == form.Key)
+                        {
+                            <button type="button" class="ghost-btn danger" disabled="@busy"
+                                    @onclick="DeleteAsync">Löschen bestätigen</button>
+                            <button type="button" class="ghost-btn" @onclick="() => deleteCandidate = null">
+                                Abbrechen
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="button" class="ghost-btn danger" disabled="@busy"
+                                    @onclick="() => deleteCandidate = form.Key">Datenquelle löschen</button>
+                        }
+                    }
+                </div>
+                <small>
+                    Windows-Anmeldung verwendet das Dienstkonto des DynReport-IIS-Anwendungspools,
+                    nicht automatisch dein persönliches Windows-Konto. Für Berichte
+                    einen SQL-Benutzer mit ausschließlich lesenden Rechten verwenden.
+                    Gespeicherte Passwörter werden nicht an den Browser zurückgegeben.
+                </small>
+            </section>
+        }
+        <footer>DynReport System @DynReportVersion.Current · Datenquellen zentral verwaltet</footer>
+    </main>
+</div>
+
+@code {
+    private ClaimsPrincipal? user;
+    private bool initialized;
+    private bool busy;
+    private bool success;
+    private string message = "";
+    private bool editingExisting;
+    private string? deleteCandidate;
+    private SqlDataSourceForm form = new();
+
+    private IReadOnlyList<SqlDataSourceInfo> AllSources => Sources.List();
+    private bool IsManaged(string key) =>
+        Sources.Get(key) is not null;
+
+    private bool IsConfigured(string key) =>
+        !string.IsNullOrWhiteSpace(Configuration[$"DataSources:{key}:ConnectionString"]);
+
+    private IReadOnlyList<RequiredSource> RequiredSources =>
+        Packages.List()
+            .SelectMany(package => package.Document.DataSources.Select(
+                source => new { Key = source.ConfigKey, Report = package.Manifest.Title }))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Key))
+            .GroupBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new RequiredSource(
+                group.Key,
+                group.Select(x => x.Report).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()))
+            .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    protected override async Task OnInitializedAsync()
+    {
+        user = (await Authentication.GetAuthenticationStateAsync()).User;
+        initialized = true;
+    }
+
+    private void New()
+    {
+        editingExisting = false;
+        deleteCandidate = null;
+        form = new SqlDataSourceForm();
+        message = "";
+    }
+
+    private void Edit(string key)
+    {
+        deleteCandidate = null;
+        var configured = Sources.Get(key);
+        editingExisting = configured is not null;
+        form = configured is null ? new SqlDataSourceForm { Key = key } : Sources.ForEditing(key);
+        message = "";
+    }
+
+    private async Task TestAsync()
+    {
+        if (busy || user is null || !SystemAdmins.IsSystemAdministrator(user))
+            return;
+
+        busy = true;
+        success = false;
+        message = "";
+        try
+        {
+            await Sources.TestAsync(form);
+            success = true;
+            message = "Verbindung erfolgreich: Anmeldung, Datenbankzugriff und SELECT 1 geprüft.";
+        }
+        catch (Exception ex)
+        {
+            message = "Verbindung fehlgeschlagen: " + ex.Message;
+        }
+        finally
+        {
+            // No password remains cached after a successful save, but a failed
+            // test retains the newly typed password for correction.
+            busy = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (busy || user is null || !SystemAdmins.IsSystemAdministrator(user))
+            return;
+
+        busy = true;
+        success = false;
+        message = "";
+        try
+        {
+            await Sources.TestAsync(form);
+            await Sources.SaveAsync(form);
+            var key = form.Key;
+            form = Sources.ForEditing(key); // clear write-only password from component state
+            editingExisting = true;
+            success = true;
+            message = $"SQL-Datenquelle '{key}' wurde getestet und dauerhaft gespeichert.";
+        }
+        catch (Exception ex)
+        {
+            message = "Datenquelle nicht gespeichert: " + ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (busy || user is null || !SystemAdmins.IsSystemAdministrator(user)
+            || deleteCandidate != form.Key)
+            return;
+
+        busy = true;
+        success = false;
+        try
+        {
+            await Sources.DeleteAsync(form.Key);
+            var key = form.Key;
+            New();
+            success = true;
+            message = $"Portal-Datenquelle '{key}' gelöscht. Berichte verwenden gegebenenfalls wieder die bestehende Serverkonfiguration.";
+        }
+        catch (Exception ex)
+        {
+            message = "Löschen fehlgeschlagen: " + ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private sealed record RequiredSource(string Key, IReadOnlyList<string> Reports);
+}

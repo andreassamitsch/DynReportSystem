@@ -14,6 +14,11 @@ public static class DynReportInteractiveQueryRules
             || visual.Table is null)
             return false;
 
+        // Hierarchies require all sibling rows together. Never silently paginate
+        // individual dataset rows and then display incomplete order groups.
+        if (string.Equals(visual.Table.PresentationMode, "Hierarchy", StringComparison.OrdinalIgnoreCase))
+            return false;
+
         if (string.Equals(visual.Table.DataMode, "Server", StringComparison.OrdinalIgnoreCase))
             return true;
 

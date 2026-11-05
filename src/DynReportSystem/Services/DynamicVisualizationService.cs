@@ -357,9 +357,12 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
             }
         }
 
+        // Determine the bar-only layout before adding the invisible total-label
+        // helper. The helper is a line series and must not change responsiveness.
+        var allBarSeries = series.All(entry =>
+            string.Equals(Convert.ToString(entry.GetValueOrDefault("type")), "bar", StringComparison.OrdinalIgnoreCase));
         var horizontal = definition.Orientation.Equals("Horizontal", StringComparison.OrdinalIgnoreCase)
-            && series.All(entry =>
-                string.Equals(Convert.ToString(entry.GetValueOrDefault("type")), "bar", StringComparison.OrdinalIgnoreCase));
+            && allBarSeries;
 
         var visibleLegendSeries = series
             .Select(entry => Convert.ToString(entry.GetValueOrDefault("name")) ?? "")
@@ -379,12 +382,16 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
                     ["stackTotal"] = total
                 }).ToArray(),
                 ["silent"] = true,
-                ["symbol"] = "none",
-                ["symbolSize"] = 0,
+                // ECharts suppresses line data labels when there is no symbol to
+                // anchor them. Keep a real (but fully transparent) small marker.
+                ["symbol"] = "circle",
+                ["symbolSize"] = 2,
+                ["showSymbol"] = true,
+                ["clip"] = false,
                 ["barWidth"] = horizontal ? 1 : null,
                 ["barGap"] = horizontal ? "-100%" : null,
                 ["lineStyle"] = new Dictionary<string, object?> { ["opacity"] = 0 },
-                ["itemStyle"] = new Dictionary<string, object?> { ["opacity"] = 0 },
+                ["itemStyle"] = new Dictionary<string, object?> { ["color"] = "rgba(0,0,0,0)" },
                 ["label"] = new Dictionary<string, object?> { ["show"] = false },
                 ["tooltip"] = new Dictionary<string, object?> { ["show"] = false },
                 ["z"] = 50
@@ -450,11 +457,7 @@ public sealed class DynamicVisualizationService(ReportVisualThemeService themes)
             ["__dynSeriesFormats"] = formats,
             ["__dynResponsive"] = horizontal
                 ? definition.Stacked ? "horizontal-stack" : "horizontal-bar"
-                : definition.Stacked && series.All(entry =>
-                    string.Equals(
-                        Convert.ToString(entry.GetValueOrDefault("type")),
-                        "bar",
-                        StringComparison.OrdinalIgnoreCase))
+                : definition.Stacked && allBarSeries
                     ? "primary-stack"
                     : "cartesian",
             ["tooltip"] = new Dictionary<string, object?> { ["trigger"] = "axis" },
